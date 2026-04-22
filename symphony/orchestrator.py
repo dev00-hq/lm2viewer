@@ -127,6 +127,19 @@ class Orchestrator:
                 "rate_limits": self.state.codex_rate_limits,
             }
 
+    def wait_for_idle(self) -> None:
+        while True:
+            with self._lock:
+                workers = [
+                    entry.worker
+                    for entry in self.state.running.values()
+                    if entry.worker is not None
+                ]
+            if not workers:
+                return
+            for worker in workers:
+                worker.join(timeout=1)
+
     def _dispatch_issue(self, issue: Issue, attempt: int | None) -> None:
         self.state.claimed.add(issue.id)
         entry = RunningEntry(
@@ -294,7 +307,9 @@ class Orchestrator:
                 entry.turn_id = event.get("turn_id") or entry.turn_id
                 if entry.thread_id and entry.turn_id:
                     entry.session_id = f"{entry.thread_id}-{entry.turn_id}"
-        self.logger.event("codex_update", **event)
+        fields = dict(event)
+        source_event = fields.pop("event", None)
+        self.logger.event("codex_update", source_event=source_event, **fields)
 
     def _should_dispatch(self, issue: Issue) -> bool:
         if issue.id in self.state.claimed:

@@ -1,4 +1,5 @@
 import os
+import io
 import tempfile
 import time
 import unittest
@@ -6,6 +7,7 @@ from pathlib import Path
 
 from symphony.models import BlockerRef, Issue
 from symphony.orchestrator import Orchestrator
+from symphony.logging import StructuredLogger
 
 
 class FakeTracker:
@@ -195,6 +197,80 @@ Do it
             self.assertEqual(tracker.completed, ["ABC-1"])
             self.assertNotIn("1", orchestrator.state.retry_attempts)
             self.assertNotIn("1", orchestrator.state.claimed)
+
+    def test_agent_event_named_event_does_not_collide_with_logger_event_argument(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow = root / "WORKFLOW.md"
+            workflow.write_text(
+                """---
+tracker:
+  kind: linear
+  api_key: token
+  project_slug: CODEX
+workspace:
+  root: work
+codex:
+  command: echo ok
+---
+Do it
+""",
+                encoding="utf-8",
+            )
+            stream = io.StringIO()
+            orchestrator = Orchestrator(
+                workflow,
+                tracker=FakeTracker([]),
+                logger=StructuredLogger(stream),
+            )
+
+            orchestrator._on_agent_event({"event": "app_server_stderr", "message": "boom"})
+
+            self.assertIn('"event": "codex_update"', stream.getvalue())
+            self.assertIn('"source_event": "app_server_stderr"', stream.getvalue())
+
+    def test_wait_for_idle_blocks_until_worker_exits(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow = root / "WORKFLOW.md"
+            workflow.write_text(
+                """---
+tracker:
+  kind: linear
+  api_key: token
+  project_slug: CODEX
+workspace:
+  root: work
+codex:
+  command: echo ok
+---
+Do it
+""",
+                encoding="utf-8",
+            )
+            issue = Issue(
+                id="1",
+                identifier="ABC-1",
+                title="Complete",
+                description=None,
+                priority=1,
+                state="In Progress",
+                branch_name=None,
+                url=None,
+            )
+            runner = FakeRunner()
+            tracker = FakeTracker([issue])
+            orchestrator = Orchestrator(
+                workflow,
+                tracker=tracker,
+                agent_runner_factory=lambda *_args: runner,
+            )
+
+            orchestrator.tick()
+            orchestrator.wait_for_idle()
+
+            self.assertEqual(tracker.completed, ["ABC-1"])
+            self.assertEqual(orchestrator.state.running, {})
 
 
 if __name__ == "__main__":

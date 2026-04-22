@@ -37,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.once:
             orchestrator.startup_terminal_workspace_cleanup()
             orchestrator.tick()
+            orchestrator.wait_for_idle()
         else:
             orchestrator.run_forever()
         return 0
