@@ -1,0 +1,1878 @@
+{
+  "1": {
+    "type": "mesh",
+    "description": "Twinsen without tunic model"
+  },
+  "2": {
+    "type": "mesh",
+    "description": "Twinsen with tunic model"
+  },
+  "3": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and sword model"
+  },
+  "4": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and blowgun model"
+  },
+  "5": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and blowtron model"
+  },
+  "6": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and wannie glove model"
+  },
+  "7": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and laser pistol model"
+  },
+  "8": {
+    "type": "mesh",
+    "description": "Twinsen with wizard's tunic model"
+  },
+  "9": {
+    "type": "mesh",
+    "description": "Twinsen with wizard's tunic and blowgun model"
+  },
+  "10": {
+    "type": "mesh",
+    "description": "Twinsen with tunic (darker shading) model"
+  },
+  "11": {
+    "type": "mesh",
+    "description": "Twinsen with tunic (darker shading) and pick-axe model"
+  },
+  "12": {
+    "type": "mesh",
+    "description": "Twinsen with tunic (darker shading) and portable radio model"
+  },
+  "13": {
+    "type": "mesh",
+    "description": "Twinsen burning model"
+  },
+  "14": {
+    "type": "mesh",
+    "description": "Twinsen falling in Dome of the Slate model"
+  },
+  "15": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and car closed model"
+  },
+  "16": {
+    "type": "mesh",
+    "description": "Twinsen with wizard's tunic and car closed model"
+  },
+  "17": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and protopack model"
+  },
+  "18": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and Zoé model"
+  },
+  "19": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and Horn of Blue Triton model"
+  },
+  "20": {
+    "type": "mesh",
+    "description": "Twinsen with wizard's tunic and Horn of Blue Triton model"
+  },
+  "21": {
+    "type": "mesh",
+    "description": "Twinsen with space suit model"
+  },
+  "22": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and super jetpack model"
+  },
+  "23": {
+    "type": "mesh",
+    "description": "Twinsen with tunic and car open model"
+  },
+  "24": {
+    "type": "mesh",
+    "description": "Twinsen with wizard's tunic and car open model"
+  },
+  "25": {
+    "type": "mesh",
+    "description": "Twinsen X-Rayed model"
+  },
+  "26": {
+    "type": "mesh",
+    "description": "Nitro-meca-penguin model"
+  },
+  "27": {
+    "type": "mesh",
+    "description": "Zoé model"
+  },
+  "28": {
+    "type": "mesh",
+    "description": "Zoé with umbrella model"
+  },
+  "29": {
+    "type": "mesh",
+    "description": "Piece of flying saucer model"
+  },
+  "30": {
+    "type": "mesh",
+    "description": "Dot model"
+  },
+  "31": {
+    "type": "mesh",
+    "description": "Holomap model"
+  },
+  "32": {
+    "type": "mesh",
+    "description": "Three darts model"
+  },
+  "33": {
+    "type": "mesh",
+    "description": "Raph, the lighthouse keeper model"
+  },
+  "34": {
+    "type": "mesh",
+    "description": "The Tralu model"
+  },
+  "35": {
+    "type": "mesh",
+    "description": "Snake model"
+  },
+  "36": {
+    "type": "mesh",
+    "description": "Rabbibunny skeleton model"
+  },
+  "37": {
+    "type": "mesh",
+    "description": "The flying rat model"
+  },
+  "38": {
+    "type": "mesh",
+    "description": "The quetch not being from Citadel Island model"
+  },
+  "39": {
+    "type": "mesh",
+    "description": "Drunk rabbibunny in Luc's bar model"
+  },
+  "40": {
+    "type": "mesh",
+    "description": "Luc, the boss model"
+  },
+  "41": {
+    "type": "mesh",
+    "description": "Tim, waiter model"
+  },
+  "42": {
+    "type": "mesh",
+    "description": "A sphero (Raph's friend) model"
+  },
+  "43": {
+    "type": "mesh",
+    "description": "Another sphero model"
+  },
+  "44": {
+    "type": "mesh",
+    "description": "A third sphero model"
+  },
+  "45": {
+    "type": "mesh",
+    "description": "Quetch girl, Raph's friend model"
+  },
+  "46": {
+    "type": "mesh",
+    "description": "Quetch girl, Raph's friend model"
+  },
+  "47": {
+    "type": "mesh",
+    "description": "Sup in light green dressing model"
+  },
+  "48": {
+    "type": "mesh",
+    "description": "Sup in light green dressing with gun model"
+  },
+  "49": {
+    "type": "mesh",
+    "description": "Sup in light green dressing with newspaper model"
+  },
+  "50": {
+    "type": "mesh",
+    "description": "Yellow franco with green pistol model"
+  },
+  "51": {
+    "type": "mesh",
+    "description": "Yellow franco with red pistol model"
+  },
+  "52": {
+    "type": "mesh",
+    "description": "Gray esmer dog without mouth protection model"
+  },
+  "53": {
+    "type": "mesh",
+    "description": "Gray esmer dog with mouth protection model"
+  },
+  "54": {
+    "type": "mesh",
+    "description": "Brown esmer dog without mouth protection model"
+  },
+  "55": {
+    "type": "mesh",
+    "description": "Grobo in the baggage claim model"
+  },
+  "56": {
+    "type": "mesh",
+    "description": "Propeller of the crate-moving apparatus model"
+  },
+  "57": {
+    "type": "mesh",
+    "description": "Rabbibunny in the baggage claim model"
+  },
+  "58": {
+    "type": "mesh",
+    "description": "Crate-pushing apparatus model"
+  },
+  "59": {
+    "type": "mesh",
+    "description": "Quetch in the baggage claim model"
+  },
+  "60": {
+    "type": "mesh",
+    "description": "Mr. Paul model"
+  },
+  "61": {
+    "type": "mesh",
+    "description": "Grobo no. 1 in Temple of Bú model"
+  },
+  "62": {
+    "type": "mesh",
+    "description": "Quetch in the Inter-Islands Ferry (Cit. Island) model"
+  },
+  "63": {
+    "type": "mesh",
+    "description": "Mrs. Brune (Inter-Islands rabbibunny) model"
+  },
+  "64": {
+    "type": "mesh",
+    "description": "Neighbor without gallic acid model"
+  },
+  "65": {
+    "type": "mesh",
+    "description": "Neighbor with gallic acid model"
+  },
+  "66": {
+    "type": "mesh",
+    "description": "Cart in Temple of Bú model"
+  },
+  "67": {
+    "type": "mesh",
+    "description": "Arrow in Temple of Bú model"
+  },
+  "68": {
+    "type": "mesh",
+    "description": "Painter from Citadel Island sewers model"
+  },
+  "69": {
+    "type": "mesh",
+    "description": "Rabbibunny in blue-white dressing model"
+  },
+  "70": {
+    "type": "mesh",
+    "description": "Nitro-Meca-Penguin model"
+  },
+  "71": {
+    "type": "mesh",
+    "description": "Flying saucer (UFO) with closed door and lights off model"
+  },
+  "72": {
+    "type": "mesh",
+    "description": "Flying saucer (UFO) with quarter-open door model"
+  },
+  "73": {
+    "type": "mesh",
+    "description": "Flying saucer (UFO) with closed door and lights on model"
+  },
+  "74": {
+    "type": "mesh",
+    "description": "Flying saucer (UFO) with closed door, lights on, and feet out model"
+  },
+  "75": {
+    "type": "mesh",
+    "description": "Royal saucer (UFO) with quarter-open door model"
+  },
+  "76": {
+    "type": "mesh",
+    "description": "Royal saucer (UFO) with closed door model"
+  },
+  "77": {
+    "type": "mesh",
+    "description": "Royal saucer (UFO) with closed door and feet in model"
+  },
+  "78": {
+    "type": "mesh",
+    "description": "Royal saucer (UFO) with closed door and feet out model"
+  },
+  "79": {
+    "type": "mesh",
+    "description": "Small flying saucer (UFO) model"
+  },
+  "80": {
+    "type": "mesh",
+    "description": "Boat is Esmers' secret base model"
+  },
+  "81": {
+    "type": "mesh",
+    "description": "Franco guard with spike model"
+  },
+  "82": {
+    "type": "mesh",
+    "description": "Franco guard with spike model"
+  },
+  "83": {
+    "type": "mesh",
+    "description": "Franco guard with spike model"
+  },
+  "84": {
+    "type": "mesh",
+    "description": "Franco guard with spike model"
+  },
+  "85": {
+    "type": "mesh",
+    "description": "Sup in dark green dressing (clone of Johnny Rocket) model"
+  },
+  "86": {
+    "type": "mesh",
+    "description": "Sup in red dressing model"
+  },
+  "87": {
+    "type": "mesh",
+    "description": "Franco policeman with red helmet and gun model"
+  },
+  "88": {
+    "type": "mesh",
+    "description": "Franco policeman with black hat and gun model"
+  },
+  "89": {
+    "type": "mesh",
+    "description": "X-rayed franco red-helmet policeman model"
+  },
+  "90": {
+    "type": "mesh",
+    "description": "Franco policeman with green hat and stick model"
+  },
+  "91": {
+    "type": "mesh",
+    "description": "Franco survivor from Island CX model"
+  },
+  "92": {
+    "type": "mesh",
+    "description": "Yellow-red franco guard dressing (from secret base) model"
+  },
+  "93": {
+    "type": "mesh",
+    "description": "Baldino with space suit without helmet model"
+  },
+  "94": {
+    "type": "mesh",
+    "description": "Baldino with space suit with helmet in hand model"
+  },
+  "95": {
+    "type": "mesh",
+    "description": "Baldino with space suit with helmet model"
+  },
+  "96": {
+    "type": "mesh",
+    "description": "Light gray franco guard model"
+  },
+  "97": {
+    "type": "mesh",
+    "description": "Franco dissident model"
+  },
+  "98": {
+    "type": "mesh",
+    "description": "Light gray franco guard with gun model"
+  },
+  "99": {
+    "type": "mesh",
+    "description": "Light gray franco guard with tool model"
+  },
+  "100": {
+    "type": "mesh",
+    "description": "Mr. Bazoo (grobo in shop on Citadel Island) model"
+  },
+  "101": {
+    "type": "mesh",
+    "description": "Clerk in Mrs. Bloop's museum model"
+  },
+  "102": {
+    "type": "mesh",
+    "description": "Quetch guard of Temple Park model"
+  },
+  "103": {
+    "type": "mesh",
+    "description": "Quetch visitor of Mrs. Bloop's museum model"
+  },
+  "104": {
+    "type": "mesh",
+    "description": "Quetch guard of Temple Park with umbrella model"
+  },
+  "105": {
+    "type": "mesh",
+    "description": "Mrs. Bloop model"
+  },
+  "106": {
+    "type": "mesh",
+    "description": "Container in museum with Tunic model"
+  },
+  "107": {
+    "type": "mesh",
+    "description": "Container in museum without Tunic model"
+  },
+  "108": {
+    "type": "mesh",
+    "description": "Trunk in the sewers model"
+  },
+  "109": {
+    "type": "mesh",
+    "description": "Bird on Citadel Island model"
+  },
+  "110": {
+    "type": "mesh",
+    "description": "Little Tralu model"
+  },
+  "111": {
+    "type": "mesh",
+    "description": "Joe the Elf model"
+  },
+  "112": {
+    "type": "mesh",
+    "description": "Weather wizard model"
+  },
+  "113": {
+    "type": "mesh",
+    "description": "Creature in weather wizard's stove model"
+  },
+  "114": {
+    "type": "mesh",
+    "description": "Pharmacist model"
+  },
+  "115": {
+    "type": "mesh",
+    "description": "Sphero customer of pharmacy model"
+  },
+  "116": {
+    "type": "mesh",
+    "description": "Sphero customer of pharmacy with vacuum cleaner model"
+  },
+  "117": {
+    "type": "mesh",
+    "description": "Sphero customer of pharmacy with umbrella model"
+  },
+  "118": {
+    "type": "mesh",
+    "description": "The Citadel Island thief model"
+  },
+  "119": {
+    "type": "mesh",
+    "description": "The Citadel Island thief with customer's umbrella model"
+  },
+  "120": {
+    "type": "mesh",
+    "description": "Nomad grobo from Desert Island model"
+  },
+  "121": {
+    "type": "mesh",
+    "description": "A quetch model"
+  },
+  "122": {
+    "type": "mesh",
+    "description": "Female rabbibunny in swimming costume (in Hacienda bath) model"
+  },
+  "123": {
+    "type": "mesh",
+    "description": "Female grobo in Hacienda bath model"
+  },
+  "124": {
+    "type": "mesh",
+    "description": "Dean of the School of Magic model"
+  },
+  "125": {
+    "type": "mesh",
+    "description": "Female rabbibunny in the School of Magic model"
+  },
+  "126": {
+    "type": "mesh",
+    "description": "Ghost in the School of Magic model"
+  },
+  "127": {
+    "type": "mesh",
+    "description": "Sad grobo student in the School of Magic model"
+  },
+  "128": {
+    "type": "mesh",
+    "description": "Black nomad sphero from Desert Island model"
+  },
+  "129": {
+    "type": "mesh",
+    "description": "Male grobo in Hacienda bath model"
+  },
+  "130": {
+    "type": "mesh",
+    "description": "Empty space suit model"
+  },
+  "131": {
+    "type": "mesh",
+    "description": "Blowgun test magic symbol in the School of Magic model"
+  },
+  "132": {
+    "type": "mesh",
+    "description": "Hourglass (blowgun test) model"
+  },
+  "133": {
+    "type": "mesh",
+    "description": "Flask of gallic acid model"
+  },
+  "134": {
+    "type": "mesh",
+    "description": "Rabbibunny in shop on Desert Island model"
+  },
+  "135": {
+    "type": "mesh",
+    "description": "Rabbibunny child model"
+  },
+  "136": {
+    "type": "mesh",
+    "description": "Teacher of the kindergarten on Citadel Island model"
+  },
+  "137": {
+    "type": "mesh",
+    "description": "Grobo child model"
+  },
+  "138": {
+    "type": "mesh",
+    "description": "Quetch child 1 model"
+  },
+  "139": {
+    "type": "mesh",
+    "description": "Quetch child 2 with rope model"
+  },
+  "140": {
+    "type": "mesh",
+    "description": "Jerome Baldino model"
+  },
+  "141": {
+    "type": "mesh",
+    "description": "Memory viewer model"
+  },
+  "142": {
+    "type": "mesh",
+    "description": "Notes model"
+  },
+  "143": {
+    "type": "mesh",
+    "description": "Grobo in the hotel on Desert Island model"
+  },
+  "144": {
+    "type": "mesh",
+    "description": "Sub in blue dressing in the flying saucer model"
+  },
+  "145": {
+    "type": "mesh",
+    "description": "Female sup in the flying saucer model"
+  },
+  "146": {
+    "type": "mesh",
+    "description": "Female sup in the flying saucer with pull bell model"
+  },
+  "147": {
+    "type": "mesh",
+    "description": "Female sup in the flying saucer with pull bell and safety jacket model"
+  },
+  "148": {
+    "type": "mesh",
+    "description": "The translator model"
+  },
+  "149": {
+    "type": "mesh",
+    "description": "Rabbibunny with motorbike model"
+  },
+  "150": {
+    "type": "mesh",
+    "description": "Rabbibunny with motorbike and Twinsen with Tunic model"
+  },
+  "151": {
+    "type": "mesh",
+    "description": "Rabbibunny with motorbike and Twinsen with Wizard's Tunic model"
+  },
+  "152": {
+    "type": "mesh",
+    "description": "Bob with covered head model"
+  },
+  "153": {
+    "type": "mesh",
+    "description": "Bob with uncovered head model"
+  },
+  "154": {
+    "type": "mesh",
+    "description": "Sup in dark green dressing (clone of Johnny Rocket) model"
+  },
+  "155": {
+    "type": "mesh",
+    "description": "Johnny Rocket model"
+  },
+  "156": {
+    "type": "mesh",
+    "description": "Johnny Rocket in pyjamas model"
+  },
+  "157": {
+    "type": "mesh",
+    "description": "Elevator (big) model"
+  },
+  "158": {
+    "type": "mesh",
+    "description": "Robot on Otringal (prison guard) model"
+  },
+  "159": {
+    "type": "mesh",
+    "description": "Robot on Desert Island model"
+  },
+  "160": {
+    "type": "mesh",
+    "description": "Robot on Citadel Island model"
+  },
+  "161": {
+    "type": "mesh",
+    "description": "Felix with covered head model"
+  },
+  "162": {
+    "type": "mesh",
+    "description": "Felix with uncovered head model"
+  },
+  "163": {
+    "type": "mesh",
+    "description": "Crab model"
+  },
+  "164": {
+    "type": "mesh",
+    "description": "Top of giant crab model"
+  },
+  "165": {
+    "type": "mesh",
+    "description": "Front scissors (or feet) of giant crab model"
+  },
+  "166": {
+    "type": "mesh",
+    "description": "Ferry (you can call it hovercraft) model"
+  },
+  "167": {
+    "type": "mesh",
+    "description": "Dino-Fly with Twinsen with Tunic model"
+  },
+  "168": {
+    "type": "mesh",
+    "description": "Dino-Fly model"
+  },
+  "169": {
+    "type": "mesh",
+    "description": "Dino-Fly with Twinsen with Wizard's Tunic model"
+  },
+  "170": {
+    "type": "mesh",
+    "description": "Zed model"
+  },
+  "171": {
+    "type": "mesh",
+    "description": "Quetch, in love with the pharmacist model"
+  },
+  "172": {
+    "type": "mesh",
+    "description": "Mushroom model"
+  },
+  "173": {
+    "type": "mesh",
+    "description": "Raph's fiance model"
+  },
+  "174": {
+    "type": "mesh",
+    "description": "Piece of giant crab's scissor (or foot) model"
+  },
+  "175": {
+    "type": "mesh",
+    "description": "Light from a lighthouse model"
+  },
+  "176": {
+    "type": "mesh",
+    "description": "Twinsen and Zoé with the umbrella down model"
+  },
+  "177": {
+    "type": "mesh",
+    "description": "Quetch child 2 without rope model"
+  },
+  "178": {
+    "type": "mesh",
+    "description": "Rosa the cow model"
+  },
+  "179": {
+    "type": "mesh",
+    "description": "Quetch child 3 (on top of the pharmacy) model"
+  },
+  "180": {
+    "type": "mesh",
+    "description": "Quetch child 3 without his head model"
+  },
+  "181": {
+    "type": "mesh",
+    "description": "Quetch in black dressing (Quetch child 1's big brother) model"
+  },
+  "182": {
+    "type": "mesh",
+    "description": "Trash can (hidden Esmer) 1 model"
+  },
+  "183": {
+    "type": "mesh",
+    "description": "Trash can (hidden Esmer) 2 model"
+  },
+  "184": {
+    "type": "mesh",
+    "description": "The Citadel Island thies with his sister (Rabbibunny child) model"
+  },
+  "185": {
+    "type": "mesh",
+    "description": "The teacher of the kindergarten with Quetch child 2 model"
+  },
+  "186": {
+    "type": "mesh",
+    "description": "Luc, the boss, with his brother (Grobo child) model"
+  },
+  "187": {
+    "type": "mesh",
+    "description": "Franco guy with plates model"
+  },
+  "188": {
+    "type": "mesh",
+    "description": "Franco guy with glass model"
+  },
+  "189": {
+    "type": "mesh",
+    "description": "Sphero wizard (Ker'aooc) model"
+  },
+  "190": {
+    "type": "mesh",
+    "description": "Female quetch wizard (Tabata)"
+  },
+  "191": {
+    "type": "mesh",
+    "description": "Grobo wizard model"
+  },
+  "192": {
+    "type": "mesh",
+    "description": "The usually drunk franco guy model"
+  },
+  "193": {
+    "type": "mesh",
+    "description": "Mosquibee guy 1 model"
+  },
+  "194": {
+    "type": "mesh",
+    "description": "Mosquibee guy 2 model"
+  },
+  "195": {
+    "type": "mesh",
+    "description": "Wannie guy 1 model"
+  },
+  "196": {
+    "type": "mesh",
+    "description": "Wannie guy 2 model"
+  },
+  "197": {
+    "type": "mesh",
+    "description": "Queen of the Mosquibees model"
+  },
+  "198": {
+    "type": "mesh",
+    "description": "Mosquibee Queen's ventilation guy model"
+  },
+  "199": {
+    "type": "mesh",
+    "description": "Quetch child #3 with plate with piece of cake model"
+  },
+  "200": {
+    "type": "mesh",
+    "description": "Female rabbibunny in the School of Magic model"
+  },
+  "201": {
+    "type": "mesh",
+    "description": "Sup sailor with glass model"
+  },
+  "202": {
+    "type": "mesh",
+    "description": "Twinsen with Tunic with piece of cake model"
+  },
+  "203": {
+    "type": "mesh",
+    "description": "Mosquibee guy with containe full of liquid model"
+  },
+  "204": {
+    "type": "mesh",
+    "description": "Zoé not pregnant anymore with child-carry thing 1 model"
+  },
+  "205": {
+    "type": "mesh",
+    "description": "Zoé not pregnant anymore with child-carry thing 2 model"
+  },
+  "206": {
+    "type": "mesh",
+    "description": "Franco nurse with franco child 1 model"
+  },
+  "207": {
+    "type": "mesh",
+    "description": "Franco child 2 model"
+  },
+  "208": {
+    "type": "mesh",
+    "description": "Wannie child 1 model"
+  },
+  "209": {
+    "type": "mesh",
+    "description": "Zed on the beach model"
+  },
+  "210": {
+    "type": "mesh",
+    "description": "Control-wheel for the woodbridge model"
+  },
+  "211": {
+    "type": "mesh",
+    "description": "Woodbridge transport wood model"
+  },
+  "212": {
+    "type": "mesh",
+    "description": "Giand spider (Citadel Island cliffs) model"
+  },
+  "213": {
+    "type": "mesh",
+    "description": "Moya the turtle model"
+  },
+  "214": {
+    "type": "mesh",
+    "description": "Silhuette of the turtle model"
+  },
+  "215": {
+    "type": "mesh",
+    "description": "The turtle slightly rising model"
+  },
+  "216": {
+    "type": "mesh",
+    "description": "The turtle greatly rising model"
+  },
+  "217": {
+    "type": "mesh",
+    "description": "The turtle almost out model"
+  },
+  "218": {
+    "type": "mesh",
+    "description": "Cactus (hidden Esmer) model"
+  },
+  "219": {
+    "type": "mesh",
+    "description": "The turtle-calling bell model"
+  },
+  "220": {
+    "type": "mesh",
+    "description": "Empty car model"
+  },
+  "221": {
+    "type": "mesh",
+    "description": "Clover box model"
+  },
+  "222": {
+    "type": "mesh",
+    "description": "One of the many desert flowers model"
+  },
+  "223": {
+    "type": "mesh",
+    "description": "Desert sphero 1 model"
+  },
+  "224": {
+    "type": "mesh",
+    "description": "Desert sphero 1 with guitar model"
+  },
+  "225": {
+    "type": "mesh",
+    "description": "Desert sphero 2 model"
+  },
+  "226": {
+    "type": "mesh",
+    "description": "Camel 1 model"
+  },
+  "227": {
+    "type": "mesh",
+    "description": "Camel 2 model"
+  },
+  "228": {
+    "type": "mesh",
+    "description": "Car with racer model"
+  },
+  "229": {
+    "type": "mesh",
+    "description": "Sphero bowl player model"
+  },
+  "230": {
+    "type": "mesh",
+    "description": "Quetch bowl player model"
+  },
+  "231": {
+    "type": "mesh",
+    "description": "Ball 1 (big gray ball) model"
+  },
+  "232": {
+    "type": "mesh",
+    "description": "Ball 2 (small red ball) model"
+  },
+  "233": {
+    "type": "mesh",
+    "description": "Quetch girl in swimming costume with book model"
+  },
+  "234": {
+    "type": "mesh",
+    "description": "Franco guy with beard (bowl player) model"
+  },
+  "235": {
+    "type": "mesh",
+    "description": "Sup in light green dressing (bowl player) model"
+  },
+  "236": {
+    "type": "mesh",
+    "description": "Quetch guard of Temple Park model"
+  },
+  "237": {
+    "type": "mesh",
+    "description": "Sup guy in swimming costume (Imerial Hotel) model"
+  },
+  "238": {
+    "type": "mesh",
+    "description": "Green shell (Joe the Elf imprisoned) model"
+  },
+  "239": {
+    "type": "mesh",
+    "description": "The Eye 1 of the School of Magic model"
+  },
+  "240": {
+    "type": "mesh",
+    "description": "The Eye 2 of the School of Magic model"
+  },
+  "241": {
+    "type": "mesh",
+    "description": "Chedil Amiradoo model"
+  },
+  "242": {
+    "type": "mesh",
+    "description": "The balsam flower model"
+  },
+  "243": {
+    "type": "mesh",
+    "description": "Piece of a plant model"
+  },
+  "244": {
+    "type": "mesh",
+    "description": "The sphero near Port-Ludo model"
+  },
+  "245": {
+    "type": "mesh",
+    "description": "Grobo policeman, guard of Temple Park model"
+  },
+  "246": {
+    "type": "mesh",
+    "description": "Rabbibunny, don't know, where he appears model"
+  },
+  "247": {
+    "type": "mesh",
+    "description": "Small yellow duck model"
+  },
+  "248": {
+    "type": "mesh",
+    "description": "Twinsen with Tunic and balloons model"
+  },
+  "249": {
+    "type": "mesh",
+    "description": "Twinsen with Wizard's Tunic and balloons model"
+  },
+  "250": {
+    "type": "mesh",
+    "description": "The balloons model"
+  },
+  "251": {
+    "type": "mesh",
+    "description": "Desert grobo model"
+  },
+  "252": {
+    "type": "mesh",
+    "description": "Old rabbibunny with guitar model"
+  },
+  "253": {
+    "type": "mesh",
+    "description": "Old rabbibunny with magic flute model"
+  },
+  "254": {
+    "type": "mesh",
+    "description": "The chest with old rabbibunny's domestic snake model"
+  },
+  "255": {
+    "type": "mesh",
+    "description": "The chest empty model"
+  },
+  "256": {
+    "type": "mesh",
+    "description": "Sup in space suit model"
+  },
+  "257": {
+    "type": "mesh",
+    "description": "Giraffe guy with camera on Zeelich model"
+  },
+  "258": {
+    "type": "mesh",
+    "description": "Ant guy with backpack on Zeelich model"
+  },
+  "259": {
+    "type": "mesh",
+    "description": "Ant guy 2 on Zeelich model"
+  },
+  "260": {
+    "type": "mesh",
+    "description": "Two-headed monster in Emperor's palace model"
+  },
+  "261": {
+    "type": "mesh",
+    "description": "Emperor's sup soldier 1 model"
+  },
+  "262": {
+    "type": "mesh",
+    "description": "Emperor's sup soldier 2 model"
+  },
+  "263": {
+    "type": "mesh",
+    "description": "Sup in swimming costume in water model"
+  },
+  "264": {
+    "type": "mesh",
+    "description": "Old sup lady in Imperial Hotel model"
+  },
+  "265": {
+    "type": "mesh",
+    "description": "Franco guard in Imperial Hotel model"
+  },
+  "266": {
+    "type": "mesh",
+    "description": "Franco policeman with stick down model"
+  },
+  "267": {
+    "type": "mesh",
+    "description": "Franco policeman with stick in hand model"
+  },
+  "268": {
+    "type": "mesh",
+    "description": "Female franco model"
+  },
+  "269": {
+    "type": "mesh",
+    "description": "Narrow electric barrier model"
+  },
+  "270": {
+    "type": "mesh",
+    "description": "Wider electric barrier model"
+  },
+  "271": {
+    "type": "mesh",
+    "description": "Mosquibee dissident model"
+  },
+  "272": {
+    "type": "mesh",
+    "description": "Sup guard of Emperor's palace model"
+  },
+  "273": {
+    "type": "mesh",
+    "description": "Sup guard of Emperor's palace with sword out model"
+  },
+  "274": {
+    "type": "mesh",
+    "description": "Leontine (zeppelin-boat of the old franco) model"
+  },
+  "275": {
+    "type": "mesh",
+    "description": "Leontine with the old franco aboard model"
+  },
+  "276": {
+    "type": "mesh",
+    "description": "Leontine with the old franco and Twinsen aboard model"
+  },
+  "277": {
+    "type": "mesh",
+    "description": "The old franco model"
+  },
+  "278": {
+    "type": "mesh",
+    "description": "Driver 1 of the motor-flyer model"
+  },
+  "279": {
+    "type": "mesh",
+    "description": "Driver 2 of the motor-flyer model"
+  },
+  "280": {
+    "type": "mesh",
+    "description": "The motor-flyer model"
+  },
+  "281": {
+    "type": "mesh",
+    "description": "Motor-flyer with driver 1 aboard model"
+  },
+  "282": {
+    "type": "mesh",
+    "description": "Motor-flyer with driver 1 and Twinsen aboard model"
+  },
+  "283": {
+    "type": "mesh",
+    "description": "Motor-flyer with driver 2 aboard model"
+  },
+  "284": {
+    "type": "mesh",
+    "description": "Motor-flyer with driver 2 and Twinsen aboard model"
+  },
+  "285": {
+    "type": "mesh",
+    "description": "Open crate in the undergas center model"
+  },
+  "286": {
+    "type": "mesh",
+    "description": "Closed crate in the undergas center model"
+  },
+  "287": {
+    "type": "mesh",
+    "description": "Open crate in the undergas center with Twinsen inside model"
+  },
+  "288": {
+    "type": "mesh",
+    "description": "Small closed crate model"
+  },
+  "289": {
+    "type": "mesh",
+    "description": "Franco policeman with red hat and gun on the car model"
+  },
+  "290": {
+    "type": "mesh",
+    "description": "Shotgun model"
+  },
+  "291": {
+    "type": "mesh",
+    "description": "Franco trooper model"
+  },
+  "292": {
+    "type": "mesh",
+    "description": "Franco trooper with UZI model"
+  },
+  "293": {
+    "type": "mesh",
+    "description": "Sup priest model"
+  },
+  "294": {
+    "type": "mesh",
+    "description": "Franco at the gas station on Otringal with gas-piston model"
+  },
+  "295": {
+    "type": "mesh",
+    "description": "Franco at the gas station on Otringal with hammer model"
+  },
+  "296": {
+    "type": "mesh",
+    "description": "Green gloom (alligator) model"
+  },
+  "297": {
+    "type": "mesh",
+    "description": "Green gloom (alligator) with tie model"
+  },
+  "298": {
+    "type": "mesh",
+    "description": "Gray gloom (alligator) model"
+  },
+  "299": {
+    "type": "mesh",
+    "description": "Small gloom (alligator), casino exit guard model"
+  },
+  "300": {
+    "type": "mesh",
+    "description": "Big gray gloom (alligator), holding Twinsen model"
+  },
+  "301": {
+    "type": "mesh",
+    "description": "Big gray gloom (alligator) model"
+  },
+  "302": {
+    "type": "mesh",
+    "description": "Franco with drum model"
+  },
+  "303": {
+    "type": "mesh",
+    "description": "Car at the gas station on Otringal model"
+  },
+  "304": {
+    "type": "mesh",
+    "description": "Zeelichian car without the gun model"
+  },
+  "305": {
+    "type": "mesh",
+    "description": "The gun of the car model"
+  },
+  "306": {
+    "type": "mesh",
+    "description": "Dark Monk's key model"
+  },
+  "307": {
+    "type": "mesh",
+    "description": "Fire ball model"
+  },
+  "308": {
+    "type": "mesh",
+    "description": "Franco survivor from Island CX model"
+  },
+  "309": {
+    "type": "mesh",
+    "description": "Kangaroo 1 model"
+  },
+  "310": {
+    "type": "mesh",
+    "description": "Kangaroo 2 model"
+  },
+  "311": {
+    "type": "mesh",
+    "description": "Franco priest model"
+  },
+  "312": {
+    "type": "mesh",
+    "description": "Dark Monk (hidden FunFrock) model"
+  },
+  "313": {
+    "type": "mesh",
+    "description": "FunFrock unihidding himself model"
+  },
+  "314": {
+    "type": "mesh",
+    "description": "Unhidden FunFrock model"
+  },
+  "315": {
+    "type": "mesh",
+    "description": "Unhidden FunFrock with sword out model"
+  },
+  "316": {
+    "type": "mesh",
+    "description": "Teleporting FunFrock model"
+  },
+  "317": {
+    "type": "mesh",
+    "description": "Standing stone 1 (for lava) model"
+  },
+  "318": {
+    "type": "mesh",
+    "description": "Standing stone 2 (for lava) model"
+  },
+  "319": {
+    "type": "mesh",
+    "description": "Mosquibee guy with beard model"
+  },
+  "320": {
+    "type": "mesh",
+    "description": "Wannie priest model"
+  },
+  "321": {
+    "type": "mesh",
+    "description": "Gas monster 1 model"
+  },
+  "322": {
+    "type": "mesh",
+    "description": "Silhuette of gas monster's head 1 model"
+  },
+  "323": {
+    "type": "mesh",
+    "description": "Gas monster 2 model"
+  },
+  "324": {
+    "type": "mesh",
+    "description": "Wannie guy 1 model"
+  },
+  "325": {
+    "type": "mesh",
+    "description": "Wannie guy 2 model"
+  },
+  "326": {
+    "type": "mesh",
+    "description": "Wannie guy 3 model"
+  },
+  "327": {
+    "type": "mesh",
+    "description": "Wannie guy 4 model"
+  },
+  "328": {
+    "type": "mesh",
+    "description": "Wannie child model"
+  },
+  "329": {
+    "type": "mesh",
+    "description": "Wannie child with red ball model"
+  },
+  "330": {
+    "type": "mesh",
+    "description": "Wannie grandma model"
+  },
+  "331": {
+    "type": "mesh",
+    "description": "Wannie grandma with plate with piece of tart model"
+  },
+  "332": {
+    "type": "mesh",
+    "description": "Wannie child capturing fireflies model"
+  },
+  "333": {
+    "type": "mesh",
+    "description": "Firefly model"
+  },
+  "334": {
+    "type": "mesh",
+    "description": "Frog model"
+  },
+  "335": {
+    "type": "mesh",
+    "description": "Ferryman with boat model"
+  },
+  "336": {
+    "type": "mesh",
+    "description": "Ferryman with boat with Twinsen aboard model"
+  },
+  "337": {
+    "type": "mesh",
+    "description": "Wannie guy 5 model"
+  },
+  "338": {
+    "type": "mesh",
+    "description": "Gem model"
+  },
+  "339": {
+    "type": "mesh",
+    "description": "Elevator to the undergas model"
+  },
+  "340": {
+    "type": "mesh",
+    "description": "Elevator to the undergas with Twinsen inside model"
+  },
+  "341": {
+    "type": "mesh",
+    "description": "Small gas monster 1 (blue) model"
+  },
+  "342": {
+    "type": "mesh",
+    "description": "Small gas monster 2 (gray) model"
+  },
+  "343": {
+    "type": "mesh",
+    "description": "Wannie guy with pick-axe model"
+  },
+  "344": {
+    "type": "mesh",
+    "description": "Undergas bulldozer model"
+  },
+  "345": {
+    "type": "mesh",
+    "description": "Undergas bulldozer pick-thing part 1 model"
+  },
+  "346": {
+    "type": "mesh",
+    "description": "Undergas bulldozer pick-thing part 2 model"
+  },
+  "347": {
+    "type": "mesh",
+    "description": "Little yellow pig model"
+  },
+  "348": {
+    "type": "mesh",
+    "description": "Main train wagon with wannie inside model"
+  },
+  "349": {
+    "type": "mesh",
+    "description": "Train wagon model"
+  },
+  "350": {
+    "type": "mesh",
+    "description": "Train wagon with stones model"
+  },
+  "351": {
+    "type": "mesh",
+    "description": "100% Firefly tart model"
+  },
+  "352": {
+    "type": "mesh",
+    "description": "5/6 Firefly tart model"
+  },
+  "353": {
+    "type": "mesh",
+    "description": "3/4 Firefly tart model"
+  },
+  "354": {
+    "type": "mesh",
+    "description": "2/3 Firefly tart model"
+  },
+  "355": {
+    "type": "mesh",
+    "description": "Wannie child's red ball model"
+  },
+  "356": {
+    "type": "mesh",
+    "description": "Wannie's glove model"
+  },
+  "357": {
+    "type": "mesh",
+    "description": "Gas monster 3 (gray) model"
+  },
+  "358": {
+    "type": "mesh",
+    "description": "Glass plate model"
+  },
+  "359": {
+    "type": "mesh",
+    "description": "Cover of the box with the mosquibees key fragment model"
+  },
+  "360": {
+    "type": "mesh",
+    "description": "Green mosquibee guy model"
+  },
+  "361": {
+    "type": "mesh",
+    "description": "Franco trooper with explosive box model"
+  },
+  "362": {
+    "type": "mesh",
+    "description": "Green mosquibee guy with flag model"
+  },
+  "363": {
+    "type": "mesh",
+    "description": "Mosquibee guy with Twinsen model"
+  },
+  "364": {
+    "type": "mesh",
+    "description": "Monkey monster with sword model"
+  },
+  "365": {
+    "type": "mesh",
+    "description": "Franco trooper with parachute model"
+  },
+  "366": {
+    "type": "mesh",
+    "description": "Mosquibee flag model"
+  },
+  "367": {
+    "type": "mesh",
+    "description": "Emperor's flag model"
+  },
+  "368": {
+    "type": "mesh",
+    "description": "Rope to get into the mosquibee fortress model"
+  },
+  "369": {
+    "type": "mesh",
+    "description": "Rope to get into the mosquibee fortress with Twinsen model"
+  },
+  "370": {
+    "type": "mesh",
+    "description": "Franco trooper with UZI and explosive ball model"
+  },
+  "371": {
+    "type": "mesh",
+    "description": "The two-zeppelin transport method to the elevator model"
+  },
+  "372": {
+    "type": "mesh",
+    "description": "Female dog on the Island of the Francos model"
+  },
+  "373": {
+    "type": "mesh",
+    "description": "Franco worker on the Island of the Francos model"
+  },
+  "374": {
+    "type": "mesh",
+    "description": "Franco with metal-detector on the Island of the Francos model"
+  },
+  "375": {
+    "type": "mesh",
+    "description": "Franco worker with red hat on the Island of the Francos model"
+  },
+  "376": {
+    "type": "mesh",
+    "description": "Mechanic owl model"
+  },
+  "377": {
+    "type": "mesh",
+    "description": "Gas monster 4 model"
+  },
+  "378": {
+    "type": "mesh",
+    "description": "Rocket-shooter on Island CX model"
+  },
+  "379": {
+    "type": "mesh",
+    "description": "Wannie guy with one glove model"
+  },
+  "380": {
+    "type": "mesh",
+    "description": "Sup in orange dressing (in Imperial Hotel and saucer) model"
+  },
+  "381": {
+    "type": "mesh",
+    "description": "Sup getting in garbage can in saucer model"
+  },
+  "382": {
+    "type": "mesh",
+    "description": "Sup getting in cactus in saucer model"
+  },
+  "383": {
+    "type": "mesh",
+    "description": "Wannie guy digging model"
+  },
+  "384": {
+    "type": "mesh",
+    "description": "Wannie child #1's toys model"
+  },
+  "385": {
+    "type": "mesh",
+    "description": "The wannies key fragment model"
+  },
+  "386": {
+    "type": "mesh",
+    "description": "Spider net model"
+  },
+  "387": {
+    "type": "mesh",
+    "description": "Old wannie model"
+  },
+  "388": {
+    "type": "mesh",
+    "description": "Old wannie with piece of tart model"
+  },
+  "389": {
+    "type": "mesh",
+    "description": "Monkey monster model"
+  },
+  "390": {
+    "type": "mesh",
+    "description": "Monkey monster with wooden box model"
+  },
+  "391": {
+    "type": "mesh",
+    "description": "Wannie child with captured firefly model"
+  },
+  "392": {
+    "type": "mesh",
+    "description": "\"Feet\" for something 1 model"
+  },
+  "393": {
+    "type": "mesh",
+    "description": "\"Feet\" for something 2 model"
+  },
+  "394": {
+    "type": "mesh",
+    "description": "Sup 1 with cigar in the undergas agency model"
+  },
+  "395": {
+    "type": "mesh",
+    "description": "Sup 2 sitting down with papers in the undergas agency model"
+  },
+  "396": {
+    "type": "mesh",
+    "description": "Gray ball model"
+  },
+  "397": {
+    "type": "mesh",
+    "description": "Fat yellow/black mosquibee guy model"
+  },
+  "398": {
+    "type": "mesh",
+    "description": "Blowtron model"
+  },
+  "399": {
+    "type": "mesh",
+    "description": "Green mosquibee guy with red flag model"
+  },
+  "400": {
+    "type": "mesh",
+    "description": "Lava fire ball model"
+  },
+  "401": {
+    "type": "mesh",
+    "description": "The wheel of fortune model"
+  },
+  "402": {
+    "type": "mesh",
+    "description": "Big gray gloom (alligator) with big stick model"
+  },
+  "403": {
+    "type": "mesh",
+    "description": "Female franco dancer model"
+  },
+  "404": {
+    "type": "mesh",
+    "description": "Franco fireman model"
+  },
+  "405": {
+    "type": "mesh",
+    "description": "Sup heavy metal guy in black dressing model"
+  },
+  "406": {
+    "type": "mesh",
+    "description": "Female franco dancer model"
+  },
+  "407": {
+    "type": "mesh",
+    "description": "The reptile-thing in the casino (come to papa) model"
+  },
+  "408": {
+    "type": "mesh",
+    "description": "Brown dog in the casino model"
+  },
+  "409": {
+    "type": "mesh",
+    "description": "Orange dog in the casino model"
+  },
+  "410": {
+    "type": "mesh",
+    "description": "Cyan dog in the casino model"
+  },
+  "411": {
+    "type": "mesh",
+    "description": "Yellow dog in the casino model"
+  },
+  "412": {
+    "type": "mesh",
+    "description": "Sup 1 in the casino model"
+  },
+  "413": {
+    "type": "mesh",
+    "description": "Sup 2 in the casino model"
+  },
+  "414": {
+    "type": "mesh",
+    "description": "Green gloom (alligator) 1 in the casino model"
+  },
+  "415": {
+    "type": "mesh",
+    "description": "Green gloom (alligator) 2 in the casino model"
+  },
+  "416": {
+    "type": "mesh",
+    "description": "Sailor (maybe pink wannie) 1 model"
+  },
+  "417": {
+    "type": "mesh",
+    "description": "Sailor (maybe pink wannie) 1 with gun model"
+  },
+  "418": {
+    "type": "mesh",
+    "description": "Glass of drink model"
+  },
+  "419": {
+    "type": "mesh",
+    "description": "Sailor (maybe pink wannie) 2 model"
+  },
+  "420": {
+    "type": "mesh",
+    "description": "Sailor (maybe pink wannie) 3 model"
+  },
+  "421": {
+    "type": "mesh",
+    "description": "Sailor (maybe brown wannie) model"
+  },
+  "422": {
+    "type": "mesh",
+    "description": "Sup sailor with glass of drink model"
+  },
+  "423": {
+    "type": "mesh",
+    "description": "Young wannie with stone in front of him model"
+  },
+  "424": {
+    "type": "mesh",
+    "description": "Half of a franco sitting down model"
+  },
+  "425": {
+    "type": "mesh",
+    "description": "Franco with gray hat and glass model"
+  },
+  "426": {
+    "type": "mesh",
+    "description": "Rick the sup model"
+  },
+  "427": {
+    "type": "mesh",
+    "description": "Silhuette of gas monster's head 2 model"
+  },
+  "428": {
+    "type": "mesh",
+    "description": "Gas monster 5 model"
+  },
+  "429": {
+    "type": "mesh",
+    "description": "Female franco model"
+  },
+  "430": {
+    "type": "mesh",
+    "description": "Can of gazogem model"
+  },
+  "431": {
+    "type": "mesh",
+    "description": "Sup 1 in the shop (I love Twinsun) model"
+  },
+  "432": {
+    "type": "mesh",
+    "description": "Sup 2 in the shop (I hate Twinsun) model"
+  },
+  "433": {
+    "type": "mesh",
+    "description": "Wizard's diploma model"
+  },
+  "434": {
+    "type": "mesh",
+    "description": "Ferry ticket model"
+  },
+  "435": {
+    "type": "mesh",
+    "description": "Customer's umbrella model"
+  },
+  "436": {
+    "type": "mesh",
+    "description": "Small spider model"
+  },
+  "437": {
+    "type": "mesh",
+    "description": "Pighead in red dressing with hammer (Emperor's palace) model"
+  },
+  "438": {
+    "type": "mesh",
+    "description": "Pighead in brown dressing with gardening tool (Emperor's palace) model"
+  },
+  "439": {
+    "type": "mesh",
+    "description": "Pighead in yellow dressing with broom (Emperor's palace) model"
+  },
+  "440": {
+    "type": "mesh",
+    "description": "Stan (from Time Commando) model"
+  },
+  "441": {
+    "type": "mesh",
+    "description": "Shy sup girl in Imperial Hotel model"
+  },
+  "442": {
+    "type": "mesh",
+    "description": "Light gray franco guard listening to music in Imperial Hotel model"
+  },
+  "443": {
+    "type": "mesh",
+    "description": "The above franco's tape player model"
+  },
+  "444": {
+    "type": "mesh",
+    "description": "Female franco in the shop on the Island of the Francos model"
+  },
+  "445": {
+    "type": "mesh",
+    "description": "Pick-axe model"
+  },
+  "446": {
+    "type": "mesh",
+    "description": "Glass-cleaning (at least I think) franco model"
+  },
+  "447": {
+    "type": "mesh",
+    "description": "Old franco scientist model"
+  },
+  "448": {
+    "type": "mesh",
+    "description": "Female franco nurse in the nursery model"
+  },
+  "449": {
+    "type": "mesh",
+    "description": "Franco child with red rapper hat model"
+  },
+  "450": {
+    "type": "mesh",
+    "description": "A small franco child modeld"
+  },
+  "451": {
+    "type": "mesh",
+    "description": "Brother of francos' burgermaster (De La Fontaine) model"
+  },
+  "452": {
+    "type": "mesh",
+    "description": "Gas monster 6 (gray) model"
+  },
+  "453": {
+    "type": "mesh",
+    "description": "Silhuette of gas monster's head 3 model"
+  },
+  "454": {
+    "type": "mesh",
+    "description": "The emperor model"
+  },
+  "455": {
+    "type": "mesh",
+    "description": "The emperor's wife model"
+  },
+  "456": {
+    "type": "mesh",
+    "description": "Spikes in the protection spell's cave model"
+  },
+  "457": {
+    "type": "mesh",
+    "description": "Monster guarding the protection spell model"
+  },
+  "458": {
+    "type": "mesh",
+    "description": "The protection spell model"
+  },
+  "459": {
+    "type": "mesh",
+    "description": "Vertical electric bar of teleporting machine model"
+  },
+  "460": {
+    "type": "mesh",
+    "description": "Gray mechanic grobo near the end model"
+  },
+  "461": {
+    "type": "mesh",
+    "description": "Green mechanic grobo with box of missiles near the end model"
+  },
+  "462": {
+    "type": "mesh",
+    "description": "Quetch child 1 model"
+  },
+  "463": {
+    "type": "mesh",
+    "description": "Very long and thin vertical piece of metal model"
+  },
+  "464": {
+    "type": "mesh",
+    "description": "Two such pieces of metal model"
+  },
+  "465": {
+    "type": "mesh",
+    "description": "Grobo child model"
+  },
+  "466": {
+    "type": "mesh",
+    "description": "Rabbibunny child model"
+  },
+  "467": {
+    "type": "mesh",
+    "description": "Quetch child 2 model"
+  },
+  "468": {
+    "type": "mesh",
+    "description": "Extremely long and thin vertical/horizontal pieces of metal model"
+  },
+  "469": {
+    "type": "mesh",
+    "description": "Mechanic rabbibunny near the end model"
+  }
+}
