@@ -4,6 +4,7 @@ import { requireElement } from './dom';
 import type { CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './types';
 import { CatalogUi } from './ui/catalog';
 import { renderStats } from './ui/stats';
+import { UvInspector } from './ui/uvInspector';
 import { ViewerScene, type VisibilityState } from './viewer/scene';
 
 const canvas = requireElement('canvas', HTMLCanvasElement);
@@ -31,6 +32,17 @@ const progressFill = requireElement('progressFill', HTMLDivElement);
 const exportAssetButton = requireElement('exportAsset', HTMLButtonElement);
 const exportPolygonMode = requireElement('exportPolygonMode', HTMLSelectElement);
 const exportResult = requireElement('exportResult', HTMLDivElement);
+const uvInspector = new UvInspector({
+  root: requireElement('uvInspector', HTMLDivElement),
+  polygon: requireElement('uvPolygon', HTMLSelectElement),
+  atlas: requireElement('uvAtlas', HTMLCanvasElement),
+  facts: requireElement('uvFacts', HTMLDivElement),
+  previous: requireElement('uvPrevious', HTMLButtonElement),
+  next: requireElement('uvNext', HTMLButtonElement),
+  copy: requireElement('uvCopy', HTMLButtonElement),
+  download: requireElement('uvDownload', HTMLButtonElement),
+  result: requireElement('uvResult', HTMLDivElement),
+});
 let selectedExportAsset: CatalogAsset | null = null;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
@@ -123,6 +135,7 @@ async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
     if ('animation' in payload) {
       setSelectedExportAsset(null);
       updateExportControls();
+      uvInspector.setModel(null);
       catalogUi.renderDetail(payload.animation);
       overlay.textContent = `${payload.animation.label} selected`;
       return;
@@ -134,6 +147,7 @@ async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
 function showModel(model: Lm2Model): void {
   scene.loadModel(model);
   renderStats(stats, model);
+  uvInspector.setModel(model);
   overlay.textContent = model.source || 'Uploaded model';
   setSelectedExportAsset(model.catalog_asset?.kind === 'model' ? model.catalog_asset : null);
   updateExportControls();

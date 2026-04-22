@@ -63,12 +63,12 @@ Implemented:
 - RESS palette and texture atlas decode needed by current model rendering.
 - ANIM and ANIM3DS catalog entries with summary/raw metadata.
 - Contract manifests and export probes.
+- Read-only texture/UV inspector.
 
 Planned:
 
 - Full ANIM semantic records and frame stepping.
 - ANIM3DS semantic decode once evidence identifies the layout.
-- Read-only texture/UV inspector.
 
 ## Frontend Boundary
 

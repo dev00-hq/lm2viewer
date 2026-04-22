@@ -116,6 +116,16 @@ atlas data are available.
 The browser viewer also exposes **Export** for the selected catalog model and
 uses a backend folder picker for the output location.
 
+## Texture and UV Inspector
+
+The browser viewer includes a read-only UV inspector for the loaded model. It
+shows polygon material, render flags, UV group, sampled atlas region, sampled
+colors, and currently unknown polygon flags. The atlas preview highlights the
+selected texture region and UV outline when atlas data is available.
+
+You can copy or download the selected polygon evidence as JSON. The viewer does
+not edit UVs.
+
 ## Contract Probe
 
 Write a versioned model contract JSON file for one catalog model asset:

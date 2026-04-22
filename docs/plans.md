@@ -169,14 +169,15 @@ lba2-lm2-viewer contract --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\b
 
 ### M5: Texture and UV Inspector
 
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- Read-only inspector panel for polygon, material, UV group, sampled atlas
-  region, render flags, and unknowns.
-- Atlas preview with selected-region highlight.
-- Evidence copy/export affordance.
+- Implemented: read-only frontend inspector panel for polygon, material, UV
+  group, sampled atlas region, render flags, and polygon unknown flags.
+- Implemented: atlas preview canvas with selected-region and UV outline
+  highlight.
+- Implemented: evidence copy and JSON download affordances.
 
 Do not build a UV editor. Use external tools such as Blender for UV editing
 experiments.

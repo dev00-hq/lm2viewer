@@ -52,6 +52,20 @@
           <div id="exportResult" class="export-result" role="status" aria-live="polite"></div>
         </div>
 
+        <h2>UV Inspector</h2>
+        <div id="uvInspector" class="uv-inspector">
+          <select id="uvPolygon" aria-label="Polygon"></select>
+          <canvas id="uvAtlas" width="256" height="256" aria-label="Texture atlas preview"></canvas>
+          <div id="uvFacts" class="uv-facts">No model loaded.</div>
+          <div class="button-row">
+            <button id="uvPrevious" title="Previous polygon" aria-label="Previous polygon">&lt;</button>
+            <button id="uvCopy" title="Copy evidence" aria-label="Copy evidence">Copy</button>
+            <button id="uvNext" title="Next polygon" aria-label="Next polygon">&gt;</button>
+          </div>
+          <button id="uvDownload" class="secondary-action">Download JSON</button>
+          <div id="uvResult" class="export-result" role="status" aria-live="polite"></div>
+        </div>
+
         <h2>Server Path</h2>
         <div class="row">
           <input id="path" type="text" placeholder="C:\path\to\body001.ldc" />

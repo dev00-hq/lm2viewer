@@ -18,7 +18,8 @@ HQR files at runtime.
 - HQR, BODY/LM2, palette, texture atlas, and animation-summary paths exist.
 - CLI and frontend model export probes exist.
 - CLI model contract probes exist.
-- Full animation decode, frame stepping, and UV inspector are planned.
+- Frontend texture/UV inspector exists.
+- Full animation decode and frame stepping are planned.
 
 Milestone status is tracked in `docs/plans.md`.
 
@@ -118,6 +119,16 @@ emit plain JSON with schema version `lm2_model_contract.v0`. The current draft
 includes source identity, geometry facts, render facts, animation placeholders,
 gameplay placeholders, evidence references, confidence, and unknown-field
 descriptors.
+
+## Texture And UV Inspector
+
+The frontend includes a read-only UV inspector for the loaded model. It shows
+per-polygon material, render flags, UV group, sampled atlas region, UV points,
+sampled colors, and currently unknown polygon flags. The atlas preview highlights
+the selected UV group and polygon UV outline when texture atlas data is loaded.
+
+The inspector can copy the selected polygon evidence JSON or download it as a
+small local JSON file. It does not edit UVs or write game assets.
 
 ## Package
 
