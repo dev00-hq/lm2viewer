@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-from email import policy
-from email.parser import BytesParser
 import hashlib
 import json
 import math
@@ -25,6 +23,8 @@ import time
 import urllib.parse
 import webbrowser
 from dataclasses import dataclass, field
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -52,13 +52,14 @@ class Lm2Error(ValueError):
 def parse_multipart_upload(content_type: str, body: bytes) -> dict[str, Any]:
     if "\r" in content_type or "\n" in content_type:
         raise Lm2Error("invalid content-type header")
-    header_blob = (
-        f"Content-Type: {content_type}\r\n"
-        "MIME-Version: 1.0\r\n"
-        "\r\n"
-    ).encode("utf-8")
+    header_blob = (f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n").encode(
+        "utf-8"
+    )
     message = BytesParser(policy=policy.default).parsebytes(header_blob + body)
-    if message.get_content_type() != "multipart/form-data" or not message.is_multipart():
+    if (
+        message.get_content_type() != "multipart/form-data"
+        or not message.is_multipart()
+    ):
         raise Lm2Error("expected multipart/form-data upload")
 
     for part in message.iter_parts():
@@ -147,7 +148,11 @@ class DecodeProgress:
         with self.lock:
             now = time.monotonic()
             elapsed_source = self.finished_at if self.finished_at is not None else now
-            elapsed = 0.0 if self.started_at is None else max(0.0, elapsed_source - self.started_at)
+            elapsed = (
+                0.0
+                if self.started_at is None
+                else max(0.0, elapsed_source - self.started_at)
+            )
             percent = (self.current / self.total) if self.total else None
             return {
                 "active": self.active,
@@ -169,11 +174,15 @@ class Reader:
 
     def require(self, size: int) -> None:
         if self.index + size > len(self.data):
-            raise Lm2Error(f"unexpected end of file at 0x{self.index:x}, need {size} bytes")
+            raise Lm2Error(
+                f"unexpected end of file at 0x{self.index:x}, need {size} bytes"
+            )
 
     def seek(self, offset: int) -> None:
         if offset < 0 or offset > len(self.data):
-            raise Lm2Error(f"offset 0x{offset:x} is outside file size 0x{len(self.data):x}")
+            raise Lm2Error(
+                f"offset 0x{offset:x} is outside file size 0x{len(self.data):x}"
+            )
         self.index = offset
 
     def skip(self, size: int) -> None:
@@ -434,7 +443,12 @@ class Lm2Model:
                 for sphere in self.spheres
             ],
             "bones": [
-                {"parent": bone.parent, "vertex": bone.vertex, "unknown_1": bone.unknown_1, "unknown_2": bone.unknown_2}
+                {
+                    "parent": bone.parent,
+                    "vertex": bone.vertex,
+                    "unknown_1": bone.unknown_1,
+                    "unknown_2": bone.unknown_2,
+                }
                 for bone in self.bones
             ],
         }
@@ -442,7 +456,9 @@ class Lm2Model:
 
 def read_header(reader: Reader) -> Lm2Header:
     if len(reader.data) < 0x60:
-        raise Lm2Error(f"LM2 file is too small for a 0x60-byte header: {len(reader.data)} bytes")
+        raise Lm2Error(
+            f"LM2 file is too small for a 0x60-byte header: {len(reader.data)} bytes"
+        )
     flags = reader.s32()
     reader.s32()
     x_min = reader.s32()
@@ -484,7 +500,9 @@ def read_header(reader: Reader) -> Lm2Header:
     ]
     for offset in offsets:
         if offset > len(reader.data):
-            raise Lm2Error(f"section offset 0x{offset:x} exceeds file size 0x{len(reader.data):x}")
+            raise Lm2Error(
+                f"section offset 0x{offset:x} exceeds file size 0x{len(reader.data):x}"
+            )
     return header
 
 
@@ -493,18 +511,34 @@ def parse_lm2(data: bytes) -> Lm2Model:
     header = read_header(reader)
 
     reader.seek(header.bones_offset)
-    bones = tuple(Bone(reader.u16(), reader.u16(), reader.u16(), reader.u16()) for _ in range(header.bones_count))
+    bones = tuple(
+        Bone(reader.u16(), reader.u16(), reader.u16(), reader.u16())
+        for _ in range(header.bones_count)
+    )
 
     reader.seek(header.vertices_offset)
     raw_vertices = tuple(
-        Vertex(reader.s16() * WORLD_SCALE, reader.s16() * WORLD_SCALE, reader.s16() * WORLD_SCALE, reader.u16())
+        Vertex(
+            reader.s16() * WORLD_SCALE,
+            reader.s16() * WORLD_SCALE,
+            reader.s16() * WORLD_SCALE,
+            reader.u16(),
+        )
         for _ in range(header.vertices_count)
     )
-    vertices = tuple(resolve_vertex(vertex, raw_vertices, bones, index) for index, vertex in enumerate(raw_vertices))
+    vertices = tuple(
+        resolve_vertex(vertex, raw_vertices, bones, index)
+        for index, vertex in enumerate(raw_vertices)
+    )
 
     reader.seek(header.normals_offset)
     normals = tuple(
-        Normal(reader.s16() * WORLD_SCALE, reader.s16() * WORLD_SCALE, reader.s16() * WORLD_SCALE, reader.u16())
+        Normal(
+            reader.s16() * WORLD_SCALE,
+            reader.s16() * WORLD_SCALE,
+            reader.s16() * WORLD_SCALE,
+            reader.u16(),
+        )
         for _ in range(header.normals_count)
     )
 
@@ -548,13 +582,30 @@ def parse_lm2(data: bytes) -> Lm2Model:
         )
 
     reader.seek(header.uv_groups_offset)
-    uv_groups = tuple(UvGroup(reader.u8(), reader.u8(), reader.u8(), reader.u8()) for _ in range(header.uv_groups_count))
+    uv_groups = tuple(
+        UvGroup(reader.u8(), reader.u8(), reader.u8(), reader.u8())
+        for _ in range(header.uv_groups_count)
+    )
 
     validate_indices(vertices, bones, polygons, lines, spheres)
-    return Lm2Model(header, bones, vertices, normals, polygons, tuple(lines), tuple(spheres), uv_groups)
+    return Lm2Model(
+        header,
+        bones,
+        vertices,
+        normals,
+        polygons,
+        tuple(lines),
+        tuple(spheres),
+        uv_groups,
+    )
 
 
-def resolve_vertex(vertex: Vertex, raw_vertices: tuple[Vertex, ...], bones: tuple[Bone, ...], vertex_index: int) -> Vertex:
+def resolve_vertex(
+    vertex: Vertex,
+    raw_vertices: tuple[Vertex, ...],
+    bones: tuple[Bone, ...],
+    vertex_index: int,
+) -> Vertex:
     if vertex.bone >= len(bones):
         raise Lm2Error(f"vertex {vertex_index} references missing bone {vertex.bone}")
     x, y, z = vertex.x, vertex.y, vertex.z
@@ -566,7 +617,9 @@ def resolve_vertex(vertex: Vertex, raw_vertices: tuple[Vertex, ...], bones: tupl
         seen.add(next_bone_index)
         bone = bones[next_bone_index]
         if bone.vertex >= len(raw_vertices):
-            raise Lm2Error(f"bone {next_bone_index} references missing vertex {bone.vertex}")
+            raise Lm2Error(
+                f"bone {next_bone_index} references missing vertex {bone.vertex}"
+            )
         pivot = raw_vertices[bone.vertex]
         x += pivot.x
         y += pivot.y
@@ -606,7 +659,9 @@ def parse_polygons(reader: Reader, header: Lm2Header) -> tuple[Polygon, ...]:
     return tuple(polygons)
 
 
-def parse_polygon(reader: Reader, offset: int, render_type: int, block_size: int) -> Polygon:
+def parse_polygon(
+    reader: Reader, offset: int, render_type: int, block_size: int
+) -> Polygon:
     reader.seek(offset)
     vertex_count = 4 if render_type & 0x8000 else 3
     mode = render_type & 0x00FF
@@ -645,7 +700,9 @@ def parse_polygon(reader: Reader, offset: int, render_type: int, block_size: int
     )
 
 
-def parse_polygon_uv(reader: Reader, offset: int, vertex_count: int) -> tuple[tuple[float, float], ...]:
+def parse_polygon_uv(
+    reader: Reader, offset: int, vertex_count: int
+) -> tuple[tuple[float, float], ...]:
     reader.seek(offset)
     coords: list[tuple[float, float]] = []
     for _ in range(vertex_count):
@@ -672,13 +729,19 @@ def validate_indices(
     for poly_index, poly in enumerate(polygons):
         for vertex_index in poly.vertices:
             if vertex_index >= vertex_count:
-                raise Lm2Error(f"polygon {poly_index} references missing vertex {vertex_index}")
+                raise Lm2Error(
+                    f"polygon {poly_index} references missing vertex {vertex_index}"
+                )
     for line_index, line in enumerate(lines):
         if line.vertex_1 >= vertex_count or line.vertex_2 >= vertex_count:
-            raise Lm2Error(f"line {line_index} references missing vertex {line.vertex_1}/{line.vertex_2}")
+            raise Lm2Error(
+                f"line {line_index} references missing vertex {line.vertex_1}/{line.vertex_2}"
+            )
     for sphere_index, sphere in enumerate(spheres):
         if sphere.vertex >= vertex_count:
-            raise Lm2Error(f"sphere {sphere_index} references missing vertex {sphere.vertex}")
+            raise Lm2Error(
+                f"sphere {sphere_index} references missing vertex {sphere.vertex}"
+            )
     for bone_index, bone in enumerate(bones):
         if bone.vertex >= vertex_count:
             raise Lm2Error(f"bone {bone_index} references missing vertex {bone.vertex}")
@@ -702,7 +765,9 @@ def parse_lba2_animation(data: bytes) -> AnimationSummary:
             f"animation payload is truncated: expected {expected_size} bytes, found {len(data)}"
         )
     if loop_frame >= keyframes:
-        raise AnimationError(f"animation loop frame {loop_frame} exceeds keyframe count {keyframes}")
+        raise AnimationError(
+            f"animation loop frame {loop_frame} exceeds keyframe count {keyframes}"
+        )
 
     total_duration = 0
     translated_boneframes = 0
@@ -716,7 +781,15 @@ def parse_lba2_animation(data: bytes) -> AnimationSummary:
             if bone_type != 0:
                 translated_boneframes += 1
                 can_fall = True
-    return AnimationSummary(keyframes, boneframes, loop_frame, total_duration, translated_boneframes, can_fall, len(data))
+    return AnimationSummary(
+        keyframes,
+        boneframes,
+        loop_frame,
+        total_duration,
+        translated_boneframes,
+        can_fall,
+        len(data),
+    )
 
 
 def reject_package_input(source_name: str) -> None:
@@ -739,7 +812,11 @@ def load_lm2_path(path: Path) -> Lm2Model:
 
 
 def export_obj(model: Lm2Model, output_path: Path, name: str) -> None:
-    lines = [f"# Exported from {name}", "# LM2 polygon mesh plus line primitives", "o lm2_model"]
+    lines = [
+        f"# Exported from {name}",
+        "# LM2 polygon mesh plus line primitives",
+        "o lm2_model",
+    ]
     for vertex in model.vertices:
         x, y, z = to_view_coords(vertex)
         lines.append(f"v {x:.6f} {y:.6f} {z:.6f}")
@@ -753,7 +830,9 @@ def export_obj(model: Lm2Model, output_path: Path, name: str) -> None:
     for line in model.lines:
         lines.append(f"l {line.vertex_1 + 1} {line.vertex_2 + 1}")
     for sphere in model.spheres:
-        lines.append(f"# sphere vertex={sphere.vertex + 1} radius={sphere.size * WORLD_SCALE:.6f} color={sphere.color}")
+        lines.append(
+            f"# sphere vertex={sphere.vertex + 1} radius={sphere.size * WORLD_SCALE:.6f} color={sphere.color}"
+        )
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -808,7 +887,9 @@ def decoded_entry(raw: bytes) -> tuple[bytes, dict[str, Any]]:
 
 def parse_palette_payload(payload: bytes) -> list[int]:
     if len(payload) != PALETTE_BYTES:
-        raise Lm2Error(f"palette payload must be {PALETTE_BYTES} bytes, got {len(payload)}")
+        raise Lm2Error(
+            f"palette payload must be {PALETTE_BYTES} bytes, got {len(payload)}"
+        )
     colors: list[int] = []
     for offset in range(0, PALETTE_BYTES, 3):
         r, g, b = payload[offset], payload[offset + 1], payload[offset + 2]
@@ -818,9 +899,13 @@ def parse_palette_payload(payload: bytes) -> list[int]:
 
 def parse_texture_atlas_payload(payload: bytes, palette: list[int]) -> dict[str, Any]:
     if len(payload) != TEXTURE_ATLAS_PIXELS:
-        raise Lm2Error(f"texture atlas payload must be {TEXTURE_ATLAS_PIXELS} bytes, got {len(payload)}")
+        raise Lm2Error(
+            f"texture atlas payload must be {TEXTURE_ATLAS_PIXELS} bytes, got {len(payload)}"
+        )
     if len(palette) != 256:
-        raise Lm2Error(f"texture atlas decode requires 256 palette entries, got {len(palette)}")
+        raise Lm2Error(
+            f"texture atlas decode requires 256 palette entries, got {len(palette)}"
+        )
     return {
         "width": TEXTURE_ATLAS_SIZE,
         "height": TEXTURE_ATLAS_SIZE,
@@ -834,21 +919,33 @@ def load_palette_from_asset_root(asset_root: Path) -> list[int]:
         raise Lm2Error(f"missing LBA2 palette archive: {palette_path}")
     data = palette_path.read_bytes()
     entries = lba_hqr.parse_classic_table(data)
-    if PALETTE_ENTRY_INDEX >= len(entries) or entries[PALETTE_ENTRY_INDEX].byte_length == 0:
-        raise Lm2Error(f"{PALETTE_ARCHIVE_NAME} has no palette entry {PALETTE_ENTRY_INDEX}")
+    if (
+        PALETTE_ENTRY_INDEX >= len(entries)
+        or entries[PALETTE_ENTRY_INDEX].byte_length == 0
+    ):
+        raise Lm2Error(
+            f"{PALETTE_ARCHIVE_NAME} has no palette entry {PALETTE_ENTRY_INDEX}"
+        )
     raw = lba_hqr.read_entry(data, entries[PALETTE_ENTRY_INDEX])
     payload, _ = decoded_entry(raw)
     return parse_palette_payload(payload)
 
 
-def load_texture_atlas_from_asset_root(asset_root: Path, palette: list[int]) -> dict[str, Any]:
+def load_texture_atlas_from_asset_root(
+    asset_root: Path, palette: list[int]
+) -> dict[str, Any]:
     texture_path = asset_root / PALETTE_ARCHIVE_NAME
     if not texture_path.exists():
         raise Lm2Error(f"missing LBA2 texture archive: {texture_path}")
     data = texture_path.read_bytes()
     entries = lba_hqr.parse_classic_table(data)
-    if TEXTURE_ENTRY_INDEX >= len(entries) or entries[TEXTURE_ENTRY_INDEX].byte_length == 0:
-        raise Lm2Error(f"{PALETTE_ARCHIVE_NAME} has no texture entry {TEXTURE_ENTRY_INDEX}")
+    if (
+        TEXTURE_ENTRY_INDEX >= len(entries)
+        or entries[TEXTURE_ENTRY_INDEX].byte_length == 0
+    ):
+        raise Lm2Error(
+            f"{PALETTE_ARCHIVE_NAME} has no texture entry {TEXTURE_ENTRY_INDEX}"
+        )
     raw = lba_hqr.read_entry(data, entries[TEXTURE_ENTRY_INDEX])
     payload, _ = decoded_entry(raw)
     return parse_texture_atlas_payload(payload, palette)
@@ -856,7 +953,11 @@ def load_texture_atlas_from_asset_root(asset_root: Path, palette: list[int]) -> 
 
 def hqr_paths(asset_root: Path) -> list[Path]:
     return sorted(
-        (path for path in asset_root.rglob("*") if path.is_file() and path.suffix.upper() == ".HQR"),
+        (
+            path
+            for path in asset_root.rglob("*")
+            if path.is_file() and path.suffix.upper() == ".HQR"
+        ),
         key=lambda path: path.relative_to(asset_root).as_posix().upper(),
     )
 
@@ -888,10 +989,14 @@ def normalize_hqr_file_paths(paths: list[Path]) -> list[Path]:
     if not normalized:
         raise Lm2Error("no HQR files selected")
     root = selected_hqr_root(normalized)
-    return sorted(normalized, key=lambda path: path.relative_to(root).as_posix().upper())
+    return sorted(
+        normalized, key=lambda path: path.relative_to(root).as_posix().upper()
+    )
 
 
-def read_hqr_payload(asset_root: Path, source: dict[str, Any]) -> tuple[bytes, dict[str, Any] | None]:
+def read_hqr_payload(
+    asset_root: Path, source: dict[str, Any]
+) -> tuple[bytes, dict[str, Any] | None]:
     hqr_relative = source.get("hqr")
     if not isinstance(hqr_relative, str) or not hqr_relative:
         raise Lm2Error("catalog asset is missing source.hqr")
@@ -899,13 +1004,19 @@ def read_hqr_payload(asset_root: Path, source: dict[str, Any]) -> tuple[bytes, d
     try:
         hqr_path.relative_to(asset_root.resolve())
     except ValueError as exc:
-        raise Lm2Error(f"catalog asset points outside asset root: {hqr_relative}") from exc
+        raise Lm2Error(
+            f"catalog asset points outside asset root: {hqr_relative}"
+        ) from exc
     if not hqr_path.exists():
         raise Lm2Error(f"HQR file is missing: {hqr_path}")
 
     data = hqr_path.read_bytes()
     is_body_archive = hqr_path.name.upper() == "BODY.HQR"
-    entries = lba_hqr.parse_classic_table(data) if is_body_archive else lba_hqr.parse_table(data)
+    entries = (
+        lba_hqr.parse_classic_table(data)
+        if is_body_archive
+        else lba_hqr.parse_table(data)
+    )
     if is_body_archive:
         classic_index = source.get("classic_index")
         if not isinstance(classic_index, int):
@@ -920,7 +1031,9 @@ def read_hqr_payload(asset_root: Path, source: dict[str, Any]) -> tuple[bytes, d
             raise Lm2Error("catalog asset is missing entry index")
         matching = [entry for entry in entries if entry.index == entry_index]
     if not matching or matching[0].byte_length == 0:
-        raise Lm2Error(f"HQR entry is missing: {hqr_relative}:{source.get('entry_index')}")
+        raise Lm2Error(
+            f"HQR entry is missing: {hqr_relative}:{source.get('entry_index')}"
+        )
     raw = lba_hqr.read_entry(data, matching[0])
     try:
         return decoded_entry(raw)
@@ -947,14 +1060,22 @@ def build_catalog(
         "assets": [],
     }
     if selected_files is not None:
-        catalog["selected_files"] = [path.relative_to(asset_root).as_posix() for path in selected_files]
+        catalog["selected_files"] = [
+            path.relative_to(asset_root).as_posix() for path in selected_files
+        ]
 
     archive_jobs: list[dict[str, Any]] = []
-    for hqr_path in selected_files if selected_files is not None else hqr_paths(asset_root):
+    for hqr_path in (
+        selected_files if selected_files is not None else hqr_paths(asset_root)
+    ):
         hqr_relative = hqr_path.relative_to(asset_root).as_posix()
         is_body_archive = hqr_path.name.upper() == "BODY.HQR"
         data = hqr_path.read_bytes()
-        entries = lba_hqr.parse_classic_table(data) if is_body_archive else lba_hqr.parse_table(data)
+        entries = (
+            lba_hqr.parse_classic_table(data)
+            if is_body_archive
+            else lba_hqr.parse_table(data)
+        )
         archive_jobs.append(
             {
                 "path": hqr_path,
@@ -973,7 +1094,9 @@ def build_catalog(
     )
     processed_entries = 0
     if progress is not None:
-        progress.update(total=total_entries, label="Decoding HQR entries", phase="decoding")
+        progress.update(
+            total=total_entries, label="Decoding HQR entries", phase="decoding"
+        )
 
     for archive in archive_jobs:
         hqr_path = archive["path"]
@@ -1024,8 +1147,15 @@ def build_catalog(
             except Lm2Error:
                 model = None
             if model is not None:
-                metadata = body_metadata.get(catalog_entry_index, {}) if is_body_archive else {}
-                label = metadata.get("description") or f"{Path(hqr_relative).name} entry {catalog_entry_index}"
+                metadata = (
+                    body_metadata.get(catalog_entry_index, {})
+                    if is_body_archive
+                    else {}
+                )
+                label = (
+                    metadata.get("description")
+                    or f"{Path(hqr_relative).name} entry {catalog_entry_index}"
+                )
                 asset = {
                     "id": asset_id,
                     "kind": "model",
@@ -1069,7 +1199,15 @@ def build_catalog(
                         "parsed": True,
                     }
                 else:
-                    head = list(struct.unpack_from("<" + "H" * min(6, len(payload) // 2), payload, 0)) if payload else []
+                    head = (
+                        list(
+                            struct.unpack_from(
+                                "<" + "H" * min(6, len(payload) // 2), payload, 0
+                            )
+                        )
+                        if payload
+                        else []
+                    )
                     stats = {
                         "decoded_bytes": len(payload),
                         "header_words": head,
@@ -1105,7 +1243,9 @@ def build_catalog(
         "hqr_files": len(catalog["hqr_files"]),
         "assets": len(catalog["assets"]),
         "models": sum(1 for asset in catalog["assets"] if asset["kind"] == "model"),
-        "animations": sum(1 for asset in catalog["assets"] if asset["kind"] == "animation"),
+        "animations": sum(
+            1 for asset in catalog["assets"] if asset["kind"] == "animation"
+        ),
     }
     return catalog
 
@@ -1121,7 +1261,9 @@ def pick_directory_dialog() -> Path:
     root.withdraw()
     root.attributes("-topmost", True)
     try:
-        selected = filedialog.askdirectory(title="Select the folder containing your LBA2 HQR files")
+        selected = filedialog.askdirectory(
+            title="Select the folder containing your LBA2 HQR files"
+        )
     finally:
         root.destroy()
     if not selected:
@@ -1164,7 +1306,9 @@ class ViewerServer:
         if asset_root is not None:
             self.set_asset_root(asset_root)
         if initial_path is not None:
-            self.last_model = self.model_json(load_lm2_path(initial_path), str(initial_path))
+            self.last_model = self.model_json(
+                load_lm2_path(initial_path), str(initial_path)
+            )
 
     def set_asset_root(self, asset_root: Path) -> dict[str, Any]:
         with self.operation_lock:
@@ -1172,7 +1316,9 @@ class ViewerServer:
             self.decode_progress.begin(f"Scanning {resolved}", phase="scanning")
             try:
                 self.catalog = build_catalog(resolved, self.decode_progress)
-                self.decode_progress.update(label="Loading palette and texture atlas", phase="finalizing")
+                self.decode_progress.update(
+                    label="Loading palette and texture atlas", phase="finalizing"
+                )
                 self.asset_root = resolved
                 self.load_visual_assets(resolved)
                 self.decode_progress.finish(self.catalog.get("summary", {}))
@@ -1185,10 +1331,14 @@ class ViewerServer:
         with self.operation_lock:
             files = normalize_hqr_file_paths(paths)
             resolved_root = selected_hqr_root(files)
-            self.decode_progress.begin(f"Scanning {len(files)} selected HQR file(s)", phase="scanning")
+            self.decode_progress.begin(
+                f"Scanning {len(files)} selected HQR file(s)", phase="scanning"
+            )
             try:
                 self.catalog = build_catalog(resolved_root, self.decode_progress, files)
-                self.decode_progress.update(label="Loading palette and texture atlas", phase="finalizing")
+                self.decode_progress.update(
+                    label="Loading palette and texture atlas", phase="finalizing"
+                )
                 self.asset_root = resolved_root
                 self.load_visual_assets(resolved_root)
                 self.decode_progress.finish(self.catalog.get("summary", {}))
@@ -1200,7 +1350,9 @@ class ViewerServer:
     def load_visual_assets(self, asset_root: Path) -> None:
         try:
             self.palette = load_palette_from_asset_root(asset_root)
-            self.texture_atlas = load_texture_atlas_from_asset_root(asset_root, self.palette)
+            self.texture_atlas = load_texture_atlas_from_asset_root(
+                asset_root, self.palette
+            )
         except Lm2Error:
             self.palette = None
             self.texture_atlas = None
@@ -1223,8 +1375,12 @@ class ViewerServer:
             raise Lm2Error("catalog is missing asset_root for texture lookup")
         return load_texture_atlas_from_asset_root(Path(asset_root), self.palette)
 
-    def model_json(self, model: Lm2Model, source_name: str | None = None) -> dict[str, Any]:
-        return model.to_viewer_json(source_name, palette=self.palette, texture_atlas=self.texture_atlas)
+    def model_json(
+        self, model: Lm2Model, source_name: str | None = None
+    ) -> dict[str, Any]:
+        return model.to_viewer_json(
+            source_name, palette=self.palette, texture_atlas=self.texture_atlas
+        )
 
     def find_catalog_asset(self, asset_id: str) -> dict[str, Any]:
         if self.catalog is None:
@@ -1244,10 +1400,14 @@ class ViewerServer:
             def do_GET(self) -> None:
                 parsed = urllib.parse.urlparse(self.path)
                 if parsed.path == "/model.json":
-                    payload = server_state.last_model or {"error": "No model loaded yet."}
+                    payload = server_state.last_model or {
+                        "error": "No model loaded yet."
+                    }
                     self.send_json(payload)
                 elif parsed.path == "/catalog.json":
-                    payload = server_state.catalog or {"error": "No catalog loaded yet."}
+                    payload = server_state.catalog or {
+                        "error": "No catalog loaded yet."
+                    }
                     self.send_json(payload)
                 elif parsed.path == "/api/decode/progress":
                     self.send_json(server_state.decode_progress.snapshot())
@@ -1263,7 +1423,8 @@ class ViewerServer:
                         payload = self.read_upload()
                         with server_state.operation_lock:
                             model = server_state.model_json(
-                                load_lm2_bytes(payload["data"], payload["filename"]), payload["filename"]
+                                load_lm2_bytes(payload["data"], payload["filename"]),
+                                payload["filename"],
                             )
                             server_state.last_model = model
                         self.send_json(model)
@@ -1273,7 +1434,9 @@ class ViewerServer:
                         request = json.loads(body.decode("utf-8"))
                         path = Path(request["path"]).expanduser()
                         with server_state.operation_lock:
-                            model = server_state.model_json(load_lm2_path(path), str(path))
+                            model = server_state.model_json(
+                                load_lm2_path(path), str(path)
+                            )
                             server_state.last_model = model
                         self.send_json(model)
                     elif parsed.path == "/api/catalog/build":
@@ -1284,7 +1447,9 @@ class ViewerServer:
                         self.send_json(server_state.set_asset_root(asset_root))
                     elif parsed.path == "/api/catalog/pick":
                         with server_state.operation_lock:
-                            server_state.decode_progress.begin("Waiting for folder selection", phase="waiting")
+                            server_state.decode_progress.begin(
+                                "Waiting for folder selection", phase="waiting"
+                            )
                             try:
                                 selected = pick_directory_dialog()
                             except Exception as exc:
@@ -1294,7 +1459,9 @@ class ViewerServer:
                         self.send_json(catalog)
                     elif parsed.path == "/api/catalog/pick-files":
                         with server_state.operation_lock:
-                            server_state.decode_progress.begin("Waiting for file selection", phase="waiting")
+                            server_state.decode_progress.begin(
+                                "Waiting for file selection", phase="waiting"
+                            )
                             try:
                                 selected = pick_hqr_files_dialog()
                             except Exception as exc:
@@ -1311,9 +1478,14 @@ class ViewerServer:
                             if asset.get("kind") == "model":
                                 if server_state.asset_root is None:
                                     raise Lm2Error("no asset root loaded")
-                                payload, _ = read_hqr_payload(server_state.asset_root, asset["source"])
+                                payload, _ = read_hqr_payload(
+                                    server_state.asset_root, asset["source"]
+                                )
                                 model = server_state.model_json(
-                                    load_lm2_bytes(payload, str(asset["relative_path"])), asset["label"]
+                                    load_lm2_bytes(
+                                        payload, str(asset["relative_path"])
+                                    ),
+                                    asset["label"],
                                 )
                                 model["catalog_asset"] = asset
                                 server_state.last_model = model
@@ -1321,7 +1493,9 @@ class ViewerServer:
                             elif asset.get("kind") == "animation":
                                 response = {"animation": asset}
                             else:
-                                raise Lm2Error(f"unsupported catalog asset kind: {asset.get('kind')}")
+                                raise Lm2Error(
+                                    f"unsupported catalog asset kind: {asset.get('kind')}"
+                                )
                         self.send_json(response)
                     else:
                         self.send_error(404)
@@ -1335,7 +1509,9 @@ class ViewerServer:
                 return parse_multipart_upload(content_type, body)
 
             def send_json(self, payload: dict[str, Any], status: int = 200) -> None:
-                self.send_bytes(json.dumps(payload).encode("utf-8"), "application/json", status)
+                self.send_bytes(
+                    json.dumps(payload).encode("utf-8"), "application/json", status
+                )
 
             def send_static(self, request_path: str) -> None:
                 if not FRONTEND_DIST.exists():
@@ -1360,10 +1536,15 @@ class ViewerServer:
                     return
                 if not candidate.exists() or not candidate.is_file():
                     candidate = FRONTEND_DIST / "index.html"
-                content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+                content_type = (
+                    mimetypes.guess_type(candidate.name)[0]
+                    or "application/octet-stream"
+                )
                 self.send_bytes(candidate.read_bytes(), content_type)
 
-            def send_bytes(self, payload: bytes, content_type: str, status: int = 200) -> None:
+            def send_bytes(
+                self, payload: bytes, content_type: str, status: int = 200
+            ) -> None:
                 self.send_response(status)
                 self.send_header("content-type", content_type)
                 self.send_header("content-length", str(len(payload)))
@@ -1376,7 +1557,13 @@ class ViewerServer:
         return Handler
 
 
-def serve(initial_path: Path | None, host: str, port: int, open_browser: bool, asset_root: Path | None) -> None:
+def serve(
+    initial_path: Path | None,
+    host: str,
+    port: int,
+    open_browser: bool,
+    asset_root: Path | None,
+) -> None:
     viewer = ViewerServer(initial_path, asset_root)
     httpd = ThreadingHTTPServer((host, port), viewer.handler_class())
     url = f"http://{host}:{httpd.server_port}/"
@@ -1403,14 +1590,33 @@ def inspect(path: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="View, inspect, or export LBA2 LM2 model files.")
+    parser = argparse.ArgumentParser(
+        description="View, inspect, or export LBA2 LM2 model files."
+    )
     parser.add_argument("file", nargs="?", type=Path, help="LM2/LDC file to load")
-    parser.add_argument("--host", default=DEFAULT_HOST, help=f"viewer bind host, default {DEFAULT_HOST}")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"viewer bind port, default {DEFAULT_PORT}")
-    parser.add_argument("--no-browser", action="store_true", help="do not open the browser automatically")
-    parser.add_argument("--inspect", action="store_true", help="print parsed model stats and exit")
-    parser.add_argument("--export-obj", type=Path, help="write a simple OBJ export and exit")
-    parser.add_argument("--asset-root", type=Path, help="folder containing the user's LBA2 HQR files")
+    parser.add_argument(
+        "--host", default=DEFAULT_HOST, help=f"viewer bind host, default {DEFAULT_HOST}"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"viewer bind port, default {DEFAULT_PORT}",
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="do not open the browser automatically",
+    )
+    parser.add_argument(
+        "--inspect", action="store_true", help="print parsed model stats and exit"
+    )
+    parser.add_argument(
+        "--export-obj", type=Path, help="write a simple OBJ export and exit"
+    )
+    parser.add_argument(
+        "--asset-root", type=Path, help="folder containing the user's LBA2 HQR files"
+    )
     args = parser.parse_args(argv)
 
     try:
