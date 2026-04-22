@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -16,10 +17,12 @@ RELEASE_ROOT = ROOT / "release"
 ARCHIVE_BASE = RELEASE_ROOT / "lba2-lm2-viewer"
 
 RUNTIME_FILES = (
+    "MANIFEST.in",
+    "pyproject.toml",
     "README.md",
+    "requirements.txt",
     "viewer.py",
     "lba_hqr.py",
-    "body_metadata.json",
 )
 
 
@@ -36,20 +39,25 @@ def copy_runtime() -> None:
     for relative in RUNTIME_FILES:
         shutil.copy2(ROOT / relative, PACKAGE_ROOT / relative)
 
-    frontend_dist = FRONTEND / "dist"
+    shutil.copytree(
+        ROOT / "lba2_lm2_viewer",
+        PACKAGE_ROOT / "lba2_lm2_viewer",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+
+    frontend_dist = ROOT / "lba2_lm2_viewer" / "frontend" / "dist"
     if not frontend_dist.exists():
         raise SystemExit(f"frontend build missing: {frontend_dist}")
-    shutil.copytree(frontend_dist, PACKAGE_ROOT / "frontend" / "dist")
 
 
 def main() -> int:
-    run(["npm", "ci"], FRONTEND)
-    run(["npm", "run", "build"], FRONTEND)
+    run([sys.executable, str(ROOT / "scripts" / "build.py"), "--no-editable"], ROOT)
 
     copy_runtime()
     RELEASE_ROOT.mkdir(exist_ok=True)
     archive_path = shutil.make_archive(str(ARCHIVE_BASE), "zip", BUILD_ROOT, PACKAGE_ROOT.name)
     print(f"Wrote {archive_path}")
+    run([sys.executable, "-m", "pip", "wheel", ".", "-w", str(RELEASE_ROOT)], PACKAGE_ROOT)
     return 0
 
 

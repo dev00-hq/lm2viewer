@@ -1,6 +1,6 @@
 import unittest
 
-from viewer import Lm2Error, parse_multipart_upload
+from lba2_lm2_viewer.viewer import Lm2Error, parse_multipart_upload
 
 
 def multipart_body(boundary: str, parts: list[tuple[bytes, bytes]]) -> bytes:

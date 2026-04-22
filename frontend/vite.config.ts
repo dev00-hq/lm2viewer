@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  build: {
+    outDir: '../lba2_lm2_viewer/frontend/dist',
+    emptyOutDir: true,
+  },
   server: {
     port: 5173,
     proxy: {

@@ -1,0 +1,4 @@
+include README.md
+include requirements.txt
+recursive-include lba2_lm2_viewer *.json
+recursive-include lba2_lm2_viewer/frontend/dist *

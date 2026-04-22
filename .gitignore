@@ -1,7 +1,9 @@
 __pycache__/
 *.pyc
+*.egg-info/
 frontend/node_modules/
 frontend/.vite/
 frontend/dist/
+lba2_lm2_viewer/frontend/dist/
 build/
 release/

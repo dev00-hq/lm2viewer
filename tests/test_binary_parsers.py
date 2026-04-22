@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import lba_hqr
-import viewer
+from lba2_lm2_viewer import lba_hqr
+from lba2_lm2_viewer import viewer
 
 
 def resource_entry(payload: bytes, compress_method: int = 0, compressed_size: int | None = None) -> bytes:

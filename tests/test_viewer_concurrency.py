@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import viewer
+from lba2_lm2_viewer import viewer
 
 
 class ViewerServerConcurrencyTests(unittest.TestCase):
