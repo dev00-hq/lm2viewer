@@ -1,0 +1,5 @@
+- This application currently has no external installed user base; optimize for one canonical current-state implementation, not compatibility with historical local states.
+- Do not preserve or introduce compatibility bridges, migration shims, fallback paths, compact adapters, or dual behavior for old local states unless the user explicitly asks for that support.
+- Avoid automatic migration, compatibility glue, silent fallbacks, “temporary” second paths
+- The role of the `ISSUES.md` file is to describe common mistakes and confusion points that the agents might encounter as they work in this project. If you ever counter something in the project that surprises you, please alert the developer working with you and indicate that this is the case in the ISSUES.md file to help future agents from having the same issue.
+- Assume developer work time cost and effort and marginal cost to be essentially 0.

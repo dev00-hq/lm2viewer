@@ -25,6 +25,23 @@ The port should preserve meaningful behavior and asset semantics, not obsolete r
 - Viewer implementation should be one clean current-state path. Do not add compatibility shims for old local states.
 - Visual parity issues need evidence: original or MBN screenshot, decoded model data, and viewer screenshot.
 
+## Reference Paths
+
+- Standalone viewer package: `D:\repos\reverse\lba2-lm2-viewer`
+- Backend decoder entrypoint: `D:\repos\reverse\lba2-lm2-viewer\viewer.py`
+- HQR decoder module: `D:\repos\reverse\lba2-lm2-viewer\lba_hqr.py`
+- Frontend source: `D:\repos\reverse\lba2-lm2-viewer\frontend`
+- Port/reverse-engineering workspace: `D:\repos\reverse\littlebigreversing`
+- Port reference note for this tool: `D:\repos\reverse\littlebigreversing\docs\external_tools\lba2-lm2-viewer.md`
+- Original extracted LBA2 asset folder for local testing: `D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+- MBN model viewer reverse-engineering source: `D:\repos\reverse\mbn_tools\dl19_model-viewer`
+- MBN package editor reference: `D:\repos\reverse\mbn_tools\dl21_package-editor`
+- MBN tools index: `D:\repos\reverse\mbn_tools\TOOLS.md`
+- Imported/reference repos root: `D:\repos\reverse\lba-reference-repos`
+- Classic source and imported material inside port workspace: `D:\repos\reverse\littlebigreversing\reference`
+
+Do not copy decoded `.lm2`, `.ldc`, animation payloads, textures, or HQR archives into this package. Use these paths as local evidence inputs only; the distributable tool should decode user-owned assets on demand.
+
 ## Modern Asset Direction
 
 Future upgraded models should not be forced into LM2.
@@ -59,4 +76,3 @@ Replacement models may change geometry and texture detail, but they must preserv
 3. Define the first draft of the shared model/entity contract for the port.
 4. Decide whether the viewer should expose export helpers for original LM2 geometry and textures.
 5. Keep hard-cut cleanup: remove temporary comparison code once an evidence question is settled.
-
