@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+from email import policy
+from email.parser import BytesParser
 import hashlib
 import json
 import math
@@ -45,6 +47,31 @@ TEXTURE_ATLAS_PIXELS = TEXTURE_ATLAS_SIZE * TEXTURE_ATLAS_SIZE
 
 class Lm2Error(ValueError):
     pass
+
+
+def parse_multipart_upload(content_type: str, body: bytes) -> dict[str, Any]:
+    if "\r" in content_type or "\n" in content_type:
+        raise Lm2Error("invalid content-type header")
+    header_blob = (
+        f"Content-Type: {content_type}\r\n"
+        "MIME-Version: 1.0\r\n"
+        "\r\n"
+    ).encode("utf-8")
+    message = BytesParser(policy=policy.default).parsebytes(header_blob + body)
+    if message.get_content_type() != "multipart/form-data" or not message.is_multipart():
+        raise Lm2Error("expected multipart/form-data upload")
+
+    for part in message.iter_parts():
+        if part.get_content_disposition() != "form-data":
+            continue
+        if part.get_param("name", header="content-disposition") != "file":
+            continue
+        data = part.get_payload(decode=True)
+        if data is None:
+            raise Lm2Error("upload file field could not be decoded")
+        filename = part.get_filename() or "upload.lm2"
+        return {"filename": filename, "data": data}
+    raise Lm2Error("upload did not include a file field")
 
 
 class AnimationError(ValueError):
@@ -1127,6 +1154,7 @@ def pick_hqr_files_dialog() -> list[Path]:
 class ViewerServer:
     def __init__(self, initial_path: Path | None, asset_root: Path | None) -> None:
         self.initial_path = initial_path
+        self.operation_lock = threading.RLock()
         self.last_model: dict[str, Any] | None = None
         self.asset_root: Path | None = None
         self.catalog: dict[str, Any] | None = None
@@ -1139,33 +1167,35 @@ class ViewerServer:
             self.last_model = self.model_json(load_lm2_path(initial_path), str(initial_path))
 
     def set_asset_root(self, asset_root: Path) -> dict[str, Any]:
-        resolved = asset_root.expanduser().resolve()
-        self.decode_progress.begin(f"Scanning {resolved}", phase="scanning")
-        try:
-            self.catalog = build_catalog(resolved, self.decode_progress)
-            self.decode_progress.update(label="Loading palette and texture atlas", phase="finalizing")
-            self.asset_root = resolved
-            self.load_visual_assets(resolved)
-            self.decode_progress.finish(self.catalog.get("summary", {}))
-            return self.catalog
-        except Exception as exc:
-            self.decode_progress.fail(str(exc))
-            raise
+        with self.operation_lock:
+            resolved = asset_root.expanduser().resolve()
+            self.decode_progress.begin(f"Scanning {resolved}", phase="scanning")
+            try:
+                self.catalog = build_catalog(resolved, self.decode_progress)
+                self.decode_progress.update(label="Loading palette and texture atlas", phase="finalizing")
+                self.asset_root = resolved
+                self.load_visual_assets(resolved)
+                self.decode_progress.finish(self.catalog.get("summary", {}))
+                return self.catalog
+            except Exception as exc:
+                self.decode_progress.fail(str(exc))
+                raise
 
     def set_asset_files(self, paths: list[Path]) -> dict[str, Any]:
-        files = normalize_hqr_file_paths(paths)
-        resolved_root = selected_hqr_root(files)
-        self.decode_progress.begin(f"Scanning {len(files)} selected HQR file(s)", phase="scanning")
-        try:
-            self.catalog = build_catalog(resolved_root, self.decode_progress, files)
-            self.decode_progress.update(label="Loading palette and texture atlas", phase="finalizing")
-            self.asset_root = resolved_root
-            self.load_visual_assets(resolved_root)
-            self.decode_progress.finish(self.catalog.get("summary", {}))
-            return self.catalog
-        except Exception as exc:
-            self.decode_progress.fail(str(exc))
-            raise
+        with self.operation_lock:
+            files = normalize_hqr_file_paths(paths)
+            resolved_root = selected_hqr_root(files)
+            self.decode_progress.begin(f"Scanning {len(files)} selected HQR file(s)", phase="scanning")
+            try:
+                self.catalog = build_catalog(resolved_root, self.decode_progress, files)
+                self.decode_progress.update(label="Loading palette and texture atlas", phase="finalizing")
+                self.asset_root = resolved_root
+                self.load_visual_assets(resolved_root)
+                self.decode_progress.finish(self.catalog.get("summary", {}))
+                return self.catalog
+            except Exception as exc:
+                self.decode_progress.fail(str(exc))
+                raise
 
     def load_visual_assets(self, asset_root: Path) -> None:
         try:
@@ -1231,16 +1261,20 @@ class ViewerServer:
                 try:
                     if parsed.path == "/api/upload":
                         payload = self.read_upload()
-                        model = server_state.model_json(load_lm2_bytes(payload["data"], payload["filename"]), payload["filename"])
-                        server_state.last_model = model
+                        with server_state.operation_lock:
+                            model = server_state.model_json(
+                                load_lm2_bytes(payload["data"], payload["filename"]), payload["filename"]
+                            )
+                            server_state.last_model = model
                         self.send_json(model)
                     elif parsed.path == "/api/path":
                         length = int(self.headers.get("content-length", "0"))
                         body = self.rfile.read(length)
                         request = json.loads(body.decode("utf-8"))
                         path = Path(request["path"]).expanduser()
-                        model = server_state.model_json(load_lm2_path(path), str(path))
-                        server_state.last_model = model
+                        with server_state.operation_lock:
+                            model = server_state.model_json(load_lm2_path(path), str(path))
+                            server_state.last_model = model
                         self.send_json(model)
                     elif parsed.path == "/api/catalog/build":
                         length = int(self.headers.get("content-length", "0"))
@@ -1249,28 +1283,46 @@ class ViewerServer:
                         asset_root = Path(request["asset_root"]).expanduser()
                         self.send_json(server_state.set_asset_root(asset_root))
                     elif parsed.path == "/api/catalog/pick":
-                        server_state.decode_progress.begin("Waiting for folder selection", phase="waiting")
-                        self.send_json(server_state.set_asset_root(pick_directory_dialog()))
+                        with server_state.operation_lock:
+                            server_state.decode_progress.begin("Waiting for folder selection", phase="waiting")
+                            try:
+                                selected = pick_directory_dialog()
+                            except Exception as exc:
+                                server_state.decode_progress.fail(str(exc))
+                                raise
+                            catalog = server_state.set_asset_root(selected)
+                        self.send_json(catalog)
                     elif parsed.path == "/api/catalog/pick-files":
-                        server_state.decode_progress.begin("Waiting for file selection", phase="waiting")
-                        self.send_json(server_state.set_asset_files(pick_hqr_files_dialog()))
+                        with server_state.operation_lock:
+                            server_state.decode_progress.begin("Waiting for file selection", phase="waiting")
+                            try:
+                                selected = pick_hqr_files_dialog()
+                            except Exception as exc:
+                                server_state.decode_progress.fail(str(exc))
+                                raise
+                            catalog = server_state.set_asset_files(selected)
+                        self.send_json(catalog)
                     elif parsed.path == "/api/catalog/load":
                         length = int(self.headers.get("content-length", "0"))
                         body = self.rfile.read(length)
                         request = json.loads(body.decode("utf-8"))
-                        asset = server_state.find_catalog_asset(str(request["id"]))
-                        if asset.get("kind") == "model":
-                            if server_state.asset_root is None:
-                                raise Lm2Error("no asset root loaded")
-                            payload, _ = read_hqr_payload(server_state.asset_root, asset["source"])
-                            model = server_state.model_json(load_lm2_bytes(payload, str(asset["relative_path"])), asset["label"])
-                            model["catalog_asset"] = asset
-                            server_state.last_model = model
-                            self.send_json(model)
-                        elif asset.get("kind") == "animation":
-                            self.send_json({"animation": asset})
-                        else:
-                            raise Lm2Error(f"unsupported catalog asset kind: {asset.get('kind')}")
+                        with server_state.operation_lock:
+                            asset = server_state.find_catalog_asset(str(request["id"]))
+                            if asset.get("kind") == "model":
+                                if server_state.asset_root is None:
+                                    raise Lm2Error("no asset root loaded")
+                                payload, _ = read_hqr_payload(server_state.asset_root, asset["source"])
+                                model = server_state.model_json(
+                                    load_lm2_bytes(payload, str(asset["relative_path"])), asset["label"]
+                                )
+                                model["catalog_asset"] = asset
+                                server_state.last_model = model
+                                response = model
+                            elif asset.get("kind") == "animation":
+                                response = {"animation": asset}
+                            else:
+                                raise Lm2Error(f"unsupported catalog asset kind: {asset.get('kind')}")
+                        self.send_json(response)
                     else:
                         self.send_error(404)
                 except Exception as exc:
@@ -1278,29 +1330,9 @@ class ViewerServer:
 
             def read_upload(self) -> dict[str, Any]:
                 content_type = self.headers.get("content-type", "")
-                if "multipart/form-data" not in content_type or "boundary=" not in content_type:
-                    raise Lm2Error("expected multipart/form-data upload")
-                boundary = content_type.split("boundary=", 1)[1].strip().strip('"').encode("ascii")
                 length = int(self.headers.get("content-length", "0"))
                 body = self.rfile.read(length)
-                marker = b"--" + boundary
-                for part in body.split(marker):
-                    if b'Content-Disposition:' not in part or b'name="file"' not in part:
-                        continue
-                    header_end = part.find(b"\r\n\r\n")
-                    if header_end < 0:
-                        continue
-                    headers = part[:header_end].decode("utf-8", errors="replace")
-                    data = part[header_end + 4 :]
-                    if data.endswith(b"\r\n"):
-                        data = data[:-2]
-                    filename = "upload.lm2"
-                    for item in headers.split(";"):
-                        item = item.strip()
-                        if item.startswith("filename="):
-                            filename = item.split("=", 1)[1].strip('"') or filename
-                    return {"filename": filename, "data": data}
-                raise Lm2Error("upload did not include a file field")
+                return parse_multipart_upload(content_type, body)
 
             def send_json(self, payload: dict[str, Any], status: int = 200) -> None:
                 self.send_bytes(json.dumps(payload).encode("utf-8"), "application/json", status)

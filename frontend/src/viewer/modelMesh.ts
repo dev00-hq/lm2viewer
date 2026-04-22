@@ -134,10 +134,20 @@ function buildTextureEntries(model: Lm2Model): Map<number, TextureEntry> {
   const atlas = model.texture_atlas;
   if (!atlas) return entries;
 
-  const fullAtlasTexture = textureFromPixels(atlas.width, atlas.height, atlas.pixels);
-  for (let index = 0; index < model.uv_groups.length; index += 1) {
+  const usedTextureIndices = new Set<number>();
+  for (const poly of model.polygons) {
+    if (poly.has_texture && poly.texture !== null && poly.uv && poly.uv.length === poly.vertices.length) {
+      usedTextureIndices.add(poly.texture);
+    }
+  }
+  if (usedTextureIndices.size === 0) return entries;
+
+  let fullAtlasTexture: THREE.DataTexture | null = null;
+  for (const index of usedTextureIndices) {
     const group = model.uv_groups[index];
+    if (!group) continue;
     if (group.w === 0xff && group.h === 0xff) {
+      fullAtlasTexture ??= textureFromPixels(atlas.width, atlas.height, atlas.pixels);
       entries.set(index, {
         texture: fullAtlasTexture,
         atlas: true,

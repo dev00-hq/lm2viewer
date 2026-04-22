@@ -64,6 +64,7 @@ export class ViewerScene {
   }
 
   loadModel(model: Lm2Model): void {
+    this.disposeModelRoot();
     this.currentModel = model;
     this.modelRoot.clear();
     this.modelRoot.add(...buildModelRoot(model).children);
@@ -158,5 +159,34 @@ export class ViewerScene {
     this.camera.position.copy(this.controls.target).add(offset);
     this.camera.up.copy(this.worldUp);
     this.camera.lookAt(this.controls.target);
+  }
+
+  private disposeModelRoot(): void {
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    const textures = new Set<THREE.Texture>();
+
+    this.modelRoot.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (mesh.geometry) geometries.add(mesh.geometry);
+
+      const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(material)) {
+        for (const item of material) materials.add(item);
+      } else if (material) {
+        materials.add(material);
+      }
+    });
+
+    for (const material of materials) {
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) {
+          textures.add(value);
+        }
+      }
+      material.dispose();
+    }
+    for (const geometry of geometries) geometry.dispose();
+    for (const texture of textures) texture.dispose();
   }
 }
