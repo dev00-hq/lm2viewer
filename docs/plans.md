@@ -111,15 +111,17 @@ py -3 .\scripts\package.py
 
 ### M3: Model Evidence Exports
 
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- CLI-first, frontend-ready export probe for a selected catalog asset.
-- Output bundle: OBJ, MTL, shared atlas PNG, per-UV-group PNGs, and JSON evidence
-  manifest.
-- Default coordinate space: raw decoded/source coordinates.
-- OBJ polygon modes: `original` and `triangulated`.
+- Implemented: CLI-first catalog asset export probe.
+- Implemented: frontend export control for selected catalog model assets.
+- Implemented: output bundle with OBJ, MTL, JSON evidence manifest, shared atlas
+  PNG when available, and per-UV-group PNGs when available.
+- Implemented: default coordinate space records decoded/source coordinates.
+- Implemented: OBJ polygon modes `original` and `triangulated`.
+- Implemented: backend endpoint and UI path use the same export service.
 
 Design decisions:
 
@@ -129,6 +131,15 @@ Design decisions:
 - JSON is the authoritative evidence manifest.
 - glTF/GLB remains the likely future replacement-asset format, but not the first
   RE probe target.
+
+Command:
+
+```powershell
+lba2-lm2-viewer export --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001
+```
+
+The frontend path exports the selected model and asks the backend to open an
+output-folder picker.
 
 ### M4: Contract Draft
 

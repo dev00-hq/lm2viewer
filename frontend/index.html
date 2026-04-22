@@ -41,6 +41,16 @@
         </div>
         <div id="assetList" class="asset-list"></div>
         <div id="assetDetail" class="asset-detail">Select a catalog entry to inspect it.</div>
+        <div class="export-panel">
+          <div class="row">
+            <select id="exportPolygonMode" aria-label="Export polygon mode">
+              <option value="original">Original faces</option>
+              <option value="triangulated">Triangulated</option>
+            </select>
+            <button id="exportAsset" disabled>Export</button>
+          </div>
+          <div id="exportResult" class="export-result" role="status" aria-live="polite"></div>
+        </div>
 
         <h2>Server Path</h2>
         <div class="row">

@@ -1,5 +1,6 @@
 export type AssetKind = 'model' | 'animation';
 export type KindFilter = AssetKind | 'all';
+export type PolygonMode = 'original' | 'triangulated';
 
 export interface Catalog {
   schema: string;
@@ -158,4 +159,27 @@ export interface DecodeProgress {
 
 export interface AnimationPayload {
   animation: CatalogAsset;
+}
+
+export interface ExportPayload {
+  output_dir: string;
+  manifest: {
+    schema_version: string;
+    source: {
+      catalog_asset_id: string;
+      catalog_label?: string;
+    };
+    options: {
+      polygon_mode: PolygonMode;
+      coordinate_space: string;
+    };
+    files: {
+      obj: string;
+      mtl: string;
+      manifest: string;
+      shared_atlas_png?: string;
+      uv_group_pngs?: Array<{ uv_group: number; path: string }>;
+    };
+    warnings?: string[];
+  };
 }

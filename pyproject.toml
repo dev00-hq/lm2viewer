@@ -15,7 +15,7 @@ dependencies = []
 lba2-lm2-viewer = "lba2_lm2_viewer.viewer:main"
 
 [tool.setuptools]
-packages = ["lba2_lm2_viewer"]
+packages = ["lba2_lm2_viewer", "lba2_lm2_viewer.exports"]
 
 [tool.setuptools.package-data]
 lba2_lm2_viewer = ["body_metadata.json", "frontend/dist/**/*"]

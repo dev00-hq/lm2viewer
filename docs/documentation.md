@@ -16,8 +16,9 @@ HQR files at runtime.
 - Single developer build command exists.
 - Release zip and wheel packaging exists.
 - HQR, BODY/LM2, palette, texture atlas, and animation-summary paths exist.
-- Export probes, contracts, full animation decode, frame stepping, and UV
-  inspector are planned.
+- CLI and frontend model export probes exist.
+- Contracts, full animation decode, frame stepping, and UV inspector are
+  planned.
 
 Milestone status is tracked in `docs/plans.md`.
 
@@ -81,6 +82,27 @@ Run a frontend-only build without reinstalling the package:
 
 ```powershell
 py -3 .\scripts\build.py --no-editable
+```
+
+## Export Probe
+
+Export one catalog model asset for external inspection:
+
+```powershell
+lba2-lm2-viewer export --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001
+```
+
+The export writes an OBJ mesh, MTL file, JSON evidence manifest, and texture PNGs
+when `RESS.HQR` palette/atlas data is available.
+
+The frontend can export the selected catalog model with the **Export** button.
+It asks the backend to open an output-folder picker, then writes the same bundle
+as the CLI path.
+
+Use triangulated faces when comparing against the Three.js render path:
+
+```powershell
+lba2-lm2-viewer export --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001-tri --polygon-mode triangulated
 ```
 
 ## Package

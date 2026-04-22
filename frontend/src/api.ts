@@ -1,4 +1,4 @@
-import type { AnimationPayload, Catalog, CatalogAsset, DecodeProgress, ErrorPayload, Lm2Model } from './types';
+import type { AnimationPayload, Catalog, CatalogAsset, DecodeProgress, ErrorPayload, ExportPayload, Lm2Model, PolygonMode } from './types';
 
 async function readJson<T extends object>(response: Response): Promise<T> {
   const payload = await response.json() as T | ErrorPayload;
@@ -61,5 +61,13 @@ export async function loadCatalogAsset(asset: CatalogAsset): Promise<Lm2Model | 
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id: asset.id }),
+  }));
+}
+
+export async function exportCatalogAsset(asset: CatalogAsset, polygonMode: PolygonMode): Promise<ExportPayload> {
+  return readJson<ExportPayload>(await fetch('/api/catalog/export', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: asset.id, polygon_mode: polygonMode }),
   }));
 }

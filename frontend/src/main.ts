@@ -1,7 +1,7 @@
 import './styles.css';
-import { buildCatalog, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
+import { buildCatalog, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
 import { requireElement } from './dom';
-import type { CatalogAsset, DecodeProgress, Lm2Model } from './types';
+import type { CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './types';
 import { CatalogUi } from './ui/catalog';
 import { renderStats } from './ui/stats';
 import { ViewerScene, type VisibilityState } from './viewer/scene';
@@ -28,6 +28,10 @@ const progressText = requireElement('progressText', HTMLSpanElement);
 const progressMeta = requireElement('progressMeta', HTMLSpanElement);
 const progressBar = requireElement('progressBar', HTMLDivElement);
 const progressFill = requireElement('progressFill', HTMLDivElement);
+const exportAssetButton = requireElement('exportAsset', HTMLButtonElement);
+const exportPolygonMode = requireElement('exportPolygonMode', HTMLSelectElement);
+const exportResult = requireElement('exportResult', HTMLDivElement);
+let selectedExportAsset: CatalogAsset | null = null;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
@@ -66,6 +70,7 @@ requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => ru
   async () => showModel(await loadPath(pathInput.value)),
   { label: 'Decoding model' },
 ));
+exportAssetButton.addEventListener('click', () => runAction(exportSelectedAsset, { label: 'Exporting evidence probe' }));
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
@@ -116,6 +121,8 @@ async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
     catalogUi.select(asset);
     const payload = await loadCatalogAsset(asset);
     if ('animation' in payload) {
+      setSelectedExportAsset(null);
+      updateExportControls();
       catalogUi.renderDetail(payload.animation);
       overlay.textContent = `${payload.animation.label} selected`;
       return;
@@ -128,7 +135,43 @@ function showModel(model: Lm2Model): void {
   scene.loadModel(model);
   renderStats(stats, model);
   overlay.textContent = model.source || 'Uploaded model';
+  setSelectedExportAsset(model.catalog_asset?.kind === 'model' ? model.catalog_asset : null);
+  updateExportControls();
   if (model.catalog_asset) catalogUi.select(model.catalog_asset);
+}
+
+async function exportSelectedAsset(): Promise<void> {
+  if (!selectedExportAsset) throw new Error('Select a catalog model before exporting.');
+  exportResult.textContent = '';
+  const polygonMode = selectedPolygonMode();
+  const result = await exportCatalogAsset(selectedExportAsset, polygonMode);
+  const fileCount = [
+    result.manifest.files.obj,
+    result.manifest.files.mtl,
+    result.manifest.files.manifest,
+    result.manifest.files.shared_atlas_png,
+    ...(result.manifest.files.uv_group_pngs || []).map((entry) => entry.path),
+  ].filter(Boolean).length;
+  exportResult.textContent = `Wrote ${fileCount} files to ${result.output_dir}`;
+  overlay.textContent = `Exported ${result.manifest.source.catalog_label || result.manifest.source.catalog_asset_id}`;
+}
+
+function updateExportControls(): void {
+  exportAssetButton.disabled = selectedExportAsset === null;
+}
+
+function setSelectedExportAsset(asset: CatalogAsset | null): void {
+  if (selectedExportAsset?.id !== asset?.id) {
+    exportResult.textContent = '';
+  }
+  selectedExportAsset = asset;
+}
+
+function selectedPolygonMode(): PolygonMode {
+  if (exportPolygonMode.value === 'original' || exportPolygonMode.value === 'triangulated') {
+    return exportPolygonMode.value;
+  }
+  throw new Error(`Unsupported polygon mode: ${exportPolygonMode.value}`);
 }
 
 function refreshVisibility(): void {

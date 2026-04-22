@@ -101,6 +101,20 @@ npm run dev
 The Python backend serves the built files from
 `lba2_lm2_viewer/frontend/dist/`, so run the project build before testing the integrated backend/frontend path.
 
+## Export Probe
+
+Export one catalog model asset as an evidence bundle:
+
+```powershell
+lba2-lm2-viewer export --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001
+```
+
+The bundle contains OBJ, MTL, `manifest.json`, and texture PNGs when palette and
+atlas data are available.
+
+The browser viewer also exposes **Export** for the selected catalog model and
+uses a backend folder picker for the output location.
+
 ## Release Package
 
 Create release artifacts with:

@@ -1293,6 +1293,27 @@ def pick_hqr_files_dialog() -> list[Path]:
     return [Path(path) for path in selected]
 
 
+def pick_export_directory_dialog() -> Path:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:  # pragma: no cover - depends on local Python build
+        raise Lm2Error(f"export folder picker is unavailable: {exc}") from exc
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        selected = filedialog.askdirectory(
+            title="Select export folder for the LM2 evidence probe"
+        )
+    finally:
+        root.destroy()
+    if not selected:
+        raise Lm2Error("no export folder selected")
+    return Path(selected)
+
+
 class ViewerServer:
     def __init__(self, initial_path: Path | None, asset_root: Path | None) -> None:
         self.initial_path = initial_path
@@ -1389,6 +1410,53 @@ class ViewerServer:
             if asset.get("id") == asset_id:
                 return asset
         raise Lm2Error(f"catalog asset not found: {asset_id}")
+
+    def export_catalog_asset(
+        self, asset_id: str, output_dir: Path, polygon_mode: str = "original"
+    ) -> dict[str, Any]:
+        from .exports import export_model_probe
+
+        if polygon_mode not in ("original", "triangulated"):
+            raise Lm2Error(f"unsupported polygon mode: {polygon_mode}")
+
+        with self.operation_lock:
+            if self.asset_root is None:
+                raise Lm2Error("no asset root loaded")
+            asset = self.find_catalog_asset(asset_id)
+            if asset.get("kind") != "model":
+                raise Lm2Error(f"catalog asset is not a model: {asset_id}")
+            payload, resource = read_hqr_payload(self.asset_root, asset["source"])
+            model = load_lm2_bytes(payload, str(asset["relative_path"]))
+            warnings: list[str] = []
+            if self.texture_atlas is None and any(
+                poly.has_texture for poly in model.polygons
+            ):
+                warnings.append("texture atlas unavailable; texture PNGs not exported")
+            source = {
+                "asset_root": str(self.asset_root),
+                "catalog_asset_id": asset["id"],
+                "catalog_label": asset.get("label"),
+                "archive": asset["source"].get("hqr"),
+                "entry_index": asset["source"].get("entry_index"),
+                "classic_index": asset["source"].get("classic_index"),
+                "archive_offset": asset["source"].get("offset"),
+                "archive_raw_bytes": asset["source"].get("raw_bytes"),
+                "archive_raw_sha256": asset["source"].get("raw_sha256"),
+                "decoded_bytes": len(payload),
+                "decoded_sha256": hashlib.sha256(payload).hexdigest(),
+                "resource": resource,
+                "source_mode": self.catalog.get("source_mode") if self.catalog else None,
+            }
+            manifest = export_model_probe(
+                model=model,
+                output_dir=output_dir,
+                source=source,
+                polygon_mode=polygon_mode,
+                palette=self.palette,
+                texture_atlas=self.texture_atlas,
+                warnings=warnings,
+            )
+            return {"output_dir": str(output_dir.resolve()), "manifest": manifest}
 
     def handler_class(self) -> type[BaseHTTPRequestHandler]:
         server_state = self
@@ -1497,6 +1565,21 @@ class ViewerServer:
                                     f"unsupported catalog asset kind: {asset.get('kind')}"
                                 )
                         self.send_json(response)
+                    elif parsed.path == "/api/catalog/export":
+                        length = int(self.headers.get("content-length", "0"))
+                        body = self.rfile.read(length)
+                        request = json.loads(body.decode("utf-8"))
+                        output_dir_value = request.get("output_dir")
+                        if isinstance(output_dir_value, str) and output_dir_value:
+                            output_dir = Path(output_dir_value).expanduser()
+                        else:
+                            output_dir = pick_export_directory_dialog()
+                        response = server_state.export_catalog_asset(
+                            str(request["id"]),
+                            output_dir,
+                            str(request.get("polygon_mode") or "original"),
+                        )
+                        self.send_json(response)
                     else:
                         self.send_error(404)
                 except Exception as exc:
@@ -1589,7 +1672,76 @@ def inspect(path: Path) -> None:
     print(json.dumps(model.to_viewer_json(str(path))["stats"], indent=2))
 
 
+def export_probe_command(argv: list[str]) -> int:
+    from .exports import export_catalog_asset_probe
+
+    parser = argparse.ArgumentParser(
+        prog="lba2-lm2-viewer export",
+        description="Export an LM2 evidence probe for one catalog model asset.",
+    )
+    parser.add_argument(
+        "--asset-root",
+        required=True,
+        type=Path,
+        help="folder containing the user's LBA2 HQR files",
+    )
+    parser.add_argument(
+        "--asset",
+        required=True,
+        help='catalog asset id, for example "BODY.HQR:1"',
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="directory to write OBJ, MTL, PNG, and manifest files",
+    )
+    parser.add_argument(
+        "--polygon-mode",
+        choices=("original", "triangulated"),
+        default="original",
+        help="OBJ face mode, default original",
+    )
+    args = parser.parse_args(argv)
+
+    manifest = export_catalog_asset_probe(
+        asset_root=args.asset_root,
+        asset_id=args.asset,
+        output_dir=args.out,
+        polygon_mode=args.polygon_mode,
+    )
+    print(f"Wrote {args.out.resolve()}")
+    print(
+        json.dumps(
+            {"schema_version": manifest["schema_version"], "files": manifest["files"]},
+            indent=2,
+        )
+    )
+    return 0
+
+
+def is_export_subcommand(arguments: list[str]) -> bool:
+    if arguments[:1] != ["export"]:
+        return False
+    return any(
+        argument in {"-h", "--help", "--asset-root", "--asset", "--out", "--polygon-mode"}
+        or argument.startswith("--asset-root=")
+        or argument.startswith("--asset=")
+        or argument.startswith("--out=")
+        or argument.startswith("--polygon-mode=")
+        for argument in arguments[1:]
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else argv
+    if is_export_subcommand(arguments):
+        try:
+            return export_probe_command(arguments[1:])
+        except (Lm2Error, lba_hqr.HqrError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
     parser = argparse.ArgumentParser(
         description="View, inspect, or export LBA2 LM2 model files."
     )
@@ -1617,7 +1769,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--asset-root", type=Path, help="folder containing the user's LBA2 HQR files"
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
 
     try:
         if args.inspect:
