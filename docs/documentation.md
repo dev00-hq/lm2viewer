@@ -17,8 +17,8 @@ HQR files at runtime.
 - Release zip and wheel packaging exists.
 - HQR, BODY/LM2, palette, texture atlas, and animation-summary paths exist.
 - CLI and frontend model export probes exist.
-- Contracts, full animation decode, frame stepping, and UV inspector are
-  planned.
+- CLI model contract probes exist.
+- Full animation decode, frame stepping, and UV inspector are planned.
 
 Milestone status is tracked in `docs/plans.md`.
 
@@ -28,8 +28,8 @@ Milestone status is tracked in `docs/plans.md`.
 - Node.js and npm for source builds
 - Local user-owned LBA2 assets
 
-Python runtime dependencies are currently stdlib-only. If `msgspec` is added for
-contracts, update packaging docs and dependency files in the same change.
+Python runtime dependencies are listed in `pyproject.toml` and
+`requirements.txt`.
 
 ## Build
 
@@ -104,6 +104,20 @@ Use triangulated faces when comparing against the Three.js render path:
 ```powershell
 lba2-lm2-viewer export --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001-tri --polygon-mode triangulated
 ```
+
+## Contract Probe
+
+Write a versioned model contract JSON file for one catalog model:
+
+```powershell
+lba2-lm2-viewer contract --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001.contract.json
+```
+
+Contracts live under `lba2_lm2_viewer.contracts` as `msgspec.Struct` types and
+emit plain JSON with schema version `lm2_model_contract.v0`. The current draft
+includes source identity, geometry facts, render facts, animation placeholders,
+gameplay placeholders, evidence references, confidence, and unknown-field
+descriptors.
 
 ## Package
 

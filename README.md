@@ -11,7 +11,8 @@ When the app starts, you choose a folder or one or more HQR files from your own 
 - Node.js and npm for source builds
 - A local copy of the LBA2 asset files
 
-`requirements.txt` is intentionally empty apart from a note.
+Installable Python dependencies are listed in both `pyproject.toml` and
+`requirements.txt`.
 
 ## Build From Source
 
@@ -114,6 +115,19 @@ atlas data are available.
 
 The browser viewer also exposes **Export** for the selected catalog model and
 uses a backend folder picker for the output location.
+
+## Contract Probe
+
+Write a versioned model contract JSON file for one catalog model asset:
+
+```powershell
+lba2-lm2-viewer contract --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001.contract.json
+```
+
+Contracts are typed with `msgspec.Struct` in the Python package and emitted as
+plain JSON. They capture reusable facts for the future port: source identity,
+geometry, render facts, animation compatibility placeholders, gameplay-facing
+placeholders, evidence references, confidence, and unknown-field descriptors.
 
 ## Release Package
 

@@ -97,6 +97,9 @@ When model/entity contracts land:
 If a JSON Schema is generated or maintained, keep it aligned with the msgspec
 types and fixture expectations.
 
+The first model contract schema is `lm2_model_contract.v0` under
+`lba2_lm2_viewer.contracts`.
+
 ## Animation Rules
 
 Animation playback is allowed as a near-term target only after structured decode

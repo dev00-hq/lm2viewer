@@ -143,13 +143,15 @@ output-folder picker.
 
 ### M4: Contract Draft
 
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- Versioned `msgspec.Struct` contract types under the viewer package.
-- Plain JSON export as the stable interchange artifact.
-- Tiny synthetic contract fixtures committed for tests and examples.
+- Implemented: versioned `msgspec.Struct` contract types under
+  `lba2_lm2_viewer.contracts`.
+- Implemented: plain JSON export as the stable interchange artifact.
+- Implemented: tiny synthetic contract fixtures committed for tests and examples.
+- Implemented: CLI-first catalog asset contract export.
 - No committed exports from copyrighted game assets.
 
 The first contract should include source identity, geometry facts, render facts,
@@ -158,6 +160,12 @@ unknown-field descriptors.
 
 If this milestone adds `msgspec`, update `pyproject.toml`, `requirements.txt`,
 and packaging docs together.
+
+Command:
+
+```powershell
+lba2-lm2-viewer contract --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001.contract.json
+```
 
 ### M5: Texture and UV Inspector
 

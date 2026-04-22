@@ -31,6 +31,7 @@ flowchart LR
 | Path | Role |
 | --- | --- |
 | `lba2_lm2_viewer/viewer.py` | Backend server, CLI, catalog building, current LM2/animation parsing, palette/texture loading |
+| `lba2_lm2_viewer/contracts/` | Versioned msgspec model contracts and JSON export helpers |
 | `lba2_lm2_viewer/lba_hqr.py` | HQR table and resource-entry decoding |
 | `lba2_lm2_viewer/body_metadata.json` | Local metadata for BODY catalog labels |
 | `frontend/src/` | Browser UI, catalog, Three.js scene, model mesh rendering |
@@ -61,12 +62,12 @@ Implemented:
   UV groups, bounds, and selected flags.
 - RESS palette and texture atlas decode needed by current model rendering.
 - ANIM and ANIM3DS catalog entries with summary/raw metadata.
+- Contract manifests and export probes.
 
 Planned:
 
 - Full ANIM semantic records and frame stepping.
 - ANIM3DS semantic decode once evidence identifies the layout.
-- Export probes and contract manifests.
 - Read-only texture/UV inspector.
 
 ## Frontend Boundary
@@ -91,7 +92,7 @@ lba2_lm2_viewer/
     textures.py
   catalog.py
   contracts/
-    model_contract.py
+    model.py
   exports/
     probe.py
     obj.py

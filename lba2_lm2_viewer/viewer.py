@@ -1720,6 +1720,50 @@ def export_probe_command(argv: list[str]) -> int:
     return 0
 
 
+def contract_command(argv: list[str]) -> int:
+    from .contracts import export_catalog_asset_contract
+
+    parser = argparse.ArgumentParser(
+        prog="lba2-lm2-viewer contract",
+        description="Write a versioned LM2 model contract JSON file.",
+    )
+    parser.add_argument(
+        "--asset-root",
+        required=True,
+        type=Path,
+        help="folder containing the user's LBA2 HQR files",
+    )
+    parser.add_argument(
+        "--asset",
+        required=True,
+        help='catalog asset id, for example "BODY.HQR:1"',
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="JSON file to write",
+    )
+    args = parser.parse_args(argv)
+
+    contract = export_catalog_asset_contract(
+        asset_root=args.asset_root,
+        asset_id=args.asset,
+        output_path=args.out,
+    )
+    print(f"Wrote {args.out.resolve()}")
+    print(
+        json.dumps(
+            {
+                "schema_version": contract.schema_version,
+                "asset_id": contract.source.asset_id,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def is_export_subcommand(arguments: list[str]) -> bool:
     if arguments[:1] != ["export"]:
         return False
@@ -1733,11 +1777,21 @@ def is_export_subcommand(arguments: list[str]) -> bool:
     )
 
 
+def is_contract_subcommand(arguments: list[str]) -> bool:
+    return arguments[:1] == ["contract"]
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     if is_export_subcommand(arguments):
         try:
             return export_probe_command(arguments[1:])
+        except (Lm2Error, lba_hqr.HqrError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    if is_contract_subcommand(arguments):
+        try:
+            return contract_command(arguments[1:])
         except (Lm2Error, lba_hqr.HqrError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

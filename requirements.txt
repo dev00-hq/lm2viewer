@@ -1,1 +1,1 @@
-# Runtime dependencies are stdlib-only.
+msgspec>=0.18,<1
