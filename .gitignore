@@ -2,4 +2,6 @@ __pycache__/
 *.pyc
 frontend/node_modules/
 frontend/.vite/
-
+frontend/dist/
+build/
+release/

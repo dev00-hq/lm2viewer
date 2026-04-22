@@ -8,9 +8,20 @@ This package does not include decoded models, animations, textures, or HQR data.
 
 - Python 3.10+
 - A local copy of the LBA2 HQR files
-- Node.js only if you want to rebuild the frontend
+- Node.js for source checkouts, development, and release packaging
 
 ## Run
+
+Source checkouts do not commit the built frontend. Build it once before running:
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+Then start the backend:
 
 ```powershell
 py -3 .\viewer.py
@@ -25,6 +36,8 @@ py -3 .\viewer.py --asset-root "D:\Games\LBA2"
 ```
 
 The server defaults to `http://127.0.0.1:8765`.
+
+Packaged releases already include `frontend/dist`, so they only need Python and your local LBA2 asset files.
 
 ## What Is Decoded
 
@@ -45,5 +58,26 @@ npm install
 npm run build
 ```
 
-The Python backend serves `frontend/dist/`.
+The Python backend serves `frontend/dist/`, but that generated folder is intentionally ignored by Git.
 
+Run the Python tests from the repository root:
+
+```powershell
+py -3 -m unittest discover -s tests -v
+```
+
+Run the frontend build from `frontend/`:
+
+```powershell
+npm run build
+```
+
+## Release Package
+
+Create a self-contained zip with the Python runtime files and built frontend:
+
+```powershell
+py -3 .\scripts\package.py
+```
+
+The script runs `npm ci`, builds the frontend, copies runtime files into `build/lba2-lm2-viewer/`, and writes `release/lba2-lm2-viewer.zip`.
