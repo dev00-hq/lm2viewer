@@ -33,6 +33,7 @@ class Issue:
     state: str
     branch_name: str | None
     url: str | None
+    team_id: str | None = None
     labels: tuple[str, ...] = ()
     blocked_by: tuple[BlockerRef, ...] = ()
     created_at: str | None = None
@@ -55,6 +56,7 @@ class Issue:
             state=str(value.get("state", "")),
             branch_name=_optional_str(value.get("branch_name")),
             url=_optional_str(value.get("url")),
+            team_id=_optional_str(value.get("team_id")),
             labels=labels,
             blocked_by=blockers,
             created_at=_optional_str(value.get("created_at")),
@@ -71,6 +73,7 @@ class Issue:
             "state": self.state,
             "branch_name": self.branch_name,
             "url": self.url,
+            "team_id": self.team_id,
             "labels": list(self.labels),
             "blocked_by": [blocker.to_dict() for blocker in self.blocked_by],
             "created_at": self.created_at,
@@ -142,6 +145,7 @@ class RetryEntry:
     attempt: int
     due_at_ms: float
     error: str | None = None
+    action: str = "run"
 
 
 @dataclass
@@ -191,4 +195,3 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-

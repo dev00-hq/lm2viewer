@@ -111,6 +111,8 @@ py -3 .\scripts\package.py
 
 ### M3: Model Evidence Exports
 
+Linear: LM2-5
+
 Status: planned.
 
 Deliverable:
@@ -132,6 +134,8 @@ Design decisions:
 
 ### M4: Contract Draft
 
+Linear: LM2-6
+
 Status: planned.
 
 Deliverable:
@@ -150,6 +154,8 @@ and packaging docs together.
 
 ### M5: Texture and UV Inspector
 
+Linear: LM2-7
+
 Status: planned.
 
 Deliverable:
@@ -163,6 +169,8 @@ Do not build a UV editor. Use external tools such as Blender for UV editing
 experiments.
 
 ### M6: Animation Semantic Decode and Frame Stepping
+
+Linear: LM2-8
 
 Status: planned.
 
@@ -179,6 +187,8 @@ layout, keyframe records, boneframe records, animation case handling, rotation
 interpolation, linear interpolation, and body transform application.
 
 ### M7: ANIM3DS Track
+
+Linear: LM2-9
 
 Status: planned.
 

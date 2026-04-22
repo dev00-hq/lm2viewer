@@ -9,3 +9,4 @@ build/
 release/
 frontend/PLAN.md
 .symphony-workspaces/
+.env

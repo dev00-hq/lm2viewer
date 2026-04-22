@@ -15,6 +15,8 @@ package.
 - Typed config layer with defaults and `$VAR` resolution.
 - Strict prompt rendering for `issue` and `attempt`.
 - Linear-compatible issue tracker client and normalized issue model.
+- Linear issue completion writes through `issueUpdate` after a successful agent
+  run.
 - Workspace manager with deterministic sanitized issue paths.
 - Workspace lifecycle hooks: `after_create`, `before_run`, `after_run`, and
   `before_remove`.
@@ -28,7 +30,6 @@ Not implemented yet:
 - Optional HTTP status/control server.
 - Optional `linear_graphql` client-side tool extension.
 - Persistent retry/session state across process restarts.
-- Tracker write APIs.
 - Non-Linear tracker adapters.
 
 ## Usage
@@ -83,11 +84,36 @@ If the console script is not on `PATH`:
 py -3 -m symphony .\WORKFLOW.md
 ```
 
+Synchronize docs and Linear:
+
+```powershell
+symphony docs-sync .\WORKFLOW.md
+```
+
+`docs/plans.md` owns milestone intent through `Linear: LM2-x` bindings. Linear
+owns live execution state. `docs-sync` pulls Linear state back into
+`docs/linear-state.md`, updates milestone `Status:` lines in `docs/plans.md`,
+and pushes the bound milestone sections into the matching Linear issue
+descriptions.
+
+Credentials can live in an untracked `.env` file next to `WORKFLOW.md`:
+
+```dotenv
+LINEAR_API_KEY=lin_api_...
+```
+
+Existing process environment variables take precedence over `.env` values.
+
 ## Trust And Safety Posture
 
 Symphony is an orchestrator. It reads eligible Linear issues, creates or reuses
 per-issue workspaces, runs configured hooks, and launches a coding-agent
 app-server process in the issue workspace.
+
+When the agent run exits successfully, Symphony moves the Linear issue to the
+first configured terminal state. In this repository that state is `Done`. If the
+Linear write fails, Symphony retries the completion write without rerunning the
+agent.
 
 This implementation does not add a sandbox beyond:
 

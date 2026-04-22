@@ -114,6 +114,7 @@ class Orchestrator:
                         "attempt": retry.attempt,
                         "due_at_ms": retry.due_at_ms,
                         "error": retry.error,
+                        "action": retry.action,
                     }
                     for retry in self.state.retry_attempts.values()
                 ],
@@ -185,12 +186,43 @@ class Orchestrator:
             self.state.codex_seconds_running += max(0.0, time.time() - entry.started_at)
             if reason == "normal":
                 self.state.completed.add(issue_id)
-                self._schedule_retry(entry.issue, attempt=1, error=None)
+                self._complete_issue(entry.issue, attempt=1)
             else:
                 next_attempt = (entry.retry_attempt or 0) + 1
                 self._schedule_retry(entry.issue, attempt=next_attempt, error=reason)
 
-    def _schedule_retry(self, issue: Issue, attempt: int, error: str | None) -> None:
+    def _complete_issue(self, issue: Issue, attempt: int) -> None:
+        try:
+            updated = self.tracker.complete_issue(issue)
+        except Exception as exc:
+            self._schedule_retry(
+                issue,
+                attempt=attempt,
+                error=f"completion failed: {exc}",
+                action="complete",
+            )
+            return
+        self.state.retry_attempts.pop(issue.id, None)
+        self.state.claimed.discard(issue.id)
+        self.logger.event(
+            "issue_completed",
+            issue_id=issue.id,
+            issue_identifier=issue.identifier,
+            state=updated.state,
+        )
+        manager = WorkspaceManager(self.config.workspace_root, self.config.hooks, self.logger)
+        try:
+            manager.cleanup_for_issue(issue.identifier)
+        except Exception as exc:
+            self.logger.event(
+                "workspace_cleanup_failed",
+                "error",
+                issue_id=issue.id,
+                issue_identifier=issue.identifier,
+                error=str(exc),
+            )
+
+    def _schedule_retry(self, issue: Issue, attempt: int, error: str | None, action: str = "run") -> None:
         delay = min(10000 * (2 ** max(0, attempt - 1)), self.config.max_retry_backoff_ms)
         if error is None:
             delay = 1000
@@ -200,6 +232,7 @@ class Orchestrator:
             attempt=attempt,
             due_at_ms=time.monotonic() * 1000 + delay,
             error=error,
+            action=action,
         )
         self.logger.event(
             "retry_scheduled",
@@ -208,6 +241,7 @@ class Orchestrator:
             attempt=attempt,
             delay_ms=delay,
             error=error,
+            action=action,
         )
 
     def _process_due_retries(self, candidates: list[Issue]) -> None:
@@ -232,6 +266,7 @@ class Orchestrator:
                     issue,
                     retry.attempt + 1,
                     "no available orchestrator slots",
+                    retry.action,
                 )
                 continue
             if self._available_slots(issue.state) <= 0:
@@ -239,10 +274,14 @@ class Orchestrator:
                     issue,
                     retry.attempt + 1,
                     f"no available slots for state {issue.state}",
+                    retry.action,
                 )
                 continue
             self.state.retry_attempts.pop(issue_id, None)
-            self._dispatch_issue(issue, attempt=retry.attempt)
+            if retry.action == "complete":
+                self._complete_issue(issue, attempt=retry.attempt + 1)
+            else:
+                self._dispatch_issue(issue, attempt=retry.attempt)
 
     def _on_agent_event(self, event: dict[str, Any]) -> None:
         issue_id = event.get("issue_id")
