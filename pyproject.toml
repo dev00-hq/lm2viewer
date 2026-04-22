@@ -13,9 +13,10 @@ dependencies = []
 
 [project.scripts]
 lba2-lm2-viewer = "lba2_lm2_viewer.viewer:main"
+symphony = "symphony.cli:main"
 
 [tool.setuptools]
-packages = ["lba2_lm2_viewer"]
+packages = ["lba2_lm2_viewer", "symphony"]
 
 [tool.setuptools.package-data]
 lba2_lm2_viewer = ["body_metadata.json", "frontend/dist/**/*"]

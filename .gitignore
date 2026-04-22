@@ -8,3 +8,4 @@ lba2_lm2_viewer/frontend/dist/
 build/
 release/
 frontend/PLAN.md
+.symphony-workspaces/
