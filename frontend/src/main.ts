@@ -1,5 +1,5 @@
 import './styles.css';
-import { buildCatalog, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFolder, uploadModel } from './api';
+import { buildCatalog, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
 import { requireElement } from './dom';
 import type { CatalogAsset, DecodeProgress, Lm2Model } from './types';
 import { CatalogUi } from './ui/catalog';
@@ -57,6 +57,10 @@ requireElement('loadAssetRoot', HTMLButtonElement).addEventListener('click', () 
 requireElement('pickAssetRoot', HTMLButtonElement).addEventListener('click', () => runAction(
   async () => setCatalog(await pickCatalogFolder()),
   { label: 'Choose a folder to index', pollServer: true },
+));
+requireElement('pickHqrFiles', HTMLButtonElement).addEventListener('click', () => runAction(
+  async () => setCatalog(await pickCatalogFiles()),
+  { label: 'Choose HQR files to index', pollServer: true },
 ));
 requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => runAction(
   async () => showModel(await loadPath(pathInput.value)),

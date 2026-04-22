@@ -52,6 +52,10 @@ export async function pickCatalogFolder(): Promise<Catalog> {
   return readJson<Catalog>(await fetch('/api/catalog/pick', { method: 'POST' }));
 }
 
+export async function pickCatalogFiles(): Promise<Catalog> {
+  return readJson<Catalog>(await fetch('/api/catalog/pick-files', { method: 'POST' }));
+}
+
 export async function loadCatalogAsset(asset: CatalogAsset): Promise<Lm2Model | AnimationPayload> {
   return readJson<Lm2Model | AnimationPayload>(await fetch('/api/catalog/load', {
     method: 'POST',

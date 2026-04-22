@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 import mimetypes
+import os
 import re
 import struct
 import sys
@@ -833,6 +834,36 @@ def hqr_paths(asset_root: Path) -> list[Path]:
     )
 
 
+def selected_hqr_root(paths: list[Path]) -> Path:
+    if not paths:
+        raise Lm2Error("no HQR files selected")
+    try:
+        return Path(os.path.commonpath([str(path.parent) for path in paths])).resolve()
+    except ValueError as exc:
+        raise Lm2Error("selected HQR files must be on the same drive") from exc
+
+
+def normalize_hqr_file_paths(paths: list[Path]) -> list[Path]:
+    normalized: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.expanduser().resolve()
+        if resolved in seen:
+            continue
+        if not resolved.exists():
+            raise Lm2Error(f"HQR file does not exist: {resolved}")
+        if not resolved.is_file():
+            raise Lm2Error(f"selected HQR path is not a file: {resolved}")
+        if resolved.suffix.upper() != ".HQR":
+            raise Lm2Error(f"selected file is not an HQR archive: {resolved}")
+        normalized.append(resolved)
+        seen.add(resolved)
+    if not normalized:
+        raise Lm2Error("no HQR files selected")
+    root = selected_hqr_root(normalized)
+    return sorted(normalized, key=lambda path: path.relative_to(root).as_posix().upper())
+
+
 def read_hqr_payload(asset_root: Path, source: dict[str, Any]) -> tuple[bytes, dict[str, Any] | None]:
     hqr_relative = source.get("hqr")
     if not isinstance(hqr_relative, str) or not hqr_relative:
@@ -870,7 +901,11 @@ def read_hqr_payload(asset_root: Path, source: dict[str, Any]) -> tuple[bytes, d
         return raw, None
 
 
-def build_catalog(asset_root: Path, progress: DecodeProgress | None = None) -> dict[str, Any]:
+def build_catalog(
+    asset_root: Path,
+    progress: DecodeProgress | None = None,
+    selected_files: list[Path] | None = None,
+) -> dict[str, Any]:
     if not asset_root.exists():
         raise Lm2Error(f"asset root does not exist: {asset_root}")
     if not asset_root.is_dir():
@@ -880,12 +915,15 @@ def build_catalog(asset_root: Path, progress: DecodeProgress | None = None) -> d
         "schema": "lba2-lm2-explorer-v1",
         "asset_root": str(asset_root.resolve()),
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "source_mode": "files" if selected_files is not None else "folder",
         "hqr_files": [],
         "assets": [],
     }
+    if selected_files is not None:
+        catalog["selected_files"] = [path.relative_to(asset_root).as_posix() for path in selected_files]
 
     archive_jobs: list[dict[str, Any]] = []
-    for hqr_path in hqr_paths(asset_root):
+    for hqr_path in selected_files if selected_files is not None else hqr_paths(asset_root):
         hqr_relative = hqr_path.relative_to(asset_root).as_posix()
         is_body_archive = hqr_path.name.upper() == "BODY.HQR"
         data = hqr_path.read_bytes()
@@ -1064,6 +1102,28 @@ def pick_directory_dialog() -> Path:
     return Path(selected)
 
 
+def pick_hqr_files_dialog() -> list[Path]:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:  # pragma: no cover - depends on local Python build
+        raise Lm2Error(f"file picker is unavailable: {exc}") from exc
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        selected = filedialog.askopenfilenames(
+            title="Select one or more LBA2 HQR files",
+            filetypes=(("HQR archives", "*.HQR *.hqr"), ("All files", "*.*")),
+        )
+    finally:
+        root.destroy()
+    if not selected:
+        raise Lm2Error("no files selected")
+    return [Path(path) for path in selected]
+
+
 class ViewerServer:
     def __init__(self, initial_path: Path | None, asset_root: Path | None) -> None:
         self.initial_path = initial_path
@@ -1085,13 +1145,35 @@ class ViewerServer:
             self.catalog = build_catalog(resolved, self.decode_progress)
             self.decode_progress.update(label="Loading palette and texture atlas", phase="finalizing")
             self.asset_root = resolved
-            self.palette = load_palette_from_asset_root(resolved)
-            self.texture_atlas = load_texture_atlas_from_asset_root(resolved, self.palette)
+            self.load_visual_assets(resolved)
             self.decode_progress.finish(self.catalog.get("summary", {}))
             return self.catalog
         except Exception as exc:
             self.decode_progress.fail(str(exc))
             raise
+
+    def set_asset_files(self, paths: list[Path]) -> dict[str, Any]:
+        files = normalize_hqr_file_paths(paths)
+        resolved_root = selected_hqr_root(files)
+        self.decode_progress.begin(f"Scanning {len(files)} selected HQR file(s)", phase="scanning")
+        try:
+            self.catalog = build_catalog(resolved_root, self.decode_progress, files)
+            self.decode_progress.update(label="Loading palette and texture atlas", phase="finalizing")
+            self.asset_root = resolved_root
+            self.load_visual_assets(resolved_root)
+            self.decode_progress.finish(self.catalog.get("summary", {}))
+            return self.catalog
+        except Exception as exc:
+            self.decode_progress.fail(str(exc))
+            raise
+
+    def load_visual_assets(self, asset_root: Path) -> None:
+        try:
+            self.palette = load_palette_from_asset_root(asset_root)
+            self.texture_atlas = load_texture_atlas_from_asset_root(asset_root, self.palette)
+        except Lm2Error:
+            self.palette = None
+            self.texture_atlas = None
 
     def load_catalog_palette(self) -> list[int] | None:
         if self.catalog is None:
@@ -1169,6 +1251,9 @@ class ViewerServer:
                     elif parsed.path == "/api/catalog/pick":
                         server_state.decode_progress.begin("Waiting for folder selection", phase="waiting")
                         self.send_json(server_state.set_asset_root(pick_directory_dialog()))
+                    elif parsed.path == "/api/catalog/pick-files":
+                        server_state.decode_progress.begin("Waiting for file selection", phase="waiting")
+                        self.send_json(server_state.set_asset_files(pick_hqr_files_dialog()))
                     elif parsed.path == "/api/catalog/load":
                         length = int(self.headers.get("content-length", "0"))
                         body = self.rfile.read(length)

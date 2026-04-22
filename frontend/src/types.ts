@@ -4,6 +4,8 @@ export type KindFilter = AssetKind | 'all';
 export interface Catalog {
   schema: string;
   asset_root: string;
+  source_mode?: 'folder' | 'files';
+  selected_files?: string[];
   output_root?: string;
   summary: {
     hqr_files: number;
