@@ -128,6 +128,23 @@ Use updated MBN model viewer decompilation as reference for:
 
 Do not add visual playback from guessed semantics.
 
+## ANIM3DS Track
+
+ANIM3DS entries remain raw evidence until source, MBN, or original runtime
+evidence identifies their semantic layout.
+
+Implemented:
+
+1. Catalog every non-empty `ANIM3DS.HQR` entry.
+2. Preserve raw parse status, decoded size, decoded SHA-256, and header words.
+3. Emit unknown descriptors with offsets, lengths, SHA-256 hashes, confidence,
+   and notes rather than raw bytes.
+
+Deferred:
+
+1. Semantic ANIM3DS decode.
+2. Contract connections for ANIM3DS usage evidence.
+
 ## Validation Matrix
 
 | Change type | Required validation |

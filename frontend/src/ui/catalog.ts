@@ -53,6 +53,8 @@ export class CatalogUi {
         `${escapeHtml(asset.source.hqr)}[${asset.source.entry_index}]<br>` +
         `raw animation payload, ${asset.decoded_bytes || raw.decoded_bytes || 0} bytes<br>` +
         `header words: ${escapeHtml((raw.header_words || []).join(', '))}<br>` +
+        `unknown descriptors: ${raw.unknown_descriptors?.length || 0}<br>` +
+        `sha256: ${escapeHtml(raw.decoded_sha256 || asset.decoded_sha256 || '')}<br>` +
         `${escapeHtml(asset.relative_path || '')}`;
       return;
     }

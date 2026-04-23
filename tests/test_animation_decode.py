@@ -2,6 +2,7 @@ import json
 import struct
 import tempfile
 import unittest
+import hashlib
 from contextlib import redirect_stdout
 from dataclasses import replace
 from io import StringIO
@@ -357,9 +358,43 @@ class AnimationParserTests(unittest.TestCase):
             self.assertEqual(catalog["summary"]["animations"], 1)
             self.assertEqual(catalog["assets"][0]["entry_type"], "animation-raw")
             self.assertEqual(catalog["assets"][0]["features"], {"parsed": False})
+            stats = catalog["assets"][0]["stats"]
+            self.assertEqual(stats["decoded_bytes"], len(data))
+            self.assertEqual(stats["decoded_sha256"], hashlib.sha256(data).hexdigest())
+            self.assertEqual(stats["header_word_count"], 8)
+            self.assertEqual(stats["semantic_layout"], "unknown")
+            self.assertGreaterEqual(len(stats["unknown_descriptors"]), 1)
+            self.assertEqual(stats["unknown_descriptors"][0]["section"], "header_words")
+            self.assertEqual(stats["unknown_descriptors"][0]["offset"], 0)
+            self.assertEqual(stats["unknown_descriptors"][0]["length"], 16)
             self.assertEqual(
-                catalog["assets"][0]["stats"]["parse_error"],
+                stats["unknown_descriptors"][0]["sha256"],
+                hashlib.sha256(data[:16]).hexdigest(),
+            )
+            self.assertEqual(
+                stats["parse_error"],
                 "ANIM3DS semantic decode is not implemented",
+            )
+
+    def test_catalog_tracks_every_anim3ds_entry_with_independent_unknown_descriptors(self) -> None:
+        first = b"\x01\x00\x02\x00header-one"
+        second = b"\x03\x00\x04\x00\x05\x00payload-two"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "ANIM3DS.HQR").write_bytes(
+                hqr([resource_entry(first), b"", resource_entry(second)])
+            )
+
+            catalog = viewer.build_catalog(root)
+
+            assets = catalog["assets"]
+            self.assertEqual([asset["id"] for asset in assets], ["ANIM3DS.HQR:1", "ANIM3DS.HQR:3"])
+            self.assertEqual(catalog["summary"]["animations"], 2)
+            self.assertEqual(assets[0]["stats"]["decoded_sha256"], hashlib.sha256(first).hexdigest())
+            self.assertEqual(assets[1]["stats"]["decoded_sha256"], hashlib.sha256(second).hexdigest())
+            self.assertNotEqual(
+                assets[0]["stats"]["unknown_descriptors"][0]["sha256"],
+                assets[1]["stats"]["unknown_descriptors"][0]["sha256"],
             )
 
     def test_animation_command_rejects_raw_animation_catalog_entries(self) -> None:

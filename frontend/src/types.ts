@@ -77,9 +77,21 @@ export interface AnimationStats {
 
 export interface RawAnimationStats {
   decoded_bytes: number;
+  decoded_sha256: string;
   header_words: number[];
+  header_word_count: number;
   parse_status: 'raw';
   parse_error: string;
+  semantic_layout: 'unknown';
+  unknown_descriptors: Array<{
+    section: string;
+    offset: number;
+    length: number;
+    sha256: string;
+    confidence: string;
+    note: string;
+    related_decoded_fields?: string[];
+  }>;
 }
 
 export interface Lm2Model {

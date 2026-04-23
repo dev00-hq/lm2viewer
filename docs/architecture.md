@@ -63,7 +63,8 @@ Implemented:
   UV groups, bounds, and selected flags.
 - RESS palette and texture atlas decode needed by current model rendering.
 - ANIM record decode, catalog summaries, CLI frame-step evidence, posed BODY +
-  ANIM viewer frame stepping, and ANIM3DS raw catalog metadata.
+  ANIM viewer frame stepping, and ANIM3DS raw catalog metadata with unknown
+  descriptors.
 - Contract manifests and export probes.
 - Read-only texture/UV inspector.
 

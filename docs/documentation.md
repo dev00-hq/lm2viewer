@@ -21,6 +21,8 @@ HQR files at runtime.
 - CLI animation evidence probes exist.
 - Frontend texture/UV inspector exists.
 - Frontend posed mesh frame stepping exists for selected BODY + ANIM pairs.
+- ANIM3DS entries are cataloged as raw evidence with size, hash, header words,
+  and unknown byte-range descriptors.
 
 Milestone status is tracked in `docs/plans.md`.
 
@@ -142,6 +144,14 @@ the explorer. The Animation panel can pose the selected BODY at a target
 keyframe and elapsed time, or step to the previous/next frame. The backend owns
 the BODY + ANIM transform path and returns normal model JSON with posed
 vertices plus pose metadata for inspection.
+
+## ANIM3DS Cataloging
+
+`ANIM3DS.HQR` entries are intentionally not semantically decoded yet. The
+catalog records each non-empty entry as raw animation evidence with decoded
+size, decoded SHA-256, header words, raw parse status, and unknown descriptors
+for byte ranges. Descriptors include offset, length, SHA-256, confidence, and a
+note instead of embedding raw game bytes.
 
 ## Texture And UV Inspector
 

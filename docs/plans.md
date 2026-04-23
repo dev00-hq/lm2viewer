@@ -204,15 +204,15 @@ interpolation, linear interpolation, and body transform application.
 
 ### M7: ANIM3DS Track
 
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- Catalog every ANIM3DS entry with parse status, size, hash, header words, and
-  unknown descriptors.
-- Add deeper decode only when source, MBN, or original runtime evidence identifies
-  the semantic layout.
-- Connect ANIM3DS entries to contracts once usage evidence is known.
+- Implemented: catalog every non-empty ANIM3DS entry with raw parse status,
+  decoded size, decoded hash, header words, and unknown byte-range descriptors.
+- Deferred: add deeper decode only when source, MBN, or original runtime
+  evidence identifies the semantic layout.
+- Deferred: connect ANIM3DS entries to contracts once usage evidence is known.
 
 ANIM3DS deep decode should not block the first validated BODY + ANIM frame
 stepping path unless a selected reference model depends on it.

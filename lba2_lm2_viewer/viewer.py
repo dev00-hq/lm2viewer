@@ -1192,6 +1192,86 @@ def find_catalog_asset(catalog: dict[str, Any], asset_id: str) -> dict[str, Any]
     raise Lm2Error(f"catalog asset not found: {asset_id}")
 
 
+def unknown_bytes_descriptor(
+    payload: bytes,
+    *,
+    section: str,
+    offset: int,
+    length: int,
+    confidence: str,
+    note: str,
+    related_fields: list[str] | None = None,
+) -> dict[str, Any]:
+    if offset < 0 or length < 0 or offset + length > len(payload):
+        raise Lm2Error(f"invalid unknown descriptor range {offset}:{length}")
+    descriptor: dict[str, Any] = {
+        "section": section,
+        "offset": offset,
+        "length": length,
+        "sha256": hashlib.sha256(payload[offset : offset + length]).hexdigest(),
+        "confidence": confidence,
+        "note": note,
+    }
+    if related_fields:
+        descriptor["related_decoded_fields"] = related_fields
+    return descriptor
+
+
+def raw_animation_catalog_stats(payload: bytes, parse_error: str) -> dict[str, Any]:
+    header_byte_length = min(16, len(payload) - (len(payload) % 2))
+    header_words = (
+        list(struct.unpack_from("<" + "H" * (header_byte_length // 2), payload, 0))
+        if header_byte_length
+        else []
+    )
+    descriptors: list[dict[str, Any]] = []
+    if header_byte_length:
+        descriptors.append(
+            unknown_bytes_descriptor(
+                payload,
+                section="header_words",
+                offset=0,
+                length=header_byte_length,
+                confidence="high",
+                note="Captured as little-endian words only; ANIM3DS header semantics are not decoded.",
+                related_fields=["header_words"],
+            )
+        )
+    if len(payload) > header_byte_length:
+        descriptors.append(
+            unknown_bytes_descriptor(
+                payload,
+                section="payload_after_header_words",
+                offset=header_byte_length,
+                length=len(payload) - header_byte_length,
+                confidence="high",
+                note="Opaque ANIM3DS payload bytes retained only as a descriptor hash.",
+            )
+        )
+    if not descriptors:
+        descriptors.append(
+            unknown_bytes_descriptor(
+                payload,
+                section="empty_payload",
+                offset=0,
+                length=0,
+                confidence="high",
+                note="Empty animation payload.",
+            )
+        )
+
+    return {
+        "decoded_bytes": len(payload),
+        "decoded_sha256": hashlib.sha256(payload).hexdigest(),
+        "header_words": header_words,
+        "header_word_count": len(header_words),
+        "parse_status": "raw",
+        "parse_error": parse_error,
+        "semantic_layout": "unknown",
+        "unknown_descriptors": descriptors,
+    }
+
+
 def build_catalog(
     asset_root: Path,
     progress: DecodeProgress | None = None,
@@ -1355,21 +1435,7 @@ def build_catalog(
                         "parsed": True,
                     }
                 else:
-                    head = (
-                        list(
-                            struct.unpack_from(
-                                "<" + "H" * min(6, len(payload) // 2), payload, 0
-                            )
-                        )
-                        if payload
-                        else []
-                    )
-                    stats = {
-                        "decoded_bytes": len(payload),
-                        "header_words": head,
-                        "parse_status": "raw",
-                        "parse_error": animation_error,
-                    }
+                    stats = raw_animation_catalog_stats(payload, animation_error)
                     entry_type = "animation-raw"
                     features = {"parsed": False}
                 asset = {
