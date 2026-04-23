@@ -22,7 +22,7 @@ import threading
 import time
 import urllib.parse
 import webbrowser
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,13 +30,22 @@ from pathlib import Path
 from typing import Any
 
 from . import lba_hqr
+from .animation import (
+    AnimationError,
+    AnimationSummary,
+    Lba2Animation,
+    parse_lba2_animation,
+    parse_lba2_animation_records,
+    sample_keyframe_transition,
+)
 
 WORLD_SCALE = 0.15
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 PACKAGE_SUFFIXES = {".hqr"}
 FRONTEND_DIST = Path(__file__).resolve().with_name("frontend") / "dist"
-ANIMATION_ARCHIVE_NAMES = {"ANIM.HQR", "ANIM3DS.HQR"}
+ANIM_ARCHIVE_NAME = "ANIM.HQR"
+ANIMATION_ARCHIVE_NAMES = {ANIM_ARCHIVE_NAME, "ANIM3DS.HQR"}
 PALETTE_ARCHIVE_NAME = "RESS.HQR"
 PALETTE_ENTRY_INDEX = 0
 PALETTE_BYTES = 256 * 3
@@ -73,10 +82,6 @@ def parse_multipart_upload(content_type: str, body: bytes) -> dict[str, Any]:
         filename = part.get_filename() or "upload.lm2"
         return {"filename": filename, "data": data}
     raise Lm2Error("upload did not include a file field")
-
-
-class AnimationError(ValueError):
-    pass
 
 
 @dataclass
@@ -317,28 +322,6 @@ class SpherePrimitive:
 
 
 @dataclass(frozen=True)
-class AnimationSummary:
-    keyframes: int
-    boneframes: int
-    loop_frame: int
-    total_duration: int
-    translated_boneframes: int
-    can_fall: bool
-    byte_length: int
-
-    def to_json(self) -> dict[str, Any]:
-        return {
-            "keyframes": self.keyframes,
-            "boneframes": self.boneframes,
-            "loop_frame": self.loop_frame,
-            "total_duration": self.total_duration,
-            "translated_boneframes": self.translated_boneframes,
-            "can_fall": self.can_fall,
-            "byte_length": self.byte_length,
-        }
-
-
-@dataclass(frozen=True)
 class UvGroup:
     x: int
     y: int
@@ -359,12 +342,14 @@ class Lm2Model:
     lines: tuple[LinePrimitive, ...]
     spheres: tuple[SpherePrimitive, ...]
     uv_groups: tuple[UvGroup, ...]
+    raw_vertices: tuple[Vertex, ...] = ()
 
     def to_viewer_json(
         self,
         source_name: str | None = None,
         palette: list[int] | None = None,
         texture_atlas: dict[str, Any] | None = None,
+        pose: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         raw_bounds = self.header.bounds
         xs = [v.x for v in self.vertices]
@@ -380,7 +365,7 @@ class Lm2Model:
                 "z": [raw_bounds[4], raw_bounds[5]],
             },
         }
-        return {
+        payload = {
             "source": source_name,
             "format": "lm2",
             "scale": WORLD_SCALE,
@@ -452,6 +437,9 @@ class Lm2Model:
                 for bone in self.bones
             ],
         }
+        if pose is not None:
+            payload["pose"] = pose
+        return payload
 
 
 def read_header(reader: Reader) -> Lm2Header:
@@ -597,6 +585,7 @@ def parse_lm2(data: bytes) -> Lm2Model:
         tuple(lines),
         tuple(spheres),
         uv_groups,
+        raw_vertices,
     )
 
 
@@ -630,6 +619,206 @@ def resolve_vertex(
             raise Lm2Error(f"bone {next_bone_index} has invalid parent {bone.parent}")
         next_bone_index = bone.parent
     return Vertex(x, y, z, vertex.bone)
+
+
+Matrix4 = tuple[
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+]
+
+
+def pose_lm2_model(
+    model: Lm2Model,
+    animation: Lba2Animation,
+    *,
+    sample_frame: int = 0,
+    previous_frame: int | None = None,
+    elapsed_ms: int = 0,
+) -> tuple[Lm2Model, dict[str, Any]]:
+    if animation.bone_count != len(model.bones):
+        raise AnimationError(
+            "animation bone count "
+            f"{animation.bone_count} does not match model bone count {len(model.bones)}"
+        )
+    local_vertices = model.raw_vertices
+    if not local_vertices:
+        raise Lm2Error("posing requires local raw vertices")
+    if len(local_vertices) != len(model.vertices):
+        raise Lm2Error("model raw vertex count does not match resolved vertex count")
+
+    sample = sample_keyframe_transition(
+        animation,
+        target_frame_index=sample_frame,
+        elapsed_ms=elapsed_ms,
+        previous_index=previous_frame,
+        body_bone_count=len(model.bones),
+    )
+    bone_samples = {bone["index"]: bone for bone in sample["bones"]}
+    root_delta = sample["root_delta"]
+    root_matrix = translation_matrix(
+        root_delta[0] * WORLD_SCALE,
+        root_delta[1] * WORLD_SCALE,
+        root_delta[2] * WORLD_SCALE,
+    )
+    bone_matrices: list[Matrix4 | None] = [None] * len(model.bones)
+
+    for index in range(len(model.bones)):
+        build_bone_pose_matrix(index, model, local_vertices, bone_samples, bone_matrices, root_matrix)
+
+    posed_vertices: list[Vertex] = []
+    for vertex in local_vertices:
+        matrix = bone_matrices[vertex.bone]
+        if matrix is None:
+            raise Lm2Error(f"missing pose matrix for bone {vertex.bone}")
+        x, y, z = transform_point(matrix, (vertex.x, vertex.y, vertex.z))
+        posed_vertices.append(Vertex(x, y, z, vertex.bone))
+
+    pose = {
+        "animation": {
+            "keyframes": animation.keyframe_count,
+            "boneframes": animation.bone_count,
+            "loop_frame": animation.loop_start_keyframe,
+        },
+        "sample": sample,
+        "transform": {
+            "rotation_units": "12bit_turn",
+            "rotation_order": "x_y_z",
+            "translation_scale": WORLD_SCALE,
+            "vertex_space": "lm2_local_vertices_transformed_to_world",
+        },
+    }
+    return replace(model, vertices=tuple(posed_vertices)), pose
+
+
+def build_bone_pose_matrix(
+    index: int,
+    model: Lm2Model,
+    local_vertices: tuple[Vertex, ...],
+    bone_samples: dict[int, dict[str, Any]],
+    bone_matrices: list[Matrix4 | None],
+    root_matrix: Matrix4,
+) -> Matrix4:
+    cached = bone_matrices[index]
+    if cached is not None:
+        return cached
+    bone = model.bones[index]
+    if bone.vertex >= len(local_vertices):
+        raise Lm2Error(f"bone {index} references missing vertex {bone.vertex}")
+
+    if bone.parent > 1000:
+        parent_matrix = root_matrix
+    else:
+        if bone.parent >= len(model.bones):
+            raise Lm2Error(f"bone {index} has invalid parent {bone.parent}")
+        parent_matrix = build_bone_pose_matrix(
+            bone.parent,
+            model,
+            local_vertices,
+            bone_samples,
+            bone_matrices,
+            root_matrix,
+        )
+
+    pivot = local_vertices[bone.vertex]
+    matrix = multiply_matrix(
+        parent_matrix,
+        multiply_matrix(
+            translation_matrix(pivot.x, pivot.y, pivot.z),
+            animation_bone_matrix(bone_samples.get(index)),
+        ),
+    )
+    bone_matrices[index] = matrix
+    return matrix
+
+
+def animation_bone_matrix(bone_sample: dict[str, Any] | None) -> Matrix4:
+    if bone_sample is None:
+        return identity_matrix()
+    values = bone_sample.get("values")
+    if not isinstance(values, list) or len(values) != 3:
+        raise AnimationError("sampled bone transform is missing three values")
+    mode = bone_sample.get("mode")
+    if mode == 0:
+        return rotation_xyz_matrix(
+            turn12_to_radians(values[0]),
+            turn12_to_radians(values[1]),
+            turn12_to_radians(values[2]),
+        )
+    if mode in (1, 2):
+        return translation_matrix(
+            values[0] * WORLD_SCALE,
+            values[1] * WORLD_SCALE,
+            values[2] * WORLD_SCALE,
+        )
+    raise AnimationError(f"unsupported animation mode {mode}")
+
+
+def identity_matrix() -> Matrix4:
+    return (
+        (1.0, 0.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0, 0.0),
+        (0.0, 0.0, 1.0, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def translation_matrix(x: float, y: float, z: float) -> Matrix4:
+    return (
+        (1.0, 0.0, 0.0, x),
+        (0.0, 1.0, 0.0, y),
+        (0.0, 0.0, 1.0, z),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def rotation_xyz_matrix(x: float, y: float, z: float) -> Matrix4:
+    cx, sx = math.cos(x), math.sin(x)
+    cy, sy = math.cos(y), math.sin(y)
+    cz, sz = math.cos(z), math.sin(z)
+    rotate_x: Matrix4 = (
+        (1.0, 0.0, 0.0, 0.0),
+        (0.0, cx, -sx, 0.0),
+        (0.0, sx, cx, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+    rotate_y: Matrix4 = (
+        (cy, 0.0, sy, 0.0),
+        (0.0, 1.0, 0.0, 0.0),
+        (-sy, 0.0, cy, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+    rotate_z: Matrix4 = (
+        (cz, -sz, 0.0, 0.0),
+        (sz, cz, 0.0, 0.0),
+        (0.0, 0.0, 1.0, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+    return multiply_matrix(multiply_matrix(rotate_z, rotate_y), rotate_x)
+
+
+def multiply_matrix(left: Matrix4, right: Matrix4) -> Matrix4:
+    return tuple(
+        tuple(
+            sum(left[row][index] * right[index][column] for index in range(4))
+            for column in range(4)
+        )
+        for row in range(4)
+    )  # type: ignore[return-value]
+
+
+def transform_point(matrix: Matrix4, point: tuple[float, float, float]) -> tuple[float, float, float]:
+    x, y, z = point
+    return (
+        matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z + matrix[0][3],
+        matrix[1][0] * x + matrix[1][1] * y + matrix[1][2] * z + matrix[1][3],
+        matrix[2][0] * x + matrix[2][1] * y + matrix[2][2] * z + matrix[2][3],
+    )
+
+
+def turn12_to_radians(value: int) -> float:
+    return (value & 0x0FFF) * math.tau / 0x1000
 
 
 def parse_polygons(reader: Reader, header: Lm2Header) -> tuple[Polygon, ...]:
@@ -745,51 +934,6 @@ def validate_indices(
     for bone_index, bone in enumerate(bones):
         if bone.vertex >= vertex_count:
             raise Lm2Error(f"bone {bone_index} references missing vertex {bone.vertex}")
-
-
-def parse_lba2_animation(data: bytes) -> AnimationSummary:
-    reader = Reader(data)
-    if len(data) < 8:
-        raise AnimationError("animation is too small")
-    keyframes = reader.u16()
-    boneframes = reader.u16()
-    loop_frame = reader.u16()
-    reader.u16()
-    if keyframes == 0:
-        raise AnimationError("animation has no keyframes")
-    if keyframes > 20000 or boneframes > 1024:
-        raise AnimationError("animation header is outside plausible bounds")
-    expected_size = 8 + keyframes * (8 + boneframes * 8)
-    if expected_size > len(data):
-        raise AnimationError(
-            f"animation payload is truncated: expected {expected_size} bytes, found {len(data)}"
-        )
-    if loop_frame >= keyframes:
-        raise AnimationError(
-            f"animation loop frame {loop_frame} exceeds keyframe count {keyframes}"
-        )
-
-    total_duration = 0
-    translated_boneframes = 0
-    can_fall = False
-    for _ in range(keyframes):
-        total_duration += reader.u16()
-        reader.skip(6)
-        for _ in range(boneframes):
-            bone_type = reader.s16()
-            reader.skip(6)
-            if bone_type != 0:
-                translated_boneframes += 1
-                can_fall = True
-    return AnimationSummary(
-        keyframes,
-        boneframes,
-        loop_frame,
-        total_duration,
-        translated_boneframes,
-        can_fall,
-        len(data),
-    )
 
 
 def reject_package_input(source_name: str) -> None:
@@ -1041,6 +1185,13 @@ def read_hqr_payload(
         return raw, None
 
 
+def find_catalog_asset(catalog: dict[str, Any], asset_id: str) -> dict[str, Any]:
+    for asset in catalog.get("assets", []):
+        if asset.get("id") == asset_id:
+            return asset
+    raise Lm2Error(f"catalog asset not found: {asset_id}")
+
+
 def build_catalog(
     asset_root: Path,
     progress: DecodeProgress | None = None,
@@ -1183,13 +1334,18 @@ def build_catalog(
                     progress.update(current=processed_entries)
                 continue
 
-            if hqr_path.name.upper() in ANIMATION_ARCHIVE_NAMES:
-                try:
-                    animation = parse_lba2_animation(payload)
-                    animation_error = ""
-                except (AnimationError, Lm2Error) as exc:
+            archive_name = hqr_path.name.upper()
+            if archive_name in ANIMATION_ARCHIVE_NAMES:
+                if archive_name == ANIM_ARCHIVE_NAME:
+                    try:
+                        animation = parse_lba2_animation(payload)
+                        animation_error = ""
+                    except (AnimationError, Lm2Error) as exc:
+                        animation = None
+                        animation_error = str(exc)
+                else:
                     animation = None
-                    animation_error = str(exc)
+                    animation_error = "ANIM3DS semantic decode is not implemented"
                 if animation is not None:
                     stats = animation.to_json()
                     entry_type = "animation"
@@ -1397,10 +1553,16 @@ class ViewerServer:
         return load_texture_atlas_from_asset_root(Path(asset_root), self.palette)
 
     def model_json(
-        self, model: Lm2Model, source_name: str | None = None
+        self,
+        model: Lm2Model,
+        source_name: str | None = None,
+        pose: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return model.to_viewer_json(
-            source_name, palette=self.palette, texture_atlas=self.texture_atlas
+            source_name,
+            palette=self.palette,
+            texture_atlas=self.texture_atlas,
+            pose=pose,
         )
 
     def find_catalog_asset(self, asset_id: str) -> dict[str, Any]:
@@ -1457,6 +1619,47 @@ class ViewerServer:
                 warnings=warnings,
             )
             return {"output_dir": str(output_dir.resolve()), "manifest": manifest}
+
+    def pose_catalog_animation(
+        self,
+        body_id: str,
+        animation_id: str,
+        sample_frame: int,
+        elapsed_ms: int,
+        previous_frame: int | None = None,
+    ) -> dict[str, Any]:
+        with self.operation_lock:
+            if self.asset_root is None:
+                raise Lm2Error("no asset root loaded")
+            body_asset = self.find_catalog_asset(body_id)
+            if body_asset.get("kind") != "model":
+                raise Lm2Error(f"catalog asset is not a model: {body_id}")
+            animation_asset = self.find_catalog_asset(animation_id)
+            if (
+                animation_asset.get("kind") != "animation"
+                or animation_asset.get("entry_type") != "animation"
+            ):
+                raise Lm2Error(f"catalog asset is not a decoded animation: {animation_id}")
+
+            body_payload, _ = read_hqr_payload(self.asset_root, body_asset["source"])
+            animation_payload, _ = read_hqr_payload(
+                self.asset_root, animation_asset["source"]
+            )
+            model = load_lm2_bytes(body_payload, str(body_asset["relative_path"]))
+            animation = parse_lba2_animation_records(animation_payload)
+            posed_model, pose = pose_lm2_model(
+                model,
+                animation,
+                sample_frame=sample_frame,
+                previous_frame=previous_frame,
+                elapsed_ms=elapsed_ms,
+            )
+            pose["body_asset_id"] = body_asset["id"]
+            pose["animation_asset_id"] = animation_asset["id"]
+            response = self.model_json(posed_model, body_asset["label"], pose=pose)
+            response["catalog_asset"] = body_asset
+            self.last_model = response
+            return response
 
     def handler_class(self) -> type[BaseHTTPRequestHandler]:
         server_state = self
@@ -1578,6 +1781,24 @@ class ViewerServer:
                             str(request["id"]),
                             output_dir,
                             str(request.get("polygon_mode") or "original"),
+                        )
+                        self.send_json(response)
+                    elif parsed.path == "/api/animation/pose":
+                        length = int(self.headers.get("content-length", "0"))
+                        body = self.rfile.read(length)
+                        request = json.loads(body.decode("utf-8"))
+                        previous_frame_value = request.get("previous_frame")
+                        previous_frame = (
+                            int(previous_frame_value)
+                            if previous_frame_value is not None
+                            else None
+                        )
+                        response = server_state.pose_catalog_animation(
+                            str(request["body_id"]),
+                            str(request["animation_id"]),
+                            int(request.get("sample_frame") or 0),
+                            int(request.get("elapsed_ms") or 0),
+                            previous_frame,
                         )
                         self.send_json(response)
                     else:
@@ -1764,6 +1985,106 @@ def contract_command(argv: list[str]) -> int:
     return 0
 
 
+def animation_command(argv: list[str]) -> int:
+    from .animation import (
+        build_animation_evidence,
+        parse_lba2_animation_records,
+        write_animation_evidence,
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="lba2-lm2-viewer animation",
+        description="Write decoded ANIM records and frame-step evidence as JSON.",
+    )
+    parser.add_argument(
+        "--asset-root",
+        required=True,
+        type=Path,
+        help="folder containing the user's LBA2 HQR files",
+    )
+    parser.add_argument(
+        "--asset",
+        required=True,
+        help='catalog animation asset id, for example "ANIM.HQR:1"',
+    )
+    parser.add_argument(
+        "--body-asset",
+        help='optional catalog body asset id for bone-count compatibility, for example "BODY.HQR:1"',
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="JSON file to write",
+    )
+    parser.add_argument(
+        "--sample-frame",
+        type=int,
+        default=0,
+        help="target keyframe index to sample, default 0",
+    )
+    parser.add_argument(
+        "--previous-frame",
+        type=int,
+        help="optional previous keyframe index for loop-transition samples",
+    )
+    parser.add_argument(
+        "--elapsed-ms",
+        type=int,
+        default=0,
+        help="elapsed milliseconds inside the sampled keyframe, default 0",
+    )
+    args = parser.parse_args(argv)
+
+    asset_root = args.asset_root.resolve()
+    catalog = build_catalog(asset_root)
+    asset = find_catalog_asset(catalog, args.asset)
+    if asset.get("kind") != "animation" or asset.get("entry_type") != "animation":
+        raise Lm2Error(f"catalog asset is not a decoded animation: {args.asset}")
+    payload, resource = read_hqr_payload(asset_root, asset["source"])
+    animation = parse_lba2_animation_records(payload)
+
+    body: dict[str, Any] | None = None
+    if args.body_asset is not None:
+        body_asset = find_catalog_asset(catalog, args.body_asset)
+        if body_asset.get("kind") != "model":
+            raise Lm2Error(f"catalog asset is not a model: {args.body_asset}")
+        body_payload, _ = read_hqr_payload(asset_root, body_asset["source"])
+        model = load_lm2_bytes(body_payload, str(body_asset.get("label") or args.body_asset))
+        body = {"asset_id": body_asset["id"], "bone_count": len(model.bones)}
+
+    evidence = build_animation_evidence(
+        animation,
+        source={
+            "catalog_asset_id": asset["id"],
+            "catalog_label": asset.get("label"),
+            "asset_root": str(asset_root),
+            "hqr": asset["source"].get("hqr"),
+            "entry_index": asset["source"].get("entry_index"),
+            "classic_index": asset["source"].get("classic_index"),
+            "resource": resource,
+        },
+        sample_frame=args.sample_frame,
+        previous_frame=args.previous_frame,
+        elapsed_ms=args.elapsed_ms,
+        body=body,
+    )
+    write_animation_evidence(evidence, args.out)
+    print(f"Wrote {args.out.resolve()}")
+    print(
+        json.dumps(
+            {
+                "schema_version": evidence["schema_version"],
+                "asset_id": evidence["source"]["catalog_asset_id"],
+                "keyframes": evidence["animation"]["keyframe_count"],
+                "boneframes": evidence["animation"]["bone_count"],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def is_export_subcommand(arguments: list[str]) -> bool:
     if arguments[:1] != ["export"]:
         return False
@@ -1781,6 +2102,10 @@ def is_contract_subcommand(arguments: list[str]) -> bool:
     return arguments[:1] == ["contract"]
 
 
+def is_animation_subcommand(arguments: list[str]) -> bool:
+    return arguments[:1] == ["animation"]
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     if is_export_subcommand(arguments):
@@ -1792,7 +2117,13 @@ def main(argv: list[str] | None = None) -> int:
     if is_contract_subcommand(arguments):
         try:
             return contract_command(arguments[1:])
-        except (Lm2Error, lba_hqr.HqrError) as exc:
+        except (Lm2Error, AnimationError, lba_hqr.HqrError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    if is_animation_subcommand(arguments):
+        try:
+            return animation_command(arguments[1:])
+        except (Lm2Error, AnimationError, lba_hqr.HqrError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
 

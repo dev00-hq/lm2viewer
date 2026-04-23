@@ -15,11 +15,12 @@ HQR files at runtime.
 - Browser frontend exists and is served by the Python backend.
 - Single developer build command exists.
 - Release zip and wheel packaging exists.
-- HQR, BODY/LM2, palette, texture atlas, and animation-summary paths exist.
+- HQR, BODY/LM2, palette, texture atlas, and structured ANIM decode paths exist.
 - CLI and frontend model export probes exist.
 - CLI model contract probes exist.
+- CLI animation evidence probes exist.
 - Frontend texture/UV inspector exists.
-- Full animation decode and frame stepping are planned.
+- Frontend posed mesh frame stepping exists for selected BODY + ANIM pairs.
 
 Milestone status is tracked in `docs/plans.md`.
 
@@ -119,6 +120,28 @@ emit plain JSON with schema version `lm2_model_contract.v0`. The current draft
 includes source identity, geometry facts, render facts, animation placeholders,
 gameplay placeholders, evidence references, confidence, and unknown-field
 descriptors.
+
+## Animation Evidence Probe
+
+Write decoded ANIM records and one deterministic frame-step sample:
+
+```powershell
+lba2-lm2-viewer animation --asset-root "C:\LBA2" --asset "ANIM.HQR:1" --body-asset "BODY.HQR:1" --out out\anim-001.evidence.json --sample-frame 1 --previous-frame 0 --elapsed-ms 50
+```
+
+The JSON uses schema version `lm2_animation_evidence.v0`. It preserves raw
+keyframe and boneframe values, records the decoded header and summary, applies
+the recovered `0040ce90` wrapped 12-bit rotation and `0040cf10` signed-linear
+interpolation rules, and can record BODY bone-count compatibility. It is an RE
+evidence artifact, not a runtime asset.
+
+## Animation Frame Stepping
+
+After indexing HQR files, select a BODY model and a decoded `ANIM.HQR` entry in
+the explorer. The Animation panel can pose the selected BODY at a target
+keyframe and elapsed time, or step to the previous/next frame. The backend owns
+the BODY + ANIM transform path and returns normal model JSON with posed
+vertices plus pose metadata for inspection.
 
 ## Texture And UV Inspector
 

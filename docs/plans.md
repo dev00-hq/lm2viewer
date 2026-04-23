@@ -184,15 +184,19 @@ experiments.
 
 ### M6: Animation Semantic Decode and Frame Stepping
 
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- Full ANIM record decode beyond current summaries.
-- Tests for header, keyframe, boneframe, loop, and interpolation behavior.
-- Evidence JSON for at least one known animation.
-- Frame stepping for selected BODY + ANIM pairs.
-- Continuous playback only after frame stepping matches MBN/original evidence.
+- Implemented: full ANIM record decode beyond current summaries.
+- Implemented: tests for header, keyframe, boneframe, loop, and interpolation
+  behavior.
+- Implemented: CLI evidence JSON with raw records, one sampled frame step, and
+  optional BODY bone-count compatibility.
+- Implemented: posed BODY + ANIM vertex transform stepping in the viewer for
+  selected catalog model and ANIM pairs.
+- Deferred: continuous playback; add it only after more original-runtime visual
+  evidence confirms the frame-step path.
 
 Use the updated MBN model viewer decompilation as reference for animation header
 layout, keyframe records, boneframe records, animation case handling, rotation

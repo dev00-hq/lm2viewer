@@ -139,6 +139,27 @@ plain JSON. They capture reusable facts for the future port: source identity,
 geometry, render facts, animation compatibility placeholders, gameplay-facing
 placeholders, evidence references, confidence, and unknown-field descriptors.
 
+## Animation Evidence Probe
+
+Write decoded ANIM records and one deterministic frame-step sample as JSON:
+
+```powershell
+lba2-lm2-viewer animation --asset-root "C:\LBA2" --asset "ANIM.HQR:1" --body-asset "BODY.HQR:1" --out out\anim-001.evidence.json --sample-frame 1 --previous-frame 0 --elapsed-ms 50
+```
+
+The evidence keeps raw keyframe and boneframe values, applies the recovered
+12-bit wrapped rotation and signed-linear interpolation rules, and records
+optional BODY bone-count compatibility. It does not write game assets into the
+repository.
+
+## Animation Frame Stepping
+
+In the browser viewer, index the HQR folder, select a BODY model, then select a
+decoded `ANIM.HQR` entry. The Animation panel poses the selected BODY at a
+target keyframe and elapsed time, and provides previous/next frame stepping. The
+backend applies the BODY + ANIM transform and returns regular viewer model JSON
+with posed vertices.
+
 ## Release Package
 
 Create release artifacts with:
@@ -155,7 +176,8 @@ Release artifacts include the built frontend. Source checkouts do not.
 ## Current Decoder Coverage
 
 - LM2 body models from HQR entries
-- animation summaries from `ANIM.HQR`
+- full ANIM record decode, CLI frame-step evidence, and viewer posed frame
+  stepping from `ANIM.HQR`
 - raw `ANIM3DS.HQR` payload metadata for entries not yet fully decoded
 - palette and texture atlas data from `RESS.HQR`
 

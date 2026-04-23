@@ -261,6 +261,45 @@ label {
   margin-top: 8px;
 }
 
+.animation-panel {
+  border: 1px solid #3d454d;
+  border-radius: 6px;
+  background: #181b1e;
+  padding: 9px;
+}
+
+.animation-selection {
+  color: #c8d0d8;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pose-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.pose-grid label {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: #aeb7c2;
+  font-size: 11px;
+}
+
+.pose-grid input {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid #4b525a;
+  border-radius: 6px;
+  background: #151719;
+  color: #eef1f4;
+  padding: 8px;
+}
+
 .export-result {
   margin-top: 6px;
   color: #aeb7c2;
@@ -440,6 +479,7 @@ label {
   #drop,
   .decode-progress,
   .export-panel,
+  .animation-panel,
   .uv-inspector,
   .row,
   .button-row,

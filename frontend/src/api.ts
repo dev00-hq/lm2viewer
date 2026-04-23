@@ -71,3 +71,23 @@ export async function exportCatalogAsset(asset: CatalogAsset, polygonMode: Polyg
     body: JSON.stringify({ id: asset.id, polygon_mode: polygonMode }),
   }));
 }
+
+export async function poseAnimation(
+  body: CatalogAsset,
+  animation: CatalogAsset,
+  sampleFrame: number,
+  elapsedMs: number,
+  previousFrame?: number,
+): Promise<Lm2Model> {
+  return readJson<Lm2Model>(await fetch('/api/animation/pose', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      body_id: body.id,
+      animation_id: animation.id,
+      sample_frame: sampleFrame,
+      elapsed_ms: elapsedMs,
+      previous_frame: previousFrame,
+    }),
+  }));
+}

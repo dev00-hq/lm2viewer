@@ -107,11 +107,14 @@ and frame stepping are validated.
 
 Implementation order:
 
-1. Decode full records.
+1. Decode full records. Implemented in `lba2_lm2_viewer.animation`.
 2. Test header, keyframe, boneframe, loop, and interpolation behavior.
-3. Export evidence JSON.
-4. Add frame stepping for selected BODY + ANIM pairs.
-5. Add continuous playback.
+   Implemented with synthetic fixtures.
+3. Export evidence JSON. Implemented by `lba2-lm2-viewer animation`.
+4. Add posed frame stepping for selected BODY + ANIM pairs. Implemented by the
+   backend pose path and frontend Animation panel.
+5. Add continuous playback only after additional original-runtime visual
+   evidence backs the posed stepping path.
 
 Use updated MBN model viewer decompilation as reference for:
 

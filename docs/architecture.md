@@ -30,7 +30,8 @@ flowchart LR
 
 | Path | Role |
 | --- | --- |
-| `lba2_lm2_viewer/viewer.py` | Backend server, CLI, catalog building, current LM2/animation parsing, palette/texture loading |
+| `lba2_lm2_viewer/viewer.py` | Backend server, CLI, catalog building, current LM2 parsing, palette/texture loading |
+| `lba2_lm2_viewer/animation.py` | ANIM record decode, interpolation helpers, and animation evidence JSON |
 | `lba2_lm2_viewer/contracts/` | Versioned msgspec model contracts and JSON export helpers |
 | `lba2_lm2_viewer/lba_hqr.py` | HQR table and resource-entry decoding |
 | `lba2_lm2_viewer/body_metadata.json` | Local metadata for BODY catalog labels |
@@ -61,13 +62,14 @@ Implemented:
 - BODY/LM2 model parsing for vertices, bones, normals, polygons, lines, spheres,
   UV groups, bounds, and selected flags.
 - RESS palette and texture atlas decode needed by current model rendering.
-- ANIM and ANIM3DS catalog entries with summary/raw metadata.
+- ANIM record decode, catalog summaries, CLI frame-step evidence, posed BODY +
+  ANIM viewer frame stepping, and ANIM3DS raw catalog metadata.
 - Contract manifests and export probes.
 - Read-only texture/UV inspector.
 
 Planned:
 
-- Full ANIM semantic records and frame stepping.
+- Continuous animation playback after more original-runtime visual evidence.
 - ANIM3DS semantic decode once evidence identifies the layout.
 
 ## Frontend Boundary

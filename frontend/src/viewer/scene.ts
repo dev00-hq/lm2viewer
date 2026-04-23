@@ -57,6 +57,7 @@ export class ViewerScene {
     this.scene.add(this.grid);
     this.scene.add(new THREE.AxesHelper(40));
     this.scene.add(this.modelRoot);
+    this.resize();
   }
 
   get model(): Lm2Model | null {
@@ -143,7 +144,6 @@ export class ViewerScene {
   }
 
   tick(): void {
-    this.resize();
     this.controls.update();
     this.applyHorizonLock();
     this.renderer.render(this.scene, this.camera);

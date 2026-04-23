@@ -1,5 +1,5 @@
 import './styles.css';
-import { buildCatalog, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
+import { buildCatalog, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, poseAnimation, uploadModel } from './api';
 import { requireElement } from './dom';
 import type { CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './types';
 import { CatalogUi } from './ui/catalog';
@@ -32,6 +32,13 @@ const progressFill = requireElement('progressFill', HTMLDivElement);
 const exportAssetButton = requireElement('exportAsset', HTMLButtonElement);
 const exportPolygonMode = requireElement('exportPolygonMode', HTMLSelectElement);
 const exportResult = requireElement('exportResult', HTMLDivElement);
+const animationSelection = requireElement('animationSelection', HTMLDivElement);
+const animationFrame = requireElement('animationFrame', HTMLInputElement);
+const animationElapsed = requireElement('animationElapsed', HTMLInputElement);
+const animationPrevious = requireElement('animationPrevious', HTMLButtonElement);
+const animationPose = requireElement('animationPose', HTMLButtonElement);
+const animationNext = requireElement('animationNext', HTMLButtonElement);
+const animationResult = requireElement('animationResult', HTMLDivElement);
 const uvInspector = new UvInspector({
   root: requireElement('uvInspector', HTMLDivElement),
   polygon: requireElement('uvPolygon', HTMLSelectElement),
@@ -44,6 +51,9 @@ const uvInspector = new UvInspector({
   result: requireElement('uvResult', HTMLDivElement),
 });
 let selectedExportAsset: CatalogAsset | null = null;
+let selectedBodyAsset: CatalogAsset | null = null;
+let selectedAnimationAsset: CatalogAsset | null = null;
+let animationBusy = false;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
@@ -83,6 +93,9 @@ requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => ru
   { label: 'Decoding model' },
 ));
 exportAssetButton.addEventListener('click', () => runAction(exportSelectedAsset, { label: 'Exporting evidence probe' }));
+animationPose.addEventListener('click', () => runAction(() => applyAnimationPose(), { label: 'Posing animation frame' }));
+animationPrevious.addEventListener('click', () => runAction(() => stepAnimationFrame(-1), { label: 'Posing previous frame' }));
+animationNext.addEventListener('click', () => runAction(() => stepAnimationFrame(1), { label: 'Posing next frame' }));
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
@@ -133,8 +146,7 @@ async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
     catalogUi.select(asset);
     const payload = await loadCatalogAsset(asset);
     if ('animation' in payload) {
-      setSelectedExportAsset(null);
-      updateExportControls();
+      setSelectedAnimationAsset(payload.animation);
       uvInspector.setModel(null);
       catalogUi.renderDetail(payload.animation);
       overlay.textContent = `${payload.animation.label} selected`;
@@ -150,7 +162,9 @@ function showModel(model: Lm2Model): void {
   uvInspector.setModel(model);
   overlay.textContent = model.source || 'Uploaded model';
   setSelectedExportAsset(model.catalog_asset?.kind === 'model' ? model.catalog_asset : null);
+  setSelectedBodyAsset(model.catalog_asset?.kind === 'model' ? model.catalog_asset : null);
   updateExportControls();
+  updateAnimationControls();
   if (model.catalog_asset) catalogUi.select(model.catalog_asset);
 }
 
@@ -174,11 +188,124 @@ function updateExportControls(): void {
   exportAssetButton.disabled = selectedExportAsset === null;
 }
 
+function updateAnimationControls(): void {
+  const stats = selectedAnimationStats();
+  const hasPair = selectedBodyAsset !== null && stats !== null;
+  const disabled = !hasPair || animationBusy;
+  animationPose.disabled = disabled;
+  animationPrevious.disabled = disabled;
+  animationNext.disabled = disabled;
+  animationFrame.disabled = animationBusy;
+  animationElapsed.disabled = animationBusy;
+  if (stats) {
+    animationFrame.max = String(Math.max(0, stats.keyframes - 1));
+  } else {
+    animationFrame.removeAttribute('max');
+  }
+  const body = selectedBodyAsset?.label || 'No model';
+  const anim = selectedAnimationAsset?.label || 'No animation';
+  animationSelection.textContent = `${body} + ${anim}`;
+}
+
 function setSelectedExportAsset(asset: CatalogAsset | null): void {
   if (selectedExportAsset?.id !== asset?.id) {
     exportResult.textContent = '';
   }
   selectedExportAsset = asset;
+}
+
+function setSelectedBodyAsset(asset: CatalogAsset | null): void {
+  if (selectedBodyAsset?.id !== asset?.id) {
+    animationResult.textContent = '';
+  }
+  selectedBodyAsset = asset;
+}
+
+function setSelectedAnimationAsset(asset: CatalogAsset): void {
+  if (selectedAnimationAsset?.id !== asset.id) {
+    animationResult.textContent = '';
+    animationFrame.value = '0';
+    animationElapsed.value = '0';
+  }
+  selectedAnimationAsset = asset;
+  updateAnimationControls();
+}
+
+async function applyAnimationPose(previousFrame?: number): Promise<void> {
+  const bodyAsset = selectedBodyAsset;
+  const animationAsset = selectedAnimationAsset;
+  if (!bodyAsset) throw new Error('Select a catalog model before posing animation.');
+  if (!animationAsset || animationAsset.entry_type !== 'animation') {
+    throw new Error('Select a decoded ANIM entry before posing animation.');
+  }
+  if (animationBusy) throw new Error('Animation pose is already running.');
+  const frame = numericInput(animationFrame, 'frame');
+  validateAnimationFrame(frame, animationAsset);
+  const elapsedMs = numericInput(animationElapsed, 'elapsed milliseconds');
+  animationBusy = true;
+  updateAnimationControls();
+  try {
+    const model = await poseAnimation(bodyAsset, animationAsset, frame, elapsedMs, previousFrame);
+    showModel(model);
+    const sample = model.pose?.sample;
+    animationResult.textContent = sample
+      ? `Frame ${sample.target_frame_index}, previous ${sample.previous_frame_index}, next ${sample.next_frame_index}, ${sample.duration_ms} ms duration`
+      : 'Posed frame loaded';
+    overlay.textContent = `${bodyAsset.label} posed with ${animationAsset.label}`;
+  } finally {
+    animationBusy = false;
+    updateAnimationControls();
+  }
+}
+
+async function stepAnimationFrame(direction: -1 | 1): Promise<void> {
+  if (!selectedAnimationAsset || !selectedAnimationStats()) {
+    throw new Error('Select a decoded ANIM entry before stepping.');
+  }
+  const stats = selectedAnimationStats()!;
+  const current = numericInput(animationFrame, 'frame');
+  validateAnimationFrame(current, selectedAnimationAsset);
+  const previousFrame = current;
+  let next = current + direction;
+  if (direction > 0 && next >= stats.keyframes) next = stats.loop_frame;
+  if (direction < 0 && next < 0) next = Math.max(0, stats.keyframes - 1);
+  const previousFrameValue = animationFrame.value;
+  const previousElapsedValue = animationElapsed.value;
+  animationFrame.value = String(next);
+  animationElapsed.value = '0';
+  try {
+    await applyAnimationPose(previousFrame);
+  } catch (error) {
+    animationFrame.value = previousFrameValue;
+    animationElapsed.value = previousElapsedValue;
+    throw error;
+  }
+}
+
+function numericInput(input: HTMLInputElement, label: string): number {
+  if (input.value.trim() === '') {
+    throw new Error(`Animation ${label} is required.`);
+  }
+  const value = Number(input.value);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Animation ${label} must be a non-negative integer.`);
+  }
+  return value;
+}
+
+function validateAnimationFrame(frame: number, animationAsset: CatalogAsset): void {
+  if (!('keyframes' in animationAsset.stats)) {
+    throw new Error('Selected animation is not decoded.');
+  }
+  if (frame >= animationAsset.stats.keyframes) {
+    throw new Error(`Animation frame must be less than ${animationAsset.stats.keyframes}.`);
+  }
+}
+
+function selectedAnimationStats(): { keyframes: number; loop_frame: number } | null {
+  if (!selectedAnimationAsset || selectedAnimationAsset.entry_type !== 'animation') return null;
+  if (!('keyframes' in selectedAnimationAsset.stats)) return null;
+  return selectedAnimationAsset.stats;
 }
 
 function selectedPolygonMode(): PolygonMode {

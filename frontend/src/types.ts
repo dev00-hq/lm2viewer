@@ -133,6 +133,19 @@ export interface Lm2Model {
     vertex: number;
     size: number;
   }>;
+  pose?: {
+    body_asset_id: string;
+    animation_asset_id: string;
+    sample: {
+      target_frame_index: number;
+      previous_frame_index: number;
+      next_frame_index: number;
+      elapsed_ms: number;
+      duration_ms: number;
+      complete: boolean;
+      bone_count: number;
+    };
+  };
   catalog_asset?: CatalogAsset;
 }
 

@@ -52,6 +52,27 @@
           <div id="exportResult" class="export-result" role="status" aria-live="polite"></div>
         </div>
 
+        <h2>Animation</h2>
+        <div id="animationPanel" class="animation-panel">
+          <div id="animationSelection" class="animation-selection">Select a model and an ANIM entry.</div>
+          <div class="pose-grid">
+            <label>
+              <span>Frame</span>
+              <input id="animationFrame" type="number" min="0" step="1" value="0" />
+            </label>
+            <label>
+              <span>Elapsed ms</span>
+              <input id="animationElapsed" type="number" min="0" step="1" value="0" />
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="animationPrevious" title="Previous frame" aria-label="Previous animation frame">&lt;</button>
+            <button id="animationPose" disabled>Pose</button>
+            <button id="animationNext" title="Next frame" aria-label="Next animation frame">&gt;</button>
+          </div>
+          <div id="animationResult" class="export-result" role="status" aria-live="polite"></div>
+        </div>
+
         <h2>UV Inspector</h2>
         <div id="uvInspector" class="uv-inspector">
           <select id="uvPolygon" aria-label="Polygon"></select>
