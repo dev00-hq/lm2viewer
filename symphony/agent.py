@@ -220,4 +220,23 @@ class AgentRunner:
 def _app_server_command(command: str) -> list[str]:
     if os.name != "nt" and shutil.which("bash"):
         return ["bash", "-lc", command]
-    return shlex.split(command, posix=(os.name != "nt"))
+    parts = shlex.split(command, posix=(os.name != "nt"))
+    if os.name == "nt" and parts:
+        parts[0] = _resolve_windows_command(parts[0])
+    return parts
+
+
+def _resolve_windows_command(command: str) -> str:
+    if Path(command).suffix:
+        resolved = shutil.which(command)
+        return resolved or command
+    extensions = [".exe", ".cmd", ".bat", ".com", ".ps1"]
+    for extension in extensions:
+        resolved = shutil.which(command + extension)
+        if resolved:
+            if resolved.lower().endswith(".ps1"):
+                pwsh = shutil.which("pwsh") or shutil.which("powershell")
+                return pwsh or resolved
+            return resolved
+    resolved = shutil.which(command)
+    return resolved or command
