@@ -63,7 +63,7 @@ let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
 
-const playbackStepMs = 80;
+const playbackStepMs = 40;
 
 const catalogUi = new CatalogUi({
   summary: requireElement('catalogSummary', HTMLDivElement),
