@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import queue
+import shlex
 import shutil
 import subprocess
 import threading
 import time
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -216,6 +218,6 @@ class AgentRunner:
 
 
 def _app_server_command(command: str) -> list[str]:
-    if shutil.which("bash"):
+    if os.name != "nt" and shutil.which("bash"):
         return ["bash", "-lc", command]
-    return command.split()
+    return shlex.split(command, posix=(os.name != "nt"))
