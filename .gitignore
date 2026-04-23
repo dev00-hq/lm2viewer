@@ -8,3 +8,5 @@ lba2_lm2_viewer/frontend/dist/
 build/
 release/
 frontend/PLAN.md
+.viewer-*.log
+agent-browser-*.png
