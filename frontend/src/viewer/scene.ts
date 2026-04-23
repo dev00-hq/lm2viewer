@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import type { Lm2Model } from '../types';
-import { buildModelRoot } from './modelMesh';
+import { buildModelRoot, updateModelRootVertices } from './modelMesh';
 
 export interface ViewerSceneOptions {
   canvas: HTMLCanvasElement;
@@ -76,13 +76,29 @@ export class ViewerScene {
     return this.canvasBackgroundMode;
   }
 
-  loadModel(model: Lm2Model): void {
+  loadModel(model: Lm2Model, options: { frame?: boolean } = {}): void {
     this.disposeModelRoot();
     this.currentModel = model;
     this.modelRoot.clear();
     this.modelRoot.add(...buildModelRoot(model).children);
     this.applyVisibility(this.visibility);
-    this.frameModel();
+    if (options.frame !== false) this.frameModel();
+  }
+
+  updateModelVertices(
+    vertices: Lm2Model['vertices'],
+    pose?: Lm2Model['pose'],
+    catalogAsset?: Lm2Model['catalog_asset'],
+  ): void {
+    if (this.currentModel) {
+      this.currentModel = {
+        ...this.currentModel,
+        vertices,
+        pose,
+        catalog_asset: catalogAsset ?? this.currentModel.catalog_asset,
+      };
+    }
+    updateModelRootVertices(this.modelRoot, vertices);
   }
 
   applyVisibility(visibility: VisibilityState): void {

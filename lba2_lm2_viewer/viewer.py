@@ -1768,6 +1768,73 @@ class ViewerServer:
             self.last_model = response
             return response
 
+    def pose_catalog_animation_sequence(
+        self,
+        body_id: str,
+        animation_id: str,
+        step_ms: int,
+    ) -> dict[str, Any]:
+        if step_ms <= 0:
+            raise Lm2Error("animation sequence step_ms must be positive")
+        with self.operation_lock:
+            if self.asset_root is None:
+                raise Lm2Error("no asset root loaded")
+            body_asset = self.find_catalog_asset(body_id)
+            if body_asset.get("kind") != "model":
+                raise Lm2Error(f"catalog asset is not a model: {body_id}")
+            animation_asset = self.find_catalog_asset(animation_id)
+            if (
+                animation_asset.get("kind") != "animation"
+                or animation_asset.get("entry_type") != "animation"
+            ):
+                raise Lm2Error(f"catalog asset is not a decoded animation: {animation_id}")
+
+            body_payload, _ = read_hqr_payload(self.asset_root, body_asset["source"])
+            animation_payload, _ = read_hqr_payload(
+                self.asset_root, animation_asset["source"]
+            )
+            model = load_lm2_bytes(body_payload, str(body_asset["relative_path"]))
+            animation = parse_lba2_animation_records(animation_payload)
+            frames: list[dict[str, Any]] = []
+            for frame_index, keyframe in enumerate(animation.keyframes):
+                previous_frame = frame_index - 1 if frame_index > 0 else 0
+                elapsed_values = list(range(0, max(1, keyframe.duration), step_ms))
+                if not elapsed_values:
+                    elapsed_values = [0]
+                for elapsed_ms in elapsed_values:
+                    posed_model, pose = pose_lm2_model(
+                        model,
+                        animation,
+                        sample_frame=frame_index,
+                        previous_frame=previous_frame,
+                        elapsed_ms=elapsed_ms,
+                    )
+                    pose["body_asset_id"] = body_asset["id"]
+                    pose["animation_asset_id"] = animation_asset["id"]
+                    sample = pose["sample"]
+                    frames.append(
+                        {
+                            "frame": frame_index,
+                            "previous_frame": previous_frame,
+                            "next_frame": sample["next_frame_index"],
+                            "elapsed_ms": elapsed_ms,
+                            "duration_ms": sample["duration_ms"],
+                            "vertices": [
+                                [vertex.x, vertex.y, vertex.z, vertex.bone]
+                                for vertex in posed_model.vertices
+                            ],
+                            "pose": pose,
+                        }
+                    )
+            return {
+                "body_asset_id": body_asset["id"],
+                "animation_asset_id": animation_asset["id"],
+                "step_ms": step_ms,
+                "keyframes": animation.keyframe_count,
+                "loop_frame": animation.loop_start_keyframe,
+                "frames": frames,
+            }
+
     def handler_class(self) -> type[BaseHTTPRequestHandler]:
         server_state = self
 
@@ -1906,6 +1973,16 @@ class ViewerServer:
                             int(request.get("sample_frame") or 0),
                             int(request.get("elapsed_ms") or 0),
                             previous_frame,
+                        )
+                        self.send_json(response)
+                    elif parsed.path == "/api/animation/sequence":
+                        length = int(self.headers.get("content-length", "0"))
+                        body = self.rfile.read(length)
+                        request = json.loads(body.decode("utf-8"))
+                        response = server_state.pose_catalog_animation_sequence(
+                            str(request["body_id"]),
+                            str(request["animation_id"]),
+                            int(request.get("step_ms") or 40),
                         )
                         self.send_json(response)
                     else:

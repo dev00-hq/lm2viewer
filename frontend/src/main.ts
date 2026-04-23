@@ -1,7 +1,7 @@
 import './styles.css';
-import { buildCatalog, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, poseAnimation, uploadModel } from './api';
+import { buildCatalog, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadAnimationSequence, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, poseAnimation, uploadModel } from './api';
 import { requireElement } from './dom';
-import type { CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './types';
+import type { AnimationSequenceFrame, AnimationSequencePayload, CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './types';
 import { CatalogUi } from './ui/catalog';
 import { renderStats } from './ui/stats';
 import { UvInspector } from './ui/uvInspector';
@@ -58,12 +58,17 @@ let selectedAnimationAsset: CatalogAsset | null = null;
 let animationBusy = false;
 let animationPlaying = false;
 let animationPlaybackToken = 0;
-let animationPlaybackTimer: number | undefined;
+let animationPlaybackFrame: number | undefined;
+let animationPlaybackResolve: (() => void) | undefined;
+let animationSequence: AnimationSequencePayload | null = null;
+let currentAnimationFrame: AnimationSequenceFrame | null = null;
+let lastAnimationUiUpdateAt = 0;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
 
-const playbackStepMs = 40;
+const playbackStepMs = 33;
+const animationUiUpdateIntervalMs = 125;
 
 const catalogUi = new CatalogUi({
   summary: requireElement('catalogSummary', HTMLDivElement),
@@ -239,6 +244,7 @@ function setSelectedExportAsset(asset: CatalogAsset | null): void {
 function setSelectedBodyAsset(asset: CatalogAsset | null): void {
   if (selectedBodyAsset?.id !== asset?.id) {
     stopAnimationPlayback();
+    animationSequence = null;
     animationResult.textContent = '';
   }
   selectedBodyAsset = asset;
@@ -247,6 +253,7 @@ function setSelectedBodyAsset(asset: CatalogAsset | null): void {
 function setSelectedAnimationAsset(asset: CatalogAsset): void {
   if (selectedAnimationAsset?.id !== asset.id) {
     stopAnimationPlayback();
+    animationSequence = null;
     animationResult.textContent = '';
     animationFrame.value = '0';
     animationElapsed.value = '0';
@@ -289,36 +296,24 @@ async function startAnimationPlayback(): Promise<void> {
     return;
   }
   errorBox.textContent = '';
-  animationPlaying = true;
   const token = ++animationPlaybackToken;
+  animationBusy = true;
+  animationPlay.textContent = 'Loading';
   updateAnimationControls();
   try {
-    let frame = numericInput(animationFrame, 'frame');
-    validateAnimationFrame(frame, selectedAnimationAsset);
-    let elapsedMs = numericInput(animationElapsed, 'elapsed milliseconds');
-    let previousFrame: number | undefined = frame > 0 ? frame - 1 : undefined;
-    while (animationPlaying && token === animationPlaybackToken) {
-      animationFrame.value = String(frame);
-      animationElapsed.value = String(elapsedMs);
-      const model = await applyAnimationPose(previousFrame);
-      if (!animationPlaying || token !== animationPlaybackToken) break;
-      const sample = model.pose?.sample;
-      const duration = Math.max(1, sample?.duration_ms || playbackStepMs);
-      const nextFrame = sample?.next_frame_index ?? nextAnimationFrame(frame);
-      await waitAnimationPlayback(Math.min(playbackStepMs, duration), token);
-      if (!animationPlaying || token !== animationPlaybackToken) break;
-      const nextElapsed = elapsedMs + playbackStepMs;
-      if (nextElapsed >= duration) {
-        previousFrame = frame;
-        frame = nextFrame;
-        elapsedMs = 0;
-      } else {
-        elapsedMs = nextElapsed;
-      }
-    }
+    const sequence = await getAnimationSequence();
+    if (token !== animationPlaybackToken) return;
+    const sequenceIndex = sequenceIndexFor(sequence, numericInput(animationFrame, 'frame'), numericInput(animationElapsed, 'elapsed milliseconds'));
+    animationBusy = false;
+    animationPlaying = true;
+    currentAnimationFrame = null;
+    lastAnimationUiUpdateAt = 0;
+    updateAnimationControls();
+    await runAnimationPlayback(sequence, sequenceIndex, token);
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error);
   } finally {
+    animationBusy = false;
     if (token === animationPlaybackToken) {
       animationPlaying = false;
       updateAnimationControls();
@@ -326,25 +321,116 @@ async function startAnimationPlayback(): Promise<void> {
   }
 }
 
+async function getAnimationSequence(): Promise<AnimationSequencePayload> {
+  const bodyAsset = selectedBodyAsset;
+  const animationAsset = selectedAnimationAsset;
+  if (!bodyAsset || !animationAsset || !selectedAnimationStats()) {
+    throw new Error('Select a catalog model and decoded ANIM entry before playback.');
+  }
+  if (
+    !animationSequence ||
+    animationSequence.body_asset_id !== bodyAsset.id ||
+    animationSequence.animation_asset_id !== animationAsset.id ||
+    animationSequence.step_ms !== playbackStepMs
+  ) {
+    animationSequence = await loadAnimationSequence(bodyAsset, animationAsset, playbackStepMs);
+  }
+  if (animationSequence.frames.length === 0) {
+    throw new Error('Selected animation produced no playback frames.');
+  }
+  return animationSequence;
+}
+
+function renderAnimationSequenceFrame(frame: AnimationSequenceFrame): void {
+  const baseModel = scene.model;
+  const bodyAsset = selectedBodyAsset;
+  if (!baseModel || !bodyAsset || !selectedAnimationAsset) {
+    throw new Error('Select a catalog model and decoded ANIM entry before playback.');
+  }
+  scene.updateModelVertices(frame.vertices, frame.pose, bodyAsset);
+  currentAnimationFrame = frame;
+}
+
+function updateAnimationReadout(frame: AnimationSequenceFrame): void {
+  const bodyAsset = selectedBodyAsset;
+  const animationAsset = selectedAnimationAsset;
+  if (!bodyAsset || !animationAsset) return;
+  animationFrame.value = String(frame.frame);
+  animationElapsed.value = String(frame.elapsed_ms);
+  animationResult.textContent = `Frame ${frame.frame}, previous ${frame.previous_frame}, next ${frame.next_frame}, ${frame.duration_ms} ms duration`;
+  overlay.textContent = `${bodyAsset.label} playing ${animationAsset.label}`;
+}
+
+function sequenceIndexFor(sequence: AnimationSequencePayload, frame: number, elapsedMs: number): number {
+  validateAnimationFrame(frame, selectedAnimationAsset!);
+  let bestIndex = -1;
+  let bestElapsed = -1;
+  for (let index = 0; index < sequence.frames.length; index += 1) {
+    const item = sequence.frames[index];
+    if (item.frame !== frame || item.elapsed_ms > elapsedMs) continue;
+    if (item.elapsed_ms >= bestElapsed) {
+      bestIndex = index;
+      bestElapsed = item.elapsed_ms;
+    }
+  }
+  if (bestIndex >= 0) return bestIndex;
+  return sequence.frames.findIndex((item) => item.frame === frame) || 0;
+}
+
+function loopSequenceIndex(sequence: AnimationSequencePayload): number {
+  const index = sequence.frames.findIndex((frame) => frame.frame === sequence.loop_frame && frame.elapsed_ms === 0);
+  return index >= 0 ? index : 0;
+}
+
 function stopAnimationPlayback(): void {
-  if (!animationPlaying && animationPlaybackTimer === undefined) return;
+  if (!animationPlaying && animationPlaybackFrame === undefined) return;
   animationPlaying = false;
   animationPlaybackToken += 1;
-  if (animationPlaybackTimer !== undefined) {
-    window.clearTimeout(animationPlaybackTimer);
-    animationPlaybackTimer = undefined;
+  if (animationPlaybackFrame !== undefined) {
+    window.cancelAnimationFrame(animationPlaybackFrame);
+    animationPlaybackFrame = undefined;
   }
+  if (currentAnimationFrame) updateAnimationReadout(currentAnimationFrame);
+  animationPlaybackResolve?.();
+  animationPlaybackResolve = undefined;
   updateAnimationControls();
 }
 
-function waitAnimationPlayback(milliseconds: number, token: number): Promise<void> {
+function runAnimationPlayback(sequence: AnimationSequencePayload, startIndex: number, token: number): Promise<void> {
   return new Promise((resolve) => {
-    animationPlaybackTimer = window.setTimeout(() => {
-      if (token === animationPlaybackToken) {
-        animationPlaybackTimer = undefined;
-      }
+    animationPlaybackResolve = () => {
+      if (currentAnimationFrame) updateAnimationReadout(currentAnimationFrame);
+      animationPlaybackFrame = undefined;
+      animationPlaybackResolve = undefined;
       resolve();
-    }, Math.max(32, milliseconds));
+    };
+    let sequenceIndex = startIndex;
+    let nextFrameAt = performance.now();
+    const tick = (now: number) => {
+      animationPlaybackFrame = undefined;
+      if (!animationPlaying || token !== animationPlaybackToken) {
+        animationPlaybackResolve?.();
+        return;
+      }
+      let frame: AnimationSequenceFrame | null = null;
+      while (now >= nextFrameAt) {
+        frame = sequence.frames[sequenceIndex];
+        sequenceIndex += 1;
+        if (sequenceIndex >= sequence.frames.length) {
+          sequenceIndex = loopSequenceIndex(sequence);
+        }
+        nextFrameAt += sequence.step_ms;
+      }
+      if (frame) {
+        renderAnimationSequenceFrame(frame);
+        if (now - lastAnimationUiUpdateAt >= animationUiUpdateIntervalMs) {
+          updateAnimationReadout(frame);
+          lastAnimationUiUpdateAt = now;
+        }
+      }
+      animationPlaybackFrame = window.requestAnimationFrame(tick);
+    };
+    animationPlaybackFrame = window.requestAnimationFrame(tick);
   });
 }
 
@@ -370,13 +456,6 @@ async function stepAnimationFrame(direction: -1 | 1): Promise<void> {
     animationElapsed.value = previousElapsedValue;
     throw error;
   }
-}
-
-function nextAnimationFrame(current: number): number {
-  const stats = selectedAnimationStats();
-  if (!stats) return current;
-  const next = current + 1;
-  return next >= stats.keyframes ? stats.loop_frame : next;
 }
 
 function numericInput(input: HTMLInputElement, label: string): number {

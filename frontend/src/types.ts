@@ -169,6 +169,25 @@ export interface Lm2Model {
   catalog_asset?: CatalogAsset;
 }
 
+export interface AnimationSequenceFrame {
+  frame: number;
+  previous_frame: number;
+  next_frame: number;
+  elapsed_ms: number;
+  duration_ms: number;
+  vertices: [number, number, number, number][];
+  pose: NonNullable<Lm2Model['pose']>;
+}
+
+export interface AnimationSequencePayload {
+  body_asset_id: string;
+  animation_asset_id: string;
+  step_ms: number;
+  keyframes: number;
+  loop_frame: number;
+  frames: AnimationSequenceFrame[];
+}
+
 export interface ErrorPayload {
   error: string;
 }

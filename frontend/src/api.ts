@@ -1,4 +1,4 @@
-import type { AnimationPayload, Catalog, CatalogAsset, DecodeProgress, ErrorPayload, ExportPayload, Lm2Model, PolygonMode } from './types';
+import type { AnimationPayload, AnimationSequencePayload, Catalog, CatalogAsset, DecodeProgress, ErrorPayload, ExportPayload, Lm2Model, PolygonMode } from './types';
 
 async function readJson<T extends object>(response: Response): Promise<T> {
   const payload = await response.json() as T | ErrorPayload;
@@ -88,6 +88,22 @@ export async function poseAnimation(
       sample_frame: sampleFrame,
       elapsed_ms: elapsedMs,
       previous_frame: previousFrame,
+    }),
+  }));
+}
+
+export async function loadAnimationSequence(
+  body: CatalogAsset,
+  animation: CatalogAsset,
+  stepMs: number,
+): Promise<AnimationSequencePayload> {
+  return readJson<AnimationSequencePayload>(await fetch('/api/animation/sequence', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      body_id: body.id,
+      animation_id: animation.id,
+      step_ms: stepMs,
     }),
   }));
 }
