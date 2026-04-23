@@ -34,10 +34,15 @@ const exportAssetButton = requireElement('exportAsset', HTMLButtonElement);
 const exportPolygonMode = requireElement('exportPolygonMode', HTMLSelectElement);
 const exportResult = requireElement('exportResult', HTMLDivElement);
 const animationSelection = requireElement('animationSelection', HTMLDivElement);
+const animationPlaybackState = requireElement('animationPlaybackState', HTMLDivElement);
+const animationTimeCurrent = requireElement('animationTimeCurrent', HTMLSpanElement);
+const animationTimeTotal = requireElement('animationTimeTotal', HTMLSpanElement);
+const animationScrub = requireElement('animationScrub', HTMLInputElement);
 const animationFrame = requireElement('animationFrame', HTMLInputElement);
 const animationElapsed = requireElement('animationElapsed', HTMLInputElement);
 const animationPrevious = requireElement('animationPrevious', HTMLButtonElement);
 const animationPlay = requireElement('animationPlay', HTMLButtonElement);
+const animationRepeat = requireElement('animationRepeat', HTMLButtonElement);
 const animationPose = requireElement('animationPose', HTMLButtonElement);
 const animationNext = requireElement('animationNext', HTMLButtonElement);
 const animationResult = requireElement('animationResult', HTMLDivElement);
@@ -63,6 +68,8 @@ let animationPlaybackResolve: (() => void) | undefined;
 let animationSequence: AnimationSequencePayload | null = null;
 let currentAnimationFrame: AnimationSequenceFrame | null = null;
 let lastAnimationUiUpdateAt = 0;
+let animationRepeatEnabled = true;
+let pendingAnimationSeekIndex: number | null = null;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
@@ -115,6 +122,15 @@ animationPlay.addEventListener('click', () => {
   } else {
     void startAnimationPlayback();
   }
+});
+animationRepeat.addEventListener('click', () => {
+  animationRepeatEnabled = !animationRepeatEnabled;
+  updateAnimationControls();
+});
+animationScrub.addEventListener('input', () => {
+  void seekAnimationTo(Number(animationScrub.value)).catch((error) => {
+    errorBox.textContent = error instanceof Error ? error.message : String(error);
+  });
 });
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
@@ -215,13 +231,19 @@ function updateAnimationControls(): void {
   const stats = selectedAnimationStats();
   const hasPair = selectedBodyAsset !== null && stats !== null;
   const disabled = animationBusy || animationPlaying;
+  const totalDuration = stats?.total_duration ?? 0;
   animationPose.disabled = disabled;
   animationPrevious.disabled = disabled;
   animationNext.disabled = disabled;
   animationPlay.disabled = animationBusy && !animationPlaying;
   animationPlay.textContent = animationPlaying ? 'Pause' : 'Play';
   animationPlay.setAttribute('aria-pressed', String(animationPlaying));
-  animationPlay.title = hasPair ? 'Play animation loop' : 'Select a model and decoded ANIM entry first';
+  animationPlay.title = hasPair ? 'Play animation' : 'Select a model and decoded ANIM entry first';
+  animationRepeat.textContent = animationRepeatEnabled ? 'Repeat On' : 'Repeat Off';
+  animationRepeat.setAttribute('aria-pressed', String(animationRepeatEnabled));
+  animationRepeat.disabled = animationBusy;
+  animationScrub.disabled = !hasPair || animationBusy;
+  animationScrub.max = String(Math.max(0, totalDuration));
   animationFrame.disabled = animationBusy || animationPlaying;
   animationElapsed.disabled = animationBusy || animationPlaying;
   if (stats) {
@@ -229,6 +251,10 @@ function updateAnimationControls(): void {
   } else {
     animationFrame.removeAttribute('max');
   }
+  animationTimeTotal.textContent = formatAnimationTime(totalDuration);
+  animationPlaybackState.textContent = animationBusy ? 'Loading' : animationPlaying ? 'Playing' : hasPair ? 'Ready' : 'Idle';
+  animationPlaybackState.classList.toggle('active', animationPlaying);
+  animationPlaybackState.classList.toggle('busy', animationBusy);
   const body = selectedBodyAsset?.label || 'No model';
   const anim = selectedAnimationAsset?.label || 'No animation';
   animationSelection.textContent = `${body} + ${anim}`;
@@ -245,7 +271,9 @@ function setSelectedBodyAsset(asset: CatalogAsset | null): void {
   if (selectedBodyAsset?.id !== asset?.id) {
     stopAnimationPlayback();
     animationSequence = null;
+    currentAnimationFrame = null;
     animationResult.textContent = '';
+    updateAnimationTimelineReadout(0);
   }
   selectedBodyAsset = asset;
 }
@@ -254,9 +282,11 @@ function setSelectedAnimationAsset(asset: CatalogAsset): void {
   if (selectedAnimationAsset?.id !== asset.id) {
     stopAnimationPlayback();
     animationSequence = null;
+    currentAnimationFrame = null;
     animationResult.textContent = '';
     animationFrame.value = '0';
     animationElapsed.value = '0';
+    updateAnimationTimelineReadout(0);
   }
   selectedAnimationAsset = asset;
   updateAnimationControls();
@@ -357,6 +387,7 @@ function updateAnimationReadout(frame: AnimationSequenceFrame): void {
   if (!bodyAsset || !animationAsset) return;
   animationFrame.value = String(frame.frame);
   animationElapsed.value = String(frame.elapsed_ms);
+  updateAnimationTimelineReadout(animationTimelineMs(frame));
   animationResult.textContent = `Frame ${frame.frame}, previous ${frame.previous_frame}, next ${frame.next_frame}, ${frame.duration_ms} ms duration`;
   overlay.textContent = `${bodyAsset.label} playing ${animationAsset.label}`;
 }
@@ -380,6 +411,54 @@ function sequenceIndexFor(sequence: AnimationSequencePayload, frame: number, ela
 function loopSequenceIndex(sequence: AnimationSequencePayload): number {
   const index = sequence.frames.findIndex((frame) => frame.frame === sequence.loop_frame && frame.elapsed_ms === 0);
   return index >= 0 ? index : 0;
+}
+
+async function seekAnimationTo(timelineMs: number): Promise<void> {
+  const sequence = await getAnimationSequence();
+  const index = sequenceIndexAtTimeline(sequence, timelineMs);
+  pendingAnimationSeekIndex = index;
+  const frame = sequence.frames[index];
+  renderAnimationSequenceFrame(frame);
+  updateAnimationReadout(frame);
+}
+
+function sequenceIndexAtTimeline(sequence: AnimationSequencePayload, timelineMs: number): number {
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < sequence.frames.length; index += 1) {
+    const distance = Math.abs(animationTimelineMs(sequence.frames[index]) - timelineMs);
+    if (distance < bestDistance) {
+      bestIndex = index;
+      bestDistance = distance;
+    }
+  }
+  return bestIndex;
+}
+
+function animationTimelineMs(frame: AnimationSequenceFrame): number {
+  return frameStartMs(frame.frame) + frame.elapsed_ms;
+}
+
+function frameStartMs(frame: number): number {
+  const stats = selectedAnimationStats();
+  if (!stats) return 0;
+  let total = 0;
+  const sequence = animationSequence;
+  for (let index = 0; index < frame; index += 1) {
+    const sequenceFrame = sequence?.frames.find((item) => item.frame === index);
+    total += sequenceFrame?.duration_ms ?? 0;
+  }
+  return total;
+}
+
+function updateAnimationTimelineReadout(timelineMs: number): void {
+  const stats = selectedAnimationStats();
+  const total = Math.max(0, stats?.total_duration ?? 0);
+  const clamped = Math.max(0, Math.min(total, timelineMs));
+  animationScrub.max = String(total);
+  animationScrub.value = String(Math.round(clamped));
+  animationTimeCurrent.textContent = formatAnimationTime(clamped);
+  animationTimeTotal.textContent = formatAnimationTime(total);
 }
 
 function stopAnimationPlayback(): void {
@@ -412,12 +491,22 @@ function runAnimationPlayback(sequence: AnimationSequencePayload, startIndex: nu
         animationPlaybackResolve?.();
         return;
       }
+      if (pendingAnimationSeekIndex !== null) {
+        sequenceIndex = pendingAnimationSeekIndex;
+        pendingAnimationSeekIndex = null;
+        nextFrameAt = now;
+      }
       let frame: AnimationSequenceFrame | null = null;
       while (now >= nextFrameAt) {
         frame = sequence.frames[sequenceIndex];
         sequenceIndex += 1;
         if (sequenceIndex >= sequence.frames.length) {
-          sequenceIndex = loopSequenceIndex(sequence);
+          if (animationRepeatEnabled) {
+            sequenceIndex = loopSequenceIndex(sequence);
+          } else {
+            animationPlaying = false;
+            break;
+          }
         }
         nextFrameAt += sequence.step_ms;
       }
@@ -427,6 +516,10 @@ function runAnimationPlayback(sequence: AnimationSequencePayload, startIndex: nu
           updateAnimationReadout(frame);
           lastAnimationUiUpdateAt = now;
         }
+      }
+      if (!animationPlaying) {
+        animationPlaybackResolve?.();
+        return;
       }
       animationPlaybackFrame = window.requestAnimationFrame(tick);
     };
@@ -478,7 +571,7 @@ function validateAnimationFrame(frame: number, animationAsset: CatalogAsset): vo
   }
 }
 
-function selectedAnimationStats(): { keyframes: number; loop_frame: number } | null {
+function selectedAnimationStats(): { keyframes: number; loop_frame: number; total_duration: number } | null {
   if (!selectedAnimationAsset || selectedAnimationAsset.entry_type !== 'animation') return null;
   if (!('keyframes' in selectedAnimationAsset.stats)) return null;
   return selectedAnimationAsset.stats;
@@ -619,6 +712,14 @@ function clearProgressTimers(): void {
 
 function formatElapsed(seconds: number): string {
   return `${seconds.toFixed(1)}s`;
+}
+
+function formatAnimationTime(milliseconds: number): string {
+  const safeMs = Math.max(0, Math.round(milliseconds));
+  const minutes = Math.floor(safeMs / 60000);
+  const seconds = Math.floor((safeMs % 60000) / 1000);
+  const millis = safeMs % 1000;
+  return `${minutes}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
 }
 
 function tick(): void {
