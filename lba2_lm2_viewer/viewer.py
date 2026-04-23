@@ -45,7 +45,8 @@ DEFAULT_PORT = 8765
 PACKAGE_SUFFIXES = {".hqr"}
 FRONTEND_DIST = Path(__file__).resolve().with_name("frontend") / "dist"
 ANIM_ARCHIVE_NAME = "ANIM.HQR"
-ANIMATION_ARCHIVE_NAMES = {ANIM_ARCHIVE_NAME, "ANIM3DS.HQR"}
+ANIM3DS_ARCHIVE_NAME = "ANIM3DS.HQR"
+ANIMATION_ARCHIVE_NAMES = {ANIM_ARCHIVE_NAME, ANIM3DS_ARCHIVE_NAME}
 PALETTE_ARCHIVE_NAME = "RESS.HQR"
 PALETTE_ENTRY_INDEX = 0
 PALETTE_BYTES = 256 * 3
@@ -1217,7 +1218,13 @@ def unknown_bytes_descriptor(
     return descriptor
 
 
-def raw_animation_catalog_stats(payload: bytes, parse_error: str) -> dict[str, Any]:
+def raw_animation_catalog_stats(
+    payload: bytes,
+    *,
+    decode_status: str,
+    decode_note: str,
+    parse_error: str | None = None,
+) -> dict[str, Any]:
     header_byte_length = min(16, len(payload) - (len(payload) % 2))
     header_words = (
         list(struct.unpack_from("<" + "H" * (header_byte_length // 2), payload, 0))
@@ -1233,7 +1240,7 @@ def raw_animation_catalog_stats(payload: bytes, parse_error: str) -> dict[str, A
                 offset=0,
                 length=header_byte_length,
                 confidence="high",
-                note="Captured as little-endian words only; ANIM3DS header semantics are not decoded.",
+                note="Captured as little-endian words only; raw animation header semantics are not decoded.",
                 related_fields=["header_words"],
             )
         )
@@ -1245,7 +1252,7 @@ def raw_animation_catalog_stats(payload: bytes, parse_error: str) -> dict[str, A
                 offset=header_byte_length,
                 length=len(payload) - header_byte_length,
                 confidence="high",
-                note="Opaque ANIM3DS payload bytes retained only as a descriptor hash.",
+                note="Opaque animation payload bytes retained only as a descriptor hash.",
             )
         )
     if not descriptors:
@@ -1266,7 +1273,9 @@ def raw_animation_catalog_stats(payload: bytes, parse_error: str) -> dict[str, A
         "header_words": header_words,
         "header_word_count": len(header_words),
         "parse_status": "raw",
-        "parse_error": parse_error,
+        "decode_status": decode_status,
+        "decode_note": decode_note,
+        **({"parse_error": parse_error} if parse_error else {}),
         "semantic_layout": "unknown",
         "unknown_descriptors": descriptors,
     }
@@ -1342,6 +1351,8 @@ def build_catalog(
             "non_empty_entries": sum(1 for entry in entries if entry.byte_length > 0),
             "models": 0,
             "animations": 0,
+            "decoded_animations": 0,
+            "raw_animations": 0,
             "recognized": 0,
             "bytes": len(data),
         }
@@ -1425,24 +1436,39 @@ def build_catalog(
                         animation_error = str(exc)
                 else:
                     animation = None
-                    animation_error = "ANIM3DS semantic decode is not implemented"
+                    animation_error = ""
                 if animation is not None:
                     stats = animation.to_json()
                     entry_type = "animation"
+                    animation_state = "decoded"
                     features = {
                         "looping": animation.loop_frame < animation.keyframes - 1,
                         "can_fall": animation.can_fall,
                         "parsed": True,
                     }
                 else:
-                    stats = raw_animation_catalog_stats(payload, animation_error)
+                    if archive_name == ANIM3DS_ARCHIVE_NAME:
+                        stats = raw_animation_catalog_stats(
+                            payload,
+                            decode_status="deferred",
+                            decode_note="ANIM3DS semantic decode is not implemented",
+                        )
+                    else:
+                        stats = raw_animation_catalog_stats(
+                            payload,
+                            decode_status="parse_failed",
+                            decode_note="Animation parser rejected this payload; retained as raw evidence.",
+                            parse_error=animation_error,
+                        )
                     entry_type = "animation-raw"
+                    animation_state = "raw"
                     features = {"parsed": False}
                 asset = {
                     "id": asset_id,
                     "kind": "animation",
                     "label": f"{Path(hqr_relative).name} animation {catalog_entry_index}",
                     "entry_type": entry_type,
+                    "animation_state": animation_state,
                     "source": source,
                     "path": hqr_relative,
                     "relative_path": f"{hqr_relative}[{catalog_entry_index}]",
@@ -1452,7 +1478,11 @@ def build_catalog(
                     "features": features,
                 }
                 catalog["assets"].append(asset)
-                file_summary["animations"] += 1
+                if animation_state == "decoded":
+                    file_summary["animations"] += 1
+                    file_summary["decoded_animations"] += 1
+                else:
+                    file_summary["raw_animations"] += 1
                 file_summary["recognized"] += 1
 
             processed_entries += 1
@@ -1461,13 +1491,24 @@ def build_catalog(
 
         catalog["hqr_files"].append(file_summary)
 
+    decoded_animations = sum(
+        1
+        for asset in catalog["assets"]
+        if asset["kind"] == "animation" and asset.get("animation_state") == "decoded"
+    )
+    raw_animations = sum(
+        1
+        for asset in catalog["assets"]
+        if asset["kind"] == "animation" and asset.get("animation_state") == "raw"
+    )
     catalog["summary"] = {
         "hqr_files": len(catalog["hqr_files"]),
         "assets": len(catalog["assets"]),
         "models": sum(1 for asset in catalog["assets"] if asset["kind"] == "model"),
-        "animations": sum(
-            1 for asset in catalog["assets"] if asset["kind"] == "animation"
-        ),
+        "animations": decoded_animations,
+        "decoded_animations": decoded_animations,
+        "raw_animations": raw_animations,
+        "animation_assets": decoded_animations + raw_animations,
     }
     return catalog
 
@@ -1944,7 +1985,9 @@ def serve(
         summary = viewer.catalog.get("summary", {})
         print(
             "Catalog loaded: "
-            f"{summary.get('models', 0)} models, {summary.get('animations', 0)} animations"
+            f"{summary.get('models', 0)} models, "
+            f"{summary.get('decoded_animations', 0)} decoded animations, "
+            f"{summary.get('raw_animations', 0)} raw animation entries"
         )
     if open_browser:
         threading.Timer(0.25, lambda: webbrowser.open(url)).start()

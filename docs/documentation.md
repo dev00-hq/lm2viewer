@@ -149,9 +149,12 @@ vertices plus pose metadata for inspection.
 
 `ANIM3DS.HQR` entries are intentionally not semantically decoded yet. The
 catalog records each non-empty entry as raw animation evidence with decoded
-size, decoded SHA-256, header words, raw parse status, and unknown descriptors
-for byte ranges. Descriptors include offset, length, SHA-256, confidence, and a
-note instead of embedding raw game bytes.
+size, decoded SHA-256, header words, raw parse status, `decode_status:
+deferred`, a decode note, and unknown descriptors for byte ranges. Descriptors
+include offset, length, SHA-256, confidence, and a note instead of embedding raw
+game bytes. Real `ANIM.HQR` parse failures remain raw animation evidence too,
+but they use `decode_status: parse_failed` and keep the parser exception in
+`parse_error`.
 
 ## Texture And UV Inspector
 

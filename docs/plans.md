@@ -209,7 +209,10 @@ Status: implemented.
 Deliverable:
 
 - Implemented: catalog every non-empty ANIM3DS entry with raw parse status,
-  decoded size, decoded hash, header words, and unknown byte-range descriptors.
+  deferred decode status, decoded size, decoded hash, header words, and unknown
+  byte-range descriptors.
+- Implemented: catalog summaries distinguish decoded animations from raw
+  animation evidence.
 - Deferred: add deeper decode only when source, MBN, or original runtime
   evidence identifies the semantic layout.
 - Deferred: connect ANIM3DS entries to contracts once usage evidence is known.

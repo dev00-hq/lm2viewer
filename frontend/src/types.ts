@@ -13,6 +13,9 @@ export interface Catalog {
     assets: number;
     models: number;
     animations: number;
+    decoded_animations: number;
+    raw_animations: number;
+    animation_assets: number;
   };
   hqr_files: HqrFileSummary[];
   assets: CatalogAsset[];
@@ -25,6 +28,8 @@ export interface HqrFileSummary {
   non_empty_entries: number;
   models: number;
   animations: number;
+  decoded_animations: number;
+  raw_animations: number;
   recognized: number;
   bytes: number;
 }
@@ -34,6 +39,7 @@ export interface CatalogAsset {
   kind: AssetKind;
   label: string;
   entry_type: string;
+  animation_state?: 'decoded' | 'raw';
   source: {
     hqr: string;
     entry_index: number;
@@ -81,7 +87,9 @@ export interface RawAnimationStats {
   header_words: number[];
   header_word_count: number;
   parse_status: 'raw';
-  parse_error: string;
+  decode_status: 'deferred' | 'parse_failed';
+  decode_note: string;
+  parse_error?: string;
   semantic_layout: 'unknown';
   unknown_descriptors: Array<{
     section: string;
@@ -179,6 +187,9 @@ export interface DecodeProgress {
     assets?: number;
     models?: number;
     animations?: number;
+    decoded_animations?: number;
+    raw_animations?: number;
+    animation_assets?: number;
   } | null;
 }
 

@@ -355,25 +355,48 @@ class AnimationParserTests(unittest.TestCase):
 
             catalog = viewer.build_catalog(root)
 
-            self.assertEqual(catalog["summary"]["animations"], 1)
-            self.assertEqual(catalog["assets"][0]["entry_type"], "animation-raw")
-            self.assertEqual(catalog["assets"][0]["features"], {"parsed": False})
-            stats = catalog["assets"][0]["stats"]
+            self.assertEqual(catalog["summary"]["animations"], 0)
+            self.assertEqual(catalog["summary"]["decoded_animations"], 0)
+            self.assertEqual(catalog["summary"]["raw_animations"], 1)
+            self.assertEqual(catalog["summary"]["animation_assets"], 1)
+            asset = catalog["assets"][0]
+            self.assertEqual(asset["entry_type"], "animation-raw")
+            self.assertEqual(asset["animation_state"], "raw")
+            self.assertEqual(asset["features"], {"parsed": False})
+            stats = asset["stats"]
             self.assertEqual(stats["decoded_bytes"], len(data))
             self.assertEqual(stats["decoded_sha256"], hashlib.sha256(data).hexdigest())
-            self.assertEqual(stats["header_word_count"], 8)
-            self.assertEqual(stats["semantic_layout"], "unknown")
-            self.assertGreaterEqual(len(stats["unknown_descriptors"]), 1)
-            self.assertEqual(stats["unknown_descriptors"][0]["section"], "header_words")
-            self.assertEqual(stats["unknown_descriptors"][0]["offset"], 0)
-            self.assertEqual(stats["unknown_descriptors"][0]["length"], 16)
             self.assertEqual(
-                stats["unknown_descriptors"][0]["sha256"],
+                stats["header_words"],
+                list(struct.unpack_from("<8H", data, 0)),
+            )
+            self.assertEqual(stats["header_word_count"], 8)
+            self.assertEqual(stats["parse_status"], "raw")
+            self.assertEqual(stats["decode_status"], "deferred")
+            self.assertEqual(stats["decode_note"], "ANIM3DS semantic decode is not implemented")
+            self.assertNotIn("parse_error", stats)
+            self.assertEqual(stats["semantic_layout"], "unknown")
+            self.assertEqual(len(stats["unknown_descriptors"]), 2)
+            header_descriptor = stats["unknown_descriptors"][0]
+            payload_descriptor = stats["unknown_descriptors"][1]
+            self.assertEqual(header_descriptor["section"], "header_words")
+            self.assertEqual(header_descriptor["offset"], 0)
+            self.assertEqual(header_descriptor["length"], 16)
+            self.assertEqual(header_descriptor["confidence"], "high")
+            self.assertEqual(header_descriptor["related_decoded_fields"], ["header_words"])
+            self.assertIn("raw animation header semantics", header_descriptor["note"])
+            self.assertEqual(
+                header_descriptor["sha256"],
                 hashlib.sha256(data[:16]).hexdigest(),
             )
+            self.assertEqual(payload_descriptor["section"], "payload_after_header_words")
+            self.assertEqual(payload_descriptor["offset"], 16)
+            self.assertEqual(payload_descriptor["length"], len(data) - 16)
+            self.assertEqual(payload_descriptor["confidence"], "high")
+            self.assertIn("Opaque animation payload", payload_descriptor["note"])
             self.assertEqual(
-                stats["parse_error"],
-                "ANIM3DS semantic decode is not implemented",
+                payload_descriptor["sha256"],
+                hashlib.sha256(data[16:]).hexdigest(),
             )
 
     def test_catalog_tracks_every_anim3ds_entry_with_independent_unknown_descriptors(self) -> None:
@@ -389,13 +412,54 @@ class AnimationParserTests(unittest.TestCase):
 
             assets = catalog["assets"]
             self.assertEqual([asset["id"] for asset in assets], ["ANIM3DS.HQR:1", "ANIM3DS.HQR:3"])
-            self.assertEqual(catalog["summary"]["animations"], 2)
+            self.assertEqual(catalog["summary"]["animations"], 0)
+            self.assertEqual(catalog["summary"]["raw_animations"], 2)
+            self.assertEqual(catalog["summary"]["animation_assets"], 2)
             self.assertEqual(assets[0]["stats"]["decoded_sha256"], hashlib.sha256(first).hexdigest())
             self.assertEqual(assets[1]["stats"]["decoded_sha256"], hashlib.sha256(second).hexdigest())
             self.assertNotEqual(
                 assets[0]["stats"]["unknown_descriptors"][0]["sha256"],
                 assets[1]["stats"]["unknown_descriptors"][0]["sha256"],
             )
+
+    def test_catalog_counts_decoded_and_raw_animation_entries_separately(self) -> None:
+        decoded = anim_payload([(100, (1, 2, 3), [(0, 4, 5, 6)])])
+        raw = b"\x01\x00\x02\x00anim3ds"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "ANIM.HQR").write_bytes(hqr([resource_entry(decoded)]))
+            (root / "ANIM3DS.HQR").write_bytes(hqr([resource_entry(raw)]))
+
+            catalog = viewer.build_catalog(root)
+
+            self.assertEqual(catalog["summary"]["animations"], 1)
+            self.assertEqual(catalog["summary"]["decoded_animations"], 1)
+            self.assertEqual(catalog["summary"]["raw_animations"], 1)
+            self.assertEqual(catalog["summary"]["animation_assets"], 2)
+            decoded_asset = viewer.find_catalog_asset(catalog, "ANIM.HQR:1")
+            raw_asset = viewer.find_catalog_asset(catalog, "ANIM3DS.HQR:1")
+            self.assertEqual(decoded_asset["entry_type"], "animation")
+            self.assertEqual(decoded_asset["animation_state"], "decoded")
+            self.assertEqual(raw_asset["entry_type"], "animation-raw")
+            self.assertEqual(raw_asset["animation_state"], "raw")
+
+    def test_catalog_distinguishes_anim_parse_failures_from_anim3ds_deferment(self) -> None:
+        data = b"\xff"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "ANIM.HQR").write_bytes(hqr([resource_entry(data)]))
+
+            catalog = viewer.build_catalog(root)
+
+            asset = catalog["assets"][0]
+            self.assertEqual(asset["entry_type"], "animation-raw")
+            self.assertEqual(asset["animation_state"], "raw")
+            self.assertEqual(catalog["summary"]["raw_animations"], 1)
+            stats = asset["stats"]
+            self.assertEqual(stats["decode_status"], "parse_failed")
+            self.assertIn("Animation parser rejected", stats["decode_note"])
+            self.assertIn("parse_error", stats)
+            self.assertNotIn("ANIM3DS", stats["unknown_descriptors"][0]["note"])
 
     def test_animation_command_rejects_raw_animation_catalog_entries(self) -> None:
         data = anim_payload([(100, (1, 2, 3), [(0, 4, 5, 6)])])

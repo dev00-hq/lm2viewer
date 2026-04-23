@@ -48,13 +48,17 @@ export class CatalogUi {
 
     if ('parse_status' in stats && stats.parse_status === 'raw') {
       const raw = stats as RawAnimationStats;
+      const descriptors = raw.unknown_descriptors || [];
+      const parseError = raw.parse_error ? `<br>parse error: ${escapeHtml(raw.parse_error)}` : '';
       this.options.detail.innerHTML =
         `<strong>${escapeHtml(asset.label)}</strong><br>` +
         `${escapeHtml(asset.source.hqr)}[${asset.source.entry_index}]<br>` +
-        `raw animation payload, ${asset.decoded_bytes || raw.decoded_bytes || 0} bytes<br>` +
+        `raw animation evidence, ${asset.decoded_bytes} bytes<br>` +
+        `decode status: ${escapeHtml(raw.decode_status)} - ${escapeHtml(raw.decode_note)}${parseError}<br>` +
         `header words: ${escapeHtml((raw.header_words || []).join(', '))}<br>` +
-        `unknown descriptors: ${raw.unknown_descriptors?.length || 0}<br>` +
-        `sha256: ${escapeHtml(raw.decoded_sha256 || asset.decoded_sha256 || '')}<br>` +
+        `unknown descriptors: ${descriptors.length}<br>` +
+        `${renderUnknownDescriptors(descriptors)}` +
+        `sha256: ${escapeHtml(asset.decoded_sha256)}<br>` +
         `${escapeHtml(asset.relative_path || '')}`;
       return;
     }
@@ -82,7 +86,7 @@ export class CatalogUi {
     assets.sort((a, b) => scoreAsset(b, query) - scoreAsset(a, query) || assetSortKey(a).localeCompare(assetSortKey(b)));
     const visible = assets.slice(0, 260);
     this.options.summary.textContent =
-      `${summary.models || 0} models, ${summary.animations || 0} animations across ${summary.hqr_files || 0} HQR files. ` +
+      `${summary.models || 0} models, ${summary.decoded_animations || 0} decoded animations, ${summary.raw_animations || 0} raw animation entries across ${summary.hqr_files || 0} HQR files. ` +
       `Showing ${visible.length} of ${assets.length} matching entries.`;
     this.options.list.replaceChildren(...visible.map((asset) => this.assetButton(asset)));
   }
@@ -98,7 +102,7 @@ export class CatalogUi {
     name.textContent = asset.label;
     const pill = document.createElement('span');
     pill.className = 'pill';
-    pill.textContent = asset.kind;
+    pill.textContent = asset.animation_state ? `${asset.kind} ${asset.animation_state}` : asset.kind;
     title.append(name, pill);
 
     const meta = document.createElement('div');
@@ -115,12 +119,41 @@ function searchableText(asset: CatalogAsset): string {
   return [
     asset.id,
     asset.kind,
+    asset.animation_state,
     asset.label,
     asset.entry_type,
     asset.source?.hqr,
     asset.source?.entry_index,
-    Object.values(asset.stats || {}).join(' '),
+    statsSearchText(asset.stats),
   ].join(' ').toLowerCase();
+}
+
+function statsSearchText(stats: CatalogAsset['stats']): string {
+  if ('parse_status' in stats && stats.parse_status === 'raw') {
+    const descriptors = stats.unknown_descriptors || [];
+    return [
+      stats.parse_status,
+      stats.decode_status,
+      stats.decode_note,
+      stats.parse_error,
+      stats.semantic_layout,
+      (stats.header_words || []).join(' '),
+      descriptors
+        .map((descriptor) =>
+          [
+            descriptor.section,
+            descriptor.offset,
+            descriptor.length,
+            descriptor.sha256,
+            descriptor.confidence,
+            descriptor.note,
+            descriptor.related_decoded_fields?.join(' '),
+          ].join(' '),
+        )
+        .join(' '),
+    ].join(' ');
+  }
+  return Object.values(stats || {}).join(' ');
 }
 
 function scoreAsset(asset: CatalogAsset, query: string): number {
@@ -144,10 +177,27 @@ function assetMeta(asset: CatalogAsset): string {
     return `${source} - ${stats.vertices || 0} verts, ${stats.polygons || 0} polys, ${stats.bones || 0} bones`;
   }
   if ('parse_status' in asset.stats && asset.stats.parse_status === 'raw') {
-    return `${source} - ${asset.decoded_bytes || asset.stats.decoded_bytes || 0} bytes, ${asset.entry_type}`;
+    return `${source} - ${asset.decoded_bytes} bytes, raw animation evidence`;
   }
   const animation = asset.stats as AnimationStats;
   return `${source} - ${animation.keyframes || 0} keyframes, ${animation.boneframes || 0} bones, loop ${animation.loop_frame ?? '-'}`;
+}
+
+function renderUnknownDescriptors(descriptors: RawAnimationStats['unknown_descriptors']): string {
+  if (descriptors.length === 0) return '';
+  const rows = descriptors
+    .map(
+      (descriptor) =>
+        `<div class="unknown-descriptor">` +
+        `<span>${escapeHtml(descriptor.section)}</span>` +
+        `<span>offset ${escapeHtml(descriptor.offset)}, length ${escapeHtml(descriptor.length)}</span>` +
+        `<span>${escapeHtml(descriptor.confidence)}</span>` +
+        `<span>${escapeHtml(descriptor.sha256)}</span>` +
+        `<span>${escapeHtml(descriptor.note)}</span>` +
+        `</div>`,
+    )
+    .join('');
+  return `<div class="unknown-descriptors">${rows}</div>`;
 }
 
 function escapeHtml(value: unknown): string {

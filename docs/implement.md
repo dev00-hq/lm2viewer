@@ -136,9 +136,13 @@ evidence identifies their semantic layout.
 Implemented:
 
 1. Catalog every non-empty `ANIM3DS.HQR` entry.
-2. Preserve raw parse status, decoded size, decoded SHA-256, and header words.
+2. Preserve raw parse status, deferred decode status, decoded size, decoded
+   SHA-256, and header words.
 3. Emit unknown descriptors with offsets, lengths, SHA-256 hashes, confidence,
    and notes rather than raw bytes.
+4. Keep raw ANIM3DS deferment separate from real `ANIM.HQR` parse failures:
+   deferred ANIM3DS entries use `decode_status: deferred`, while parser
+   failures use `decode_status: parse_failed` and `parse_error`.
 
 Deferred:
 

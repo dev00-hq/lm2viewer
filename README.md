@@ -178,8 +178,8 @@ Release artifacts include the built frontend. Source checkouts do not.
 - LM2 body models from HQR entries
 - full ANIM record decode, CLI frame-step evidence, and viewer posed frame
   stepping from `ANIM.HQR`
-- raw `ANIM3DS.HQR` payload metadata with size, hash, header words, and unknown
-  descriptors for entries not yet fully decoded
+- raw `ANIM3DS.HQR` payload metadata with deferred decode status, size, hash,
+  header words, and unknown descriptors for entries not yet fully decoded
 - palette and texture atlas data from `RESS.HQR`
 
 Decoded payloads are kept in memory for viewing and are not written back into the project directory.

@@ -257,6 +257,29 @@ label {
   margin-top: 8px;
 }
 
+.unknown-descriptors {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.unknown-descriptor {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(120px, 1.2fr) 64px;
+  gap: 4px 8px;
+  padding: 6px;
+  border: 1px solid #2e353b;
+  border-radius: 4px;
+  background: #15181b;
+  overflow-wrap: anywhere;
+}
+
+.unknown-descriptor span:nth-child(4),
+.unknown-descriptor span:nth-child(5) {
+  grid-column: 1 / -1;
+  color: #aeb7c2;
+}
+
 .export-panel {
   margin-top: 8px;
 }
