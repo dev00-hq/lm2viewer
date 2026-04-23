@@ -5,7 +5,7 @@ import type { CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './type
 import { CatalogUi } from './ui/catalog';
 import { renderStats } from './ui/stats';
 import { UvInspector } from './ui/uvInspector';
-import { ViewerScene, type VisibilityState } from './viewer/scene';
+import { ViewerScene, type CanvasBackgroundMode, type VisibilityState } from './viewer/scene';
 
 const canvas = requireElement('canvas', HTMLCanvasElement);
 const scene = new ViewerScene({ canvas });
@@ -19,6 +19,7 @@ const showLines = requireElement('showLines', HTMLInputElement);
 const showSpheres = requireElement('showSpheres', HTMLInputElement);
 const wireframe = requireElement('wireframe', HTMLInputElement);
 const showGrid = requireElement('showGrid', HTMLInputElement);
+const lightCanvas = requireElement('lightCanvas', HTMLInputElement);
 const lockHorizon = requireElement('lockHorizon', HTMLInputElement);
 const assetRootInput = requireElement('assetRoot', HTMLInputElement);
 const pathInput = requireElement('path', HTMLInputElement);
@@ -36,6 +37,7 @@ const animationSelection = requireElement('animationSelection', HTMLDivElement);
 const animationFrame = requireElement('animationFrame', HTMLInputElement);
 const animationElapsed = requireElement('animationElapsed', HTMLInputElement);
 const animationPrevious = requireElement('animationPrevious', HTMLButtonElement);
+const animationPlay = requireElement('animationPlay', HTMLButtonElement);
 const animationPose = requireElement('animationPose', HTMLButtonElement);
 const animationNext = requireElement('animationNext', HTMLButtonElement);
 const animationResult = requireElement('animationResult', HTMLDivElement);
@@ -54,9 +56,14 @@ let selectedExportAsset: CatalogAsset | null = null;
 let selectedBodyAsset: CatalogAsset | null = null;
 let selectedAnimationAsset: CatalogAsset | null = null;
 let animationBusy = false;
+let animationPlaying = false;
+let animationPlaybackToken = 0;
+let animationPlaybackTimer: number | undefined;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
+
+const playbackStepMs = 80;
 
 const catalogUi = new CatalogUi({
   summary: requireElement('catalogSummary', HTMLDivElement),
@@ -67,12 +74,13 @@ const catalogUi = new CatalogUi({
   onSelect: selectCatalogAsset,
 });
 
-Object.assign(globalThis, { lm2Viewer: { camera: scene.camera, controls: scene.controls, scene: scene.scene, get currentModel() { return scene.model; } } });
+Object.assign(globalThis, { lm2Viewer: { camera: scene.camera, controls: scene.controls, scene: scene.scene, get currentModel() { return scene.model; }, get backgroundMode() { return scene.backgroundMode; } } });
 
 for (const element of [showFaces, showLines, showSpheres, wireframe, showGrid]) {
   element.addEventListener('change', refreshVisibility);
 }
 lockHorizon.addEventListener('change', refreshHorizonLock);
+lightCanvas.addEventListener('change', refreshCanvasBackground);
 requireElement('resetView', HTMLButtonElement).addEventListener('click', () => scene.resetView());
 requireElement('zoomIn', HTMLButtonElement).addEventListener('click', () => scene.zoomBy(0.72));
 requireElement('zoomOut', HTMLButtonElement).addEventListener('click', () => scene.zoomBy(1.38));
@@ -93,9 +101,16 @@ requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => ru
   { label: 'Decoding model' },
 ));
 exportAssetButton.addEventListener('click', () => runAction(exportSelectedAsset, { label: 'Exporting evidence probe' }));
-animationPose.addEventListener('click', () => runAction(() => applyAnimationPose(), { label: 'Posing animation frame' }));
+animationPose.addEventListener('click', () => runAction(async () => { await applyAnimationPose(); }, { label: 'Posing animation frame' }));
 animationPrevious.addEventListener('click', () => runAction(() => stepAnimationFrame(-1), { label: 'Posing previous frame' }));
 animationNext.addEventListener('click', () => runAction(() => stepAnimationFrame(1), { label: 'Posing next frame' }));
+animationPlay.addEventListener('click', () => {
+  if (animationPlaying) {
+    stopAnimationPlayback();
+  } else {
+    void startAnimationPlayback();
+  }
+});
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
@@ -127,6 +142,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 void initialLoad();
+refreshCanvasBackground();
 refreshHorizonLock();
 tick();
 
@@ -142,6 +158,7 @@ function setCatalog(catalog: Awaited<ReturnType<typeof fetchCatalog>>): void {
 }
 
 async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
+  stopAnimationPlayback();
   await runAction(async () => {
     catalogUi.select(asset);
     const payload = await loadCatalogAsset(asset);
@@ -162,7 +179,8 @@ function showModel(model: Lm2Model): void {
   uvInspector.setModel(model);
   overlay.textContent = model.source || 'Uploaded model';
   setSelectedExportAsset(model.catalog_asset?.kind === 'model' ? model.catalog_asset : null);
-  setSelectedBodyAsset(model.catalog_asset?.kind === 'model' ? model.catalog_asset : null);
+  const catalogBodyAsset = model.catalog_asset?.kind === 'model' ? model.catalog_asset : null;
+  setSelectedBodyAsset(catalogBodyAsset || (model.pose ? selectedBodyAsset : null));
   updateExportControls();
   updateAnimationControls();
   if (model.catalog_asset) catalogUi.select(model.catalog_asset);
@@ -191,12 +209,16 @@ function updateExportControls(): void {
 function updateAnimationControls(): void {
   const stats = selectedAnimationStats();
   const hasPair = selectedBodyAsset !== null && stats !== null;
-  const disabled = !hasPair || animationBusy;
+  const disabled = animationBusy || animationPlaying;
   animationPose.disabled = disabled;
   animationPrevious.disabled = disabled;
   animationNext.disabled = disabled;
-  animationFrame.disabled = animationBusy;
-  animationElapsed.disabled = animationBusy;
+  animationPlay.disabled = animationBusy && !animationPlaying;
+  animationPlay.textContent = animationPlaying ? 'Pause' : 'Play';
+  animationPlay.setAttribute('aria-pressed', String(animationPlaying));
+  animationPlay.title = hasPair ? 'Play animation loop' : 'Select a model and decoded ANIM entry first';
+  animationFrame.disabled = animationBusy || animationPlaying;
+  animationElapsed.disabled = animationBusy || animationPlaying;
   if (stats) {
     animationFrame.max = String(Math.max(0, stats.keyframes - 1));
   } else {
@@ -216,6 +238,7 @@ function setSelectedExportAsset(asset: CatalogAsset | null): void {
 
 function setSelectedBodyAsset(asset: CatalogAsset | null): void {
   if (selectedBodyAsset?.id !== asset?.id) {
+    stopAnimationPlayback();
     animationResult.textContent = '';
   }
   selectedBodyAsset = asset;
@@ -223,6 +246,7 @@ function setSelectedBodyAsset(asset: CatalogAsset | null): void {
 
 function setSelectedAnimationAsset(asset: CatalogAsset): void {
   if (selectedAnimationAsset?.id !== asset.id) {
+    stopAnimationPlayback();
     animationResult.textContent = '';
     animationFrame.value = '0';
     animationElapsed.value = '0';
@@ -231,7 +255,7 @@ function setSelectedAnimationAsset(asset: CatalogAsset): void {
   updateAnimationControls();
 }
 
-async function applyAnimationPose(previousFrame?: number): Promise<void> {
+async function applyAnimationPose(previousFrame?: number): Promise<Lm2Model> {
   const bodyAsset = selectedBodyAsset;
   const animationAsset = selectedAnimationAsset;
   if (!bodyAsset) throw new Error('Select a catalog model before posing animation.');
@@ -252,10 +276,76 @@ async function applyAnimationPose(previousFrame?: number): Promise<void> {
       ? `Frame ${sample.target_frame_index}, previous ${sample.previous_frame_index}, next ${sample.next_frame_index}, ${sample.duration_ms} ms duration`
       : 'Posed frame loaded';
     overlay.textContent = `${bodyAsset.label} posed with ${animationAsset.label}`;
+    return model;
   } finally {
     animationBusy = false;
     updateAnimationControls();
   }
+}
+
+async function startAnimationPlayback(): Promise<void> {
+  if (!selectedBodyAsset || !selectedAnimationAsset || !selectedAnimationStats()) {
+    errorBox.textContent = 'Select a catalog model and decoded ANIM entry before playback.';
+    return;
+  }
+  errorBox.textContent = '';
+  animationPlaying = true;
+  const token = ++animationPlaybackToken;
+  updateAnimationControls();
+  try {
+    let frame = numericInput(animationFrame, 'frame');
+    validateAnimationFrame(frame, selectedAnimationAsset);
+    let elapsedMs = numericInput(animationElapsed, 'elapsed milliseconds');
+    let previousFrame: number | undefined = frame > 0 ? frame - 1 : undefined;
+    while (animationPlaying && token === animationPlaybackToken) {
+      animationFrame.value = String(frame);
+      animationElapsed.value = String(elapsedMs);
+      const model = await applyAnimationPose(previousFrame);
+      if (!animationPlaying || token !== animationPlaybackToken) break;
+      const sample = model.pose?.sample;
+      const duration = Math.max(1, sample?.duration_ms || playbackStepMs);
+      const nextFrame = sample?.next_frame_index ?? nextAnimationFrame(frame);
+      await waitAnimationPlayback(Math.min(playbackStepMs, duration), token);
+      if (!animationPlaying || token !== animationPlaybackToken) break;
+      const nextElapsed = elapsedMs + playbackStepMs;
+      if (nextElapsed >= duration) {
+        previousFrame = frame;
+        frame = nextFrame;
+        elapsedMs = 0;
+      } else {
+        elapsedMs = nextElapsed;
+      }
+    }
+  } catch (error) {
+    errorBox.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (token === animationPlaybackToken) {
+      animationPlaying = false;
+      updateAnimationControls();
+    }
+  }
+}
+
+function stopAnimationPlayback(): void {
+  if (!animationPlaying && animationPlaybackTimer === undefined) return;
+  animationPlaying = false;
+  animationPlaybackToken += 1;
+  if (animationPlaybackTimer !== undefined) {
+    window.clearTimeout(animationPlaybackTimer);
+    animationPlaybackTimer = undefined;
+  }
+  updateAnimationControls();
+}
+
+function waitAnimationPlayback(milliseconds: number, token: number): Promise<void> {
+  return new Promise((resolve) => {
+    animationPlaybackTimer = window.setTimeout(() => {
+      if (token === animationPlaybackToken) {
+        animationPlaybackTimer = undefined;
+      }
+      resolve();
+    }, Math.max(32, milliseconds));
+  });
 }
 
 async function stepAnimationFrame(direction: -1 | 1): Promise<void> {
@@ -280,6 +370,13 @@ async function stepAnimationFrame(direction: -1 | 1): Promise<void> {
     animationElapsed.value = previousElapsedValue;
     throw error;
   }
+}
+
+function nextAnimationFrame(current: number): number {
+  const stats = selectedAnimationStats();
+  if (!stats) return current;
+  const next = current + 1;
+  return next >= stats.keyframes ? stats.loop_frame : next;
 }
 
 function numericInput(input: HTMLInputElement, label: string): number {
@@ -330,6 +427,12 @@ function refreshHorizonLock(): void {
   scene.setLockHorizon(lockHorizon.checked);
   horizonIndicator.classList.toggle('locked', lockHorizon.checked);
   horizonIndicator.textContent = lockHorizon.checked ? 'HORIZON LOCKED' : 'HORIZON FREE';
+}
+
+function refreshCanvasBackground(): void {
+  const mode: CanvasBackgroundMode = lightCanvas.checked ? 'light' : 'dark';
+  scene.setBackgroundMode(mode);
+  document.body.dataset.canvasBackground = mode;
 }
 
 async function runAction(action: () => Promise<void>, progress?: { label: string; pollServer?: boolean }): Promise<void> {

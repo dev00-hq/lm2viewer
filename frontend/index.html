@@ -65,8 +65,9 @@
               <input id="animationElapsed" type="number" min="0" step="1" value="0" />
             </label>
           </div>
-          <div class="button-row">
+          <div class="button-row animation-controls">
             <button id="animationPrevious" title="Previous frame" aria-label="Previous animation frame">&lt;</button>
+            <button id="animationPlay" title="Play animation loop" aria-pressed="false" disabled>Play</button>
             <button id="animationPose" disabled>Pose</button>
             <button id="animationNext" title="Next frame" aria-label="Next animation frame">&gt;</button>
           </div>
@@ -99,6 +100,7 @@
         <label><input id="showSpheres" type="checkbox" checked /> spheres</label>
         <label><input id="wireframe" type="checkbox" /> wireframe</label>
         <label><input id="showGrid" type="checkbox" checked /> grid</label>
+        <label><input id="lightCanvas" type="checkbox" /> light canvas background</label>
         <label><input id="lockHorizon" type="checkbox" /> lock horizon</label>
         <div class="button-row">
           <button id="zoomOut" title="Zoom out" aria-label="Zoom out">-</button>

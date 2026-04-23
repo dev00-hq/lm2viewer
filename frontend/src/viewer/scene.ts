@@ -15,6 +15,13 @@ export interface VisibilityState {
   grid: boolean;
 }
 
+export type CanvasBackgroundMode = 'dark' | 'light';
+
+const backgroundPalettes: Record<CanvasBackgroundMode, { clear: number; gridCenter: number; grid: number }> = {
+  dark: { clear: 0x151719, gridCenter: 0x46515c, grid: 0x2a3035 },
+  light: { clear: 0xf3f6f8, gridCenter: 0x82909d, grid: 0xc7d0d8 },
+};
+
 export class ViewerScene {
   readonly camera: THREE.PerspectiveCamera;
   readonly controls: TrackballControls;
@@ -22,11 +29,12 @@ export class ViewerScene {
 
   private readonly canvas: HTMLCanvasElement;
   private readonly renderer: THREE.WebGLRenderer;
-  private readonly grid: THREE.GridHelper;
+  private grid: THREE.GridHelper;
   private readonly modelRoot = new THREE.Group();
   private readonly worldUp = new THREE.Vector3(0, 1, 0);
   private currentModel: Lm2Model | null = null;
   private lockHorizon = false;
+  private canvasBackgroundMode: CanvasBackgroundMode = 'dark';
   private visibility: VisibilityState = {
     faces: true,
     lines: true,
@@ -39,7 +47,7 @@ export class ViewerScene {
     this.canvas = options.canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.renderer.setClearColor(0x151719);
+    this.renderer.setClearColor(backgroundPalettes[this.canvasBackgroundMode].clear);
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100000);
     this.camera.position.set(0, 80, 160);
@@ -53,7 +61,7 @@ export class ViewerScene {
     const directional = new THREE.DirectionalLight(0xffffff, 2.2);
     directional.position.set(80, 120, 80);
     this.scene.add(directional);
-    this.grid = new THREE.GridHelper(200, 20, 0x46515c, 0x2a3035);
+    this.grid = this.createGrid();
     this.scene.add(this.grid);
     this.scene.add(new THREE.AxesHelper(40));
     this.scene.add(this.modelRoot);
@@ -62,6 +70,10 @@ export class ViewerScene {
 
   get model(): Lm2Model | null {
     return this.currentModel;
+  }
+
+  get backgroundMode(): CanvasBackgroundMode {
+    return this.canvasBackgroundMode;
   }
 
   loadModel(model: Lm2Model): void {
@@ -124,6 +136,19 @@ export class ViewerScene {
     this.applyHorizonLock();
   }
 
+  setBackgroundMode(mode: CanvasBackgroundMode): void {
+    if (this.canvasBackgroundMode === mode) return;
+    this.canvasBackgroundMode = mode;
+    this.renderer.setClearColor(backgroundPalettes[mode].clear);
+
+    const wasVisible = this.grid.visible;
+    this.scene.remove(this.grid);
+    this.disposeGrid(this.grid);
+    this.grid = this.createGrid();
+    this.grid.visible = wasVisible;
+    this.scene.add(this.grid);
+  }
+
   zoomBy(factor: number): void {
     if (!this.currentModel) return;
     const offset = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
@@ -159,6 +184,20 @@ export class ViewerScene {
     this.camera.position.copy(this.controls.target).add(offset);
     this.camera.up.copy(this.worldUp);
     this.camera.lookAt(this.controls.target);
+  }
+
+  private createGrid(): THREE.GridHelper {
+    const palette = backgroundPalettes[this.canvasBackgroundMode];
+    return new THREE.GridHelper(200, 20, palette.gridCenter, palette.grid);
+  }
+
+  private disposeGrid(grid: THREE.GridHelper): void {
+    grid.geometry.dispose();
+    if (Array.isArray(grid.material)) {
+      for (const material of grid.material) material.dispose();
+    } else {
+      grid.material.dispose();
+    }
   }
 
   private disposeModelRoot(): void {

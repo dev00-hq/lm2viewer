@@ -114,9 +114,12 @@ class AnimationParserTests(unittest.TestCase):
         self.assertEqual(animation.rotation_lerp_12bit(0x0FF0, 0x0010, 50, 100), 0)
         self.assertEqual(animation.rotation_lerp_12bit(0x0010, 0x0FF0, 50, 100), 0)
 
-    def test_signed_lerp_matches_c_truncation_toward_zero(self) -> None:
+    def test_signed_lerp_preserves_exact_quarter_steps(self) -> None:
         self.assertEqual(animation.signed_lerp_i16(-10, 10, 25, 100), -5)
         self.assertEqual(animation.signed_lerp_i16(10, -10, 25, 100), 5)
+
+    def test_signed_lerp_matches_classic_rounded_interpolator(self) -> None:
+        self.assertEqual(animation.signed_lerp_i16(0, -182, 50, 200), -46)
 
     def test_sample_keyframe_transition_interpolates_root_and_bones(self) -> None:
         decoded = animation.parse_lba2_animation_records(

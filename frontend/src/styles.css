@@ -87,6 +87,15 @@ button:hover {
   background: #374049;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+button:disabled:hover {
+  background: #2d3338;
+}
+
 .secondary-action {
   margin-top: 8px;
 }
@@ -176,6 +185,10 @@ label {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+}
+
+.animation-controls {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .explorer-toolbar {
@@ -437,6 +450,12 @@ label {
   overflow-wrap: anywhere;
 }
 
+body[data-canvas-background="light"] #overlay {
+  color: #25313b;
+  background: rgba(255, 255, 255, .76);
+  border-color: rgba(40, 52, 63, .18);
+}
+
 .horizon-indicator {
   position: fixed;
   top: 14px;
@@ -456,6 +475,13 @@ label {
   letter-spacing: 0;
   pointer-events: none;
   text-align: center;
+}
+
+body[data-canvas-background="light"] .horizon-indicator {
+  border-color: rgba(40, 52, 63, .25);
+  background: rgba(255, 255, 255, .88);
+  box-shadow: 0 8px 24px rgba(50, 62, 72, .2);
+  color: #1f2a34;
 }
 
 .horizon-indicator.locked {

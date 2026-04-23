@@ -298,7 +298,7 @@ def sample_bone_transition(
 
 def rotation_lerp_12bit(start: int, target: int, elapsed: int, duration: int) -> int:
     if duration <= 0:
-        return start & 0x0FFF
+        return target & 0x0FFF
     start_12 = start & 0x0FFF
     diff = (target & 0x0FFF) - start_12
     if diff == 0:
@@ -307,29 +307,32 @@ def rotation_lerp_12bit(start: int, target: int, elapsed: int, duration: int) ->
         diff += 0x1000
     elif diff > 0x800:
         diff -= 0x1000
-    return (c_div_trunc(diff * elapsed, duration) + start_12) & 0x0FFF
+    return (classic_scaled_delta(diff, elapsed, duration) + start_12) & 0x0FFF
 
 
 def signed_lerp_i16(start: int, target: int, elapsed: int, duration: int) -> int:
     if duration <= 0:
-        return wrap_i16(start)
-    diff = wrap_i16(target - start)
+        return wrap_i16(target)
+    diff = target - start
     if diff == 0:
         return wrap_i16(start)
-    return wrap_i16(c_div_trunc(diff * elapsed, duration) + start)
+    return wrap_i16(classic_scaled_delta(diff, elapsed, duration) + start)
 
 
 def linear_from_zero(target: int, elapsed: int, duration: int) -> int:
     if duration <= 0:
         return wrap_i16(target)
-    return wrap_i16(c_div_trunc(target * elapsed, duration))
+    return wrap_i16(classic_scaled_delta(target, elapsed, duration))
 
 
-def c_div_trunc(numerator: int, denominator: int) -> int:
-    if denominator == 0:
-        raise ZeroDivisionError("division by zero")
-    quotient = abs(numerator) // abs(denominator)
-    return -quotient if (numerator < 0) ^ (denominator < 0) else quotient
+def classic_interpolator(elapsed: int, duration: int) -> int:
+    if duration <= 0:
+        return 0x10000
+    return ((elapsed << 16) + ((duration + 1) >> 1)) // duration
+
+
+def classic_scaled_delta(delta: int, elapsed: int, duration: int) -> int:
+    return (delta * classic_interpolator(elapsed, duration)) >> 16
 
 
 def wrap_i16(value: int) -> int:
