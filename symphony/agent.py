@@ -230,7 +230,7 @@ def _resolve_windows_command(command: str) -> str:
     if Path(command).suffix:
         resolved = shutil.which(command)
         return resolved or command
-    extensions = [".exe", ".cmd", ".bat", ".com", ".ps1"]
+    extensions = [".cmd", ".bat", ".exe", ".com", ".ps1"]
     for extension in extensions:
         resolved = shutil.which(command + extension)
         if resolved:
