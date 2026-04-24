@@ -52,37 +52,6 @@
           <div id="exportResult" class="export-result" role="status" aria-live="polite"></div>
         </div>
 
-        <h2>Animation</h2>
-        <div id="animationPanel" class="animation-panel">
-          <div class="playback-header">
-            <div id="animationSelection" class="animation-selection">Select a model and an ANIM entry.</div>
-            <div id="animationPlaybackState" class="playback-state">Idle</div>
-          </div>
-          <div class="playback-time-row">
-            <span id="animationTimeCurrent">0:00.000</span>
-            <span id="animationTimeTotal">0:00.000</span>
-          </div>
-          <input id="animationScrub" class="playback-scrub" type="range" min="0" max="0" step="1" value="0" aria-label="Animation timeline" disabled />
-          <div class="button-row animation-controls">
-            <button id="animationPrevious" title="Previous frame" aria-label="Previous animation frame">&lt;</button>
-            <button id="animationPlay" class="transport-primary" title="Play animation" aria-pressed="false" disabled>Play</button>
-            <button id="animationNext" title="Next frame" aria-label="Next animation frame">&gt;</button>
-            <button id="animationRepeat" title="Repeat playback" aria-pressed="true">Repeat On</button>
-          </div>
-          <div class="pose-grid playback-debug">
-            <label>
-              <span>Frame</span>
-              <input id="animationFrame" type="number" min="0" step="1" value="0" />
-            </label>
-            <label>
-              <span>Elapsed ms</span>
-              <input id="animationElapsed" type="number" min="0" step="1" value="0" />
-            </label>
-            <button id="animationPose" class="debug-apply" disabled>Apply Pose</button>
-          </div>
-          <div id="animationResult" class="export-result" role="status" aria-live="polite"></div>
-        </div>
-
         <h2>UV Inspector</h2>
         <div id="uvInspector" class="uv-inspector">
           <select id="uvPolygon" aria-label="Polygon"></select>
@@ -124,6 +93,36 @@
       </aside>
       <main>
         <canvas id="canvas"></canvas>
+        <div id="animationPanel" class="animation-panel">
+          <div class="playback-header">
+            <div id="animationSelection" class="animation-selection">Select a model and an ANIM entry.</div>
+            <div id="animationPlaybackState" class="playback-state">Idle</div>
+          </div>
+          <div class="playback-time-row">
+            <span id="animationTimeCurrent">0:00.000</span>
+            <span id="animationTimeTotal">0:00.000</span>
+          </div>
+          <input id="animationScrub" class="playback-scrub" type="range" min="0" max="0" step="1" value="0" aria-label="Animation timeline" disabled />
+          <div class="button-row animation-controls">
+            <button id="animationPrevious" title="Previous frame" aria-label="Previous animation frame">&lt;</button>
+            <button id="animationPlay" class="transport-primary" title="Play animation" aria-pressed="false" disabled>&gt;</button>
+            <button id="animationNext" title="Next frame" aria-label="Next animation frame">&gt;</button>
+            <button id="animationRepeat" title="Repeat playback" aria-label="Repeat playback" aria-pressed="true">↻</button>
+            <button id="animationPose" class="debug-apply" title="Apply pose" aria-label="Apply animation pose" disabled>◇</button>
+          </div>
+          <div class="pose-grid playback-debug">
+            <label>
+              <span>Frame</span>
+              <input id="animationFrame" type="number" min="0" step="1" value="0" />
+            </label>
+            <label>
+              <span>ms</span>
+              <input id="animationElapsed" type="number" min="0" step="1" value="0" />
+            </label>
+          </div>
+          <div id="animationResult" class="export-result" role="status" aria-live="polite"></div>
+          <div id="animationPanelResize" class="animation-panel-resize" title="Resize playback controls" aria-hidden="true"></div>
+        </div>
         <div id="horizonIndicator" class="horizon-indicator" aria-live="polite">Horizon free</div>
         <div id="overlay">No model loaded</div>
       </main>

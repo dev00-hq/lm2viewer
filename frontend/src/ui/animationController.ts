@@ -119,11 +119,12 @@ export class AnimationController {
     elements.previous.disabled = disabled;
     elements.next.disabled = disabled;
     elements.play.disabled = this.busy && !this.playing;
-    elements.play.textContent = this.playing ? 'Pause' : 'Play';
+    elements.play.textContent = this.playing ? '||' : '>';
     elements.play.setAttribute('aria-pressed', String(this.playing));
-    elements.play.title = hasPair ? 'Play animation' : 'Select a model and decoded ANIM entry first';
-    elements.repeat.textContent = this.repeatEnabled ? 'Repeat On' : 'Repeat Off';
+    elements.play.title = hasPair ? (this.playing ? 'Pause animation' : 'Play animation') : 'Select a model and decoded ANIM entry first';
+    elements.repeat.textContent = '↻';
     elements.repeat.setAttribute('aria-pressed', String(this.repeatEnabled));
+    elements.repeat.title = this.repeatEnabled ? 'Repeat playback enabled' : 'Repeat playback disabled';
     elements.repeat.disabled = this.busy;
     elements.scrub.disabled = !hasPair || this.busy;
     elements.scrub.max = String(Math.max(0, totalDuration));
@@ -138,7 +139,9 @@ export class AnimationController {
     elements.playbackState.textContent = this.busy ? 'Loading' : this.playing ? 'Playing' : hasPair ? 'Ready' : 'Idle';
     elements.playbackState.classList.toggle('active', this.playing);
     elements.playbackState.classList.toggle('busy', this.busy);
-    elements.selection.textContent = `${this.bodyAsset?.label || 'No model'} + ${this.animationAsset?.label || 'No animation'}`;
+    const selectionText = `${this.bodyAsset?.label || 'No model'} + ${this.animationAsset?.label || 'No animation'}`;
+    elements.selection.textContent = selectionText;
+    elements.selection.title = selectionText;
   }
 
   stop(): void {
@@ -200,7 +203,7 @@ export class AnimationController {
     this.options.setError('');
     const token = ++this.playbackToken;
     this.busy = true;
-    this.options.elements.play.textContent = 'Loading';
+    this.options.elements.play.textContent = '...';
     this.updateControls();
     try {
       const sequence = await this.getSequence();

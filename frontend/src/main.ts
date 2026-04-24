@@ -34,6 +34,8 @@ const progressFill = requireElement('progressFill', HTMLDivElement);
 const exportAssetButton = requireElement('exportAsset', HTMLButtonElement);
 const exportPolygonMode = requireElement('exportPolygonMode', HTMLSelectElement);
 const exportResult = requireElement('exportResult', HTMLDivElement);
+const animationPanel = requireElement('animationPanel', HTMLDivElement);
+const animationPanelResize = requireElement('animationPanelResize', HTMLDivElement);
 const uvInspector = new UvInspector({
   root: requireElement('uvInspector', HTMLDivElement),
   polygon: requireElement('uvPolygon', HTMLSelectElement),
@@ -112,6 +114,7 @@ requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => ru
   { label: 'Decoding model' },
 ));
 exportAssetButton.addEventListener('click', () => runAction(exportSelectedAsset, { label: 'Exporting evidence probe' }));
+setupAnimationPanelResize();
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
@@ -350,6 +353,33 @@ function clearProgressTimers(): void {
 
 function formatElapsed(seconds: number): string {
   return `${seconds.toFixed(1)}s`;
+}
+
+function setupAnimationPanelResize(): void {
+  const minWidth = 170;
+  const maxWidth = 360;
+  animationPanelResize.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = animationPanel.getBoundingClientRect().width;
+    const parentWidth = animationPanel.parentElement?.getBoundingClientRect().width ?? maxWidth;
+    const widthLimit = Math.min(maxWidth, Math.max(minWidth, parentWidth - 28));
+    animationPanelResize.setPointerCapture(event.pointerId);
+
+    const drag = (moveEvent: PointerEvent) => {
+      const width = Math.max(minWidth, Math.min(widthLimit, startWidth + moveEvent.clientX - startX));
+      animationPanel.style.width = `${Math.round(width)}px`;
+    };
+    const stop = () => {
+      animationPanelResize.removeEventListener('pointermove', drag);
+      animationPanelResize.removeEventListener('pointerup', stop);
+      animationPanelResize.removeEventListener('pointercancel', stop);
+    };
+
+    animationPanelResize.addEventListener('pointermove', drag);
+    animationPanelResize.addEventListener('pointerup', stop);
+    animationPanelResize.addEventListener('pointercancel', stop);
+  });
 }
 
 function tick(): void {
