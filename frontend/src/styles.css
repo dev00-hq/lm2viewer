@@ -480,6 +480,28 @@ label {
   background: #3c364a;
 }
 
+.canvas-animation-picker {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 18;
+  width: min(260px, calc(100% - 220px));
+}
+
+.canvas-animation-picker select {
+  width: 100%;
+  border-color: rgba(190, 199, 210, .32);
+  background: rgba(24, 27, 30, .88);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .28);
+  color: #eef1f4;
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.canvas-animation-picker select:disabled {
+  opacity: .68;
+}
+
 .export-result {
   margin-top: 6px;
   color: #aeb7c2;
@@ -738,6 +760,12 @@ body[data-canvas-background="light"] .horizon-indicator {
 
   .animation-selection {
     font-size: 11px;
+  }
+
+  .canvas-animation-picker {
+    top: 8px;
+    right: 8px;
+    width: min(220px, calc(100% - 206px));
   }
 }
 

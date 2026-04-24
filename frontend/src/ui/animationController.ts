@@ -89,6 +89,10 @@ export class AnimationController {
     return this.bodyAsset;
   }
 
+  get selectedAnimationAsset(): CatalogAsset | null {
+    return this.animationAsset;
+  }
+
   setBodyAsset(asset: CatalogAsset | null): void {
     if (this.bodyAsset?.id !== asset?.id) {
       this.clearPlaybackState();

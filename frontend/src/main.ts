@@ -1,7 +1,7 @@
 import './styles.css';
 import { buildCatalog, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
 import { requireElement } from './dom';
-import type { CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './types';
+import type { Catalog, CatalogAsset, DecodeProgress, Lm2Model, ModelStats, PolygonMode } from './types';
 import { AnimationController } from './ui/animationController';
 import { CatalogUi } from './ui/catalog';
 import { renderStats } from './ui/stats';
@@ -36,6 +36,7 @@ const exportPolygonMode = requireElement('exportPolygonMode', HTMLSelectElement)
 const exportResult = requireElement('exportResult', HTMLDivElement);
 const animationPanel = requireElement('animationPanel', HTMLDivElement);
 const animationPanelResize = requireElement('animationPanelResize', HTMLDivElement);
+const canvasAnimationSelect = requireElement('canvasAnimationSelect', HTMLSelectElement);
 const uvInspector = new UvInspector({
   root: requireElement('uvInspector', HTMLDivElement),
   polygon: requireElement('uvPolygon', HTMLSelectElement),
@@ -48,6 +49,7 @@ const uvInspector = new UvInspector({
   result: requireElement('uvResult', HTMLDivElement),
 });
 let selectedExportAsset: CatalogAsset | null = null;
+let currentCatalog: Catalog | null = null;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
@@ -115,6 +117,7 @@ requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => ru
 ));
 exportAssetButton.addEventListener('click', () => runAction(exportSelectedAsset, { label: 'Exporting evidence probe' }));
 setupAnimationPanelResize();
+canvasAnimationSelect.addEventListener('change', selectCanvasAnimation);
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
@@ -157,8 +160,10 @@ async function initialLoad(): Promise<void> {
 }
 
 function setCatalog(catalog: Awaited<ReturnType<typeof fetchCatalog>>): void {
+  currentCatalog = catalog;
   catalogUi.setCatalog(catalog);
   if (catalog?.asset_root) assetRootInput.value = catalog.asset_root;
+  updateCanvasAnimationSelect(animationController.selectedBodyAsset);
 }
 
 async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
@@ -168,6 +173,7 @@ async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
     const payload = await loadCatalogAsset(asset);
     if ('animation' in payload) {
       animationController.setAnimationAsset(payload.animation);
+      updateCanvasAnimationSelect(animationController.selectedBodyAsset);
       uvInspector.setModel(null);
       catalogUi.renderDetail(payload.animation);
       overlay.textContent = `${payload.animation.label} selected`;
@@ -186,9 +192,62 @@ function showModel(model: Lm2Model): void {
   const catalogBodyAsset = model.catalog_asset?.kind === 'model' ? model.catalog_asset : null;
   catalogUi.setSelectedModel(catalogBodyAsset);
   animationController.setBodyAsset(catalogBodyAsset || (model.pose ? animationController.selectedBodyAsset : null));
+  updateCanvasAnimationSelect(animationController.selectedBodyAsset);
   updateExportControls();
   animationController.updateControls();
   if (model.catalog_asset) catalogUi.select(model.catalog_asset);
+}
+
+function selectCanvasAnimation(): void {
+  const asset = findCatalogAsset(canvasAnimationSelect.value);
+  if (!asset || asset.kind !== 'animation' || asset.entry_type !== 'animation') return;
+  animationController.setAnimationAsset(asset);
+  catalogUi.select(asset);
+  overlay.textContent = `${asset.label} selected`;
+  updateCanvasAnimationSelect(animationController.selectedBodyAsset);
+}
+
+function updateCanvasAnimationSelect(modelAsset: CatalogAsset | null): void {
+  canvasAnimationSelect.replaceChildren();
+  if (!currentCatalog || !modelAsset) {
+    canvasAnimationSelect.append(new Option('No model selected', ''));
+    canvasAnimationSelect.disabled = true;
+    return;
+  }
+
+  const animations = compatibleAnimations(modelAsset);
+  if (animations.length === 0) {
+    canvasAnimationSelect.append(new Option('No compatible animations', ''));
+    canvasAnimationSelect.disabled = true;
+    return;
+  }
+
+  canvasAnimationSelect.append(new Option(`${animations.length} compatible animations`, ''));
+  for (const animation of animations) {
+    canvasAnimationSelect.append(new Option(animation.label, animation.id));
+  }
+  canvasAnimationSelect.disabled = false;
+  const selectedAnimation = animationController.selectedAnimationAsset;
+  canvasAnimationSelect.value = selectedAnimation && animations.some((animation) => animation.id === selectedAnimation.id)
+    ? selectedAnimation.id
+    : '';
+}
+
+function compatibleAnimations(modelAsset: CatalogAsset): CatalogAsset[] {
+  return (currentCatalog?.assets || [])
+    .filter((asset) => animationMatchesModel(asset, modelAsset))
+    .sort((a, b) => a.source.entry_index - b.source.entry_index || a.label.localeCompare(b.label));
+}
+
+function animationMatchesModel(animation: CatalogAsset, model: CatalogAsset): boolean {
+  if (animation.kind !== 'animation' || animation.entry_type !== 'animation') return false;
+  if (!('keyframes' in animation.stats)) return false;
+  const modelStats = model.stats as ModelStats;
+  return animation.stats.boneframes === modelStats.bones;
+}
+
+function findCatalogAsset(id: string): CatalogAsset | null {
+  return currentCatalog?.assets.find((asset) => asset.id === id) || null;
 }
 
 async function exportSelectedAsset(): Promise<void> {
