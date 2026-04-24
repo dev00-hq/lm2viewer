@@ -30,12 +30,15 @@ flowchart LR
 
 | Path | Role |
 | --- | --- |
-| `lba2_lm2_viewer/viewer.py` | Backend server, CLI, catalog building, current LM2 parsing, palette/texture loading |
+| `lba2_lm2_viewer/viewer.py` | CLI commands, catalog building, current LM2 parsing, palette/texture loading, dialogs |
+| `lba2_lm2_viewer/server.py` | HTTP routing, static frontend serving, and mutable viewer session state |
 | `lba2_lm2_viewer/animation.py` | ANIM record decode, interpolation helpers, and animation evidence JSON |
 | `lba2_lm2_viewer/contracts/` | Versioned msgspec model contracts and JSON export helpers |
 | `lba2_lm2_viewer/lba_hqr.py` | HQR table and resource-entry decoding |
 | `lba2_lm2_viewer/body_metadata.json` | Local metadata for BODY catalog labels |
-| `frontend/src/` | Browser UI, catalog, Three.js scene, model mesh rendering |
+| `frontend/src/main.ts` | Browser bootstrap and cross-feature UI orchestration |
+| `frontend/src/ui/animationController.ts` | Animation selection, pose, stepping, and playback UI state |
+| `frontend/src/viewer/` | Three.js scene and model mesh rendering |
 | `frontend/vite.config.ts` | Builds frontend into `lba2_lm2_viewer/frontend/dist/` |
 | `scripts/build.py` | One-command developer build |
 | `scripts/package.py` | Release zip and wheel build |
@@ -82,10 +85,11 @@ in reusable backend modules.
 `/model.json` can remain a Three.js-friendly render payload. Evidence manifests
 should be separate outputs derived from the same decoded structures.
 
-## Planned Module Direction
+## Module Direction
 
-`viewer.py` currently carries too many responsibilities. Future work should
-extract narrow modules only when needed:
+`viewer.py` no longer owns HTTP serving, and `frontend/src/main.ts` no longer
+owns animation playback details. Future work should continue extracting narrow
+modules only when a capability needs the boundary:
 
 ```text
 lba2_lm2_viewer/
@@ -104,8 +108,9 @@ lba2_lm2_viewer/
   viewer.py
 ```
 
-This is a target shape, not current fact. Do not do a broad extraction just to
-match the tree. Let export and animation work pull out cohesive modules.
+This is a target shape, not current fact. Do not add compatibility bridges or
+parallel paths just to match the tree. Let export and animation work pull out
+cohesive modules.
 
 ## Data and Licensing Boundary
 

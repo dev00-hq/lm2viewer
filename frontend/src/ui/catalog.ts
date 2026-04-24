@@ -12,6 +12,7 @@ export interface CatalogUiOptions {
 export class CatalogUi {
   private catalog: Catalog | null = null;
   private selectedAssetId: string | null = null;
+  private selectedModel: CatalogAsset | null = null;
 
   constructor(private readonly options: CatalogUiOptions) {
     options.search.addEventListener('input', () => this.render());
@@ -31,6 +32,11 @@ export class CatalogUi {
   select(asset: CatalogAsset): void {
     this.selectedAssetId = asset.id;
     this.renderDetail(asset);
+    this.render();
+  }
+
+  setSelectedModel(asset: CatalogAsset | null): void {
+    this.selectedModel = asset;
     this.render();
   }
 
@@ -64,11 +70,15 @@ export class CatalogUi {
     }
 
     const animation = stats as AnimationStats;
+    const compatibility = this.selectedModel
+      ? `${animationMatchesModel(asset, this.selectedModel) ? 'compatible with selected model' : 'bone count does not match selected model'}<br>`
+      : '';
     this.options.detail.innerHTML =
       `<strong>${escapeHtml(asset.label)}</strong><br>` +
       `${escapeHtml(asset.source.hqr)}[${asset.source.entry_index}]<br>` +
       `${animation.keyframes || 0} keyframes, ${animation.boneframes || 0} boneframes, loop frame ${animation.loop_frame ?? '-'}<br>` +
       `${animation.can_fall ? 'contains translation/fall frames' : 'rotation-only frames'}<br>` +
+      `${compatibility}` +
       `${escapeHtml(asset.relative_path || '')}`;
   }
 
@@ -80,6 +90,7 @@ export class CatalogUi {
     let assets = this.catalog.assets || [];
     assets = assets.filter((asset) => {
       if (kind !== 'all' && asset.kind !== kind) return false;
+      if (kind === 'animation' && this.selectedModel && !animationMatchesModel(asset, this.selectedModel)) return false;
       if (!query) return true;
       return searchableText(asset).includes(query);
     });
@@ -87,8 +98,14 @@ export class CatalogUi {
     const visible = assets.slice(0, 260);
     this.options.summary.textContent =
       `${summary.models || 0} models, ${summary.decoded_animations || 0} decoded animations, ${summary.raw_animations || 0} raw animation entries across ${summary.hqr_files || 0} HQR files. ` +
-      `Showing ${visible.length} of ${assets.length} matching entries.`;
+      `${this.filterContext(kind)}Showing ${visible.length} of ${assets.length} matching entries.`;
     this.options.list.replaceChildren(...visible.map((asset) => this.assetButton(asset)));
+  }
+
+  private filterContext(kind: KindFilter): string {
+    if (kind !== 'animation' || !this.selectedModel) return '';
+    const stats = this.selectedModel.stats as ModelStats;
+    return `Filtered to decoded animations with ${stats.bones || 0} boneframes for ${this.selectedModel.label}. `;
   }
 
   private assetButton(asset: CatalogAsset): HTMLButtonElement {
@@ -113,6 +130,13 @@ export class CatalogUi {
     button.addEventListener('click', () => this.options.onSelect(asset));
     return button;
   }
+}
+
+function animationMatchesModel(animation: CatalogAsset, model: CatalogAsset): boolean {
+  if (animation.kind !== 'animation' || animation.entry_type !== 'animation') return false;
+  if (!('keyframes' in animation.stats)) return false;
+  const modelStats = model.stats as ModelStats;
+  return animation.stats.boneframes === modelStats.bones;
 }
 
 function searchableText(asset: CatalogAsset): string {

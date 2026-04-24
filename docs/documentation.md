@@ -189,6 +189,8 @@ The script writes:
 | `docs/plans.md` | You need source-of-truth milestones and decisions |
 | `docs/architecture.md` | You need subsystem boundaries and target module shape |
 | `docs/implement.md` | You are about to make code changes |
+| `lba2_lm2_viewer/server.py` | You need HTTP endpoints, static serving, or viewer session state |
+| `frontend/src/ui/animationController.ts` | You need frontend animation pose, stepping, or playback state |
 | `frontend/PLAN.md` | You need older frontend-local planning context |
 | `AGENTS.md` | You need project-specific agent rules |
 | `ISSUES.md` | You need known confusion points and traps |

@@ -4,12 +4,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from lba2_lm2_viewer import server
 from lba2_lm2_viewer import viewer
 
 
 class ViewerServerConcurrencyTests(unittest.TestCase):
     def test_catalog_build_operations_do_not_overlap(self) -> None:
-        server = viewer.ViewerServer(None, None)
+        viewer_server = server.ViewerServer(None, None)
         events: list[tuple[str, str]] = []
         active = 0
         max_active = 0
@@ -41,13 +42,13 @@ class ViewerServerConcurrencyTests(unittest.TestCase):
 
         def run_build(path: str) -> None:
             try:
-                server.set_asset_root(Path(path))
+                viewer_server.set_asset_root(Path(path))
             except BaseException as exc:
                 errors.append(exc)
 
         with (
-            patch.object(viewer, "build_catalog", side_effect=fake_build_catalog),
-            patch.object(viewer.ViewerServer, "load_visual_assets", return_value=None),
+            patch.object(server, "build_catalog", side_effect=fake_build_catalog),
+            patch.object(server.ViewerServer, "load_visual_assets", return_value=None),
         ):
             first = threading.Thread(target=run_build, args=("first",))
             first.start()

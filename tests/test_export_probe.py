@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lba2_lm2_viewer import server
 from lba2_lm2_viewer import viewer
 from lba2_lm2_viewer.exports import export_catalog_asset_probe, export_model_probe
 
@@ -198,11 +199,11 @@ class ExportProbeTests(unittest.TestCase):
             (root / "BODY.HQR").write_bytes(
                 classic_hqr([resource_entry(textured_triangle_lm2())])
             )
-            server = viewer.ViewerServer(None, None)
-            server.set_asset_root(root)
+            viewer_server = server.ViewerServer(None, None)
+            viewer_server.set_asset_root(root)
             output_dir = Path(temp_dir) / "server-export"
 
-            response = server.export_catalog_asset("BODY.HQR:1", output_dir)
+            response = viewer_server.export_catalog_asset("BODY.HQR:1", output_dir)
 
             self.assertEqual(response["output_dir"], str(output_dir.resolve()))
             self.assertEqual(
