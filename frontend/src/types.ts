@@ -163,7 +163,11 @@ export interface Lm2Model {
       elapsed_ms: number;
       duration_ms: number;
       complete: boolean;
+      root_delta?: [number, number, number];
       bone_count: number;
+    };
+    transform?: {
+      translation_scale?: number;
     };
   };
   catalog_asset?: CatalogAsset;
@@ -175,6 +179,7 @@ export interface AnimationSequenceFrame {
   next_frame: number;
   elapsed_ms: number;
   duration_ms: number;
+  root_motion?: [number, number, number];
   vertices: [number, number, number, number][];
   pose: NonNullable<Lm2Model['pose']>;
 }

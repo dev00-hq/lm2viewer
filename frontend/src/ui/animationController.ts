@@ -16,6 +16,7 @@ export interface AnimationControllerElements {
   play: HTMLButtonElement;
   repeat: HTMLButtonElement;
   pose: HTMLButtonElement;
+  mode: HTMLSelectElement;
   next: HTMLButtonElement;
   result: HTMLDivElement;
 }
@@ -77,6 +78,10 @@ export class AnimationController {
       this.repeatEnabled = !this.repeatEnabled;
       this.updateControls();
     });
+    elements.mode.addEventListener('change', () => {
+      options.scene.setPlaybackMode(elements.mode.value);
+      if (this.currentFrame) this.renderFrame(this.currentFrame);
+    });
     elements.scrub.addEventListener('input', () => {
       void this.seekTo(Number(elements.scrub.value)).catch((error) => {
         options.setError(error instanceof Error ? error.message : String(error));
@@ -130,6 +135,7 @@ export class AnimationController {
     elements.repeat.setAttribute('aria-pressed', String(this.repeatEnabled));
     elements.repeat.title = this.repeatEnabled ? 'Repeat playback enabled' : 'Repeat playback disabled';
     elements.repeat.disabled = this.busy;
+    elements.mode.disabled = this.busy;
     elements.scrub.disabled = !hasPair || this.busy;
     elements.scrub.max = String(Math.max(0, totalDuration));
     elements.frame.disabled = this.busy || this.playing;
@@ -258,7 +264,7 @@ export class AnimationController {
     if (!this.options.scene.model || !this.bodyAsset || !this.animationAsset) {
       throw new Error('Select a catalog model and decoded ANIM entry before playback.');
     }
-    this.options.scene.updateModelVertices(frame.vertices, frame.pose, this.bodyAsset);
+    this.options.scene.updateModelVertices(frame.vertices, frame.pose, this.bodyAsset, frame.root_motion);
     this.currentFrame = frame;
   }
 

@@ -256,8 +256,10 @@ class ViewerServer:
             model = load_lm2_bytes(body_payload, str(body_asset["relative_path"]))
             animation = parse_lba2_animation_records(animation_payload)
             frames: list[dict[str, Any]] = []
+            cumulative_root = [0, 0, 0]
             for frame_index, keyframe in enumerate(animation.keyframes):
                 previous_frame = frame_index - 1 if frame_index > 0 else 0
+                previous_sample_root = [0, 0, 0]
                 elapsed_values = list(range(0, max(1, keyframe.duration), step_ms))
                 if not elapsed_values:
                     elapsed_values = [0]
@@ -272,6 +274,12 @@ class ViewerServer:
                     pose["body_asset_id"] = body_asset["id"]
                     pose["animation_asset_id"] = animation_asset["id"]
                     sample = pose["sample"]
+                    sample_root = list(sample.get("root_delta") or [0, 0, 0])
+                    cumulative_root = [
+                        cumulative_root[index] + sample_root[index] - previous_sample_root[index]
+                        for index in range(3)
+                    ]
+                    previous_sample_root = sample_root
                     frames.append(
                         {
                             "frame": frame_index,
@@ -279,6 +287,7 @@ class ViewerServer:
                             "next_frame": sample["next_frame_index"],
                             "elapsed_ms": elapsed_ms,
                             "duration_ms": sample["duration_ms"],
+                            "root_motion": cumulative_root.copy(),
                             "vertices": [
                                 [vertex.x, vertex.y, vertex.z, vertex.bone]
                                 for vertex in posed_model.vertices

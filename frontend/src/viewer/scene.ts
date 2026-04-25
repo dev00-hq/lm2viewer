@@ -16,6 +16,8 @@ export interface VisibilityState {
 }
 
 export type CanvasBackgroundMode = 'dark' | 'light';
+export type PlaybackMode = 'world' | 'treadmill' | 'pose';
+const GRID_CELL_SIZE = 10;
 
 const backgroundPalettes: Record<CanvasBackgroundMode, { clear: number; gridCenter: number; grid: number }> = {
   dark: { clear: 0x151719, gridCenter: 0x46515c, grid: 0x2a3035 },
@@ -32,7 +34,10 @@ export class ViewerScene {
   private grid: THREE.GridHelper;
   private readonly modelRoot = new THREE.Group();
   private readonly worldUp = new THREE.Vector3(0, 1, 0);
+  private playbackMode: PlaybackMode = 'world';
   private currentModel: Lm2Model | null = null;
+  private currentRootMotion: [number, number, number] | null = null;
+  private worldFollowTarget: THREE.Vector3 | null = null;
   private lockHorizon = false;
   private canvasBackgroundMode: CanvasBackgroundMode = 'dark';
   private visibility: VisibilityState = {
@@ -79,9 +84,13 @@ export class ViewerScene {
   loadModel(model: Lm2Model, options: { frame?: boolean } = {}): void {
     this.disposeModelRoot();
     this.currentModel = model;
+    this.currentRootMotion = null;
+    this.worldFollowTarget = null;
     this.modelRoot.clear();
+    this.modelRoot.position.set(0, 0, 0);
     this.modelRoot.add(...buildModelRoot(model).children);
     this.applyVisibility(this.visibility);
+    this.applyPlaybackTransform();
     if (options.frame !== false) this.frameModel();
   }
 
@@ -89,6 +98,7 @@ export class ViewerScene {
     vertices: Lm2Model['vertices'],
     pose?: Lm2Model['pose'],
     catalogAsset?: Lm2Model['catalog_asset'],
+    rootMotion?: [number, number, number],
   ): void {
     if (this.currentModel) {
       this.currentModel = {
@@ -98,7 +108,15 @@ export class ViewerScene {
         catalog_asset: catalogAsset ?? this.currentModel.catalog_asset,
       };
     }
+    this.currentRootMotion = rootMotion ?? null;
     updateModelRootVertices(this.modelRoot, vertices);
+    this.applyPlaybackTransform();
+  }
+
+  setPlaybackMode(mode: string): void {
+    if (!isPlaybackMode(mode) || this.playbackMode === mode) return;
+    this.playbackMode = mode;
+    this.applyPlaybackTransform();
   }
 
   applyVisibility(visibility: VisibilityState): void {
@@ -204,7 +222,61 @@ export class ViewerScene {
 
   private createGrid(): THREE.GridHelper {
     const palette = backgroundPalettes[this.canvasBackgroundMode];
-    return new THREE.GridHelper(200, 20, palette.gridCenter, palette.grid);
+    return new THREE.GridHelper(600, 60, palette.gridCenter, palette.grid);
+  }
+
+  private applyPlaybackTransform(): void {
+    const root = this.poseRootOffset();
+    const motion = this.rootMotionOffset(root);
+    const actorPosition = new THREE.Vector3(motion.x - root.x, motion.y - root.y, motion.z - root.z);
+    if (this.playbackMode === 'world') {
+      this.modelRoot.position.copy(actorPosition);
+      this.followWorldTarget(actorPosition);
+      this.grid.position.set(
+        infiniteGridOffset(actorPosition.x),
+        0,
+        infiniteGridOffset(actorPosition.z),
+      );
+      return;
+    }
+    this.worldFollowTarget = null;
+    if (this.playbackMode === 'treadmill') {
+      this.modelRoot.position.set(-root.x, 0, -root.z);
+      this.grid.position.set(wrappedGridOffset(-motion.x), 0, wrappedGridOffset(-motion.z));
+      return;
+    }
+    this.modelRoot.position.set(-root.x, -root.y, -root.z);
+    this.grid.position.set(0, 0, 0);
+  }
+
+  private followWorldTarget(nextTarget: THREE.Vector3): void {
+    const offset = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
+    if (!this.worldFollowTarget) {
+      this.worldFollowTarget = nextTarget.clone();
+      this.controls.target.copy(nextTarget);
+      this.camera.position.copy(nextTarget).add(offset);
+      return;
+    }
+    this.worldFollowTarget.copy(nextTarget);
+    this.controls.target.copy(nextTarget);
+    this.camera.position.copy(nextTarget).add(offset);
+  }
+
+  private poseRootOffset(): THREE.Vector3 {
+    const sampleRoot = this.currentModel?.pose?.sample.root_delta;
+    const scale = this.currentModel?.pose?.transform?.translation_scale ?? 1;
+    if (!sampleRoot) return new THREE.Vector3();
+    return new THREE.Vector3(sampleRoot[0] * scale, sampleRoot[1] * scale, sampleRoot[2] * scale);
+  }
+
+  private rootMotionOffset(fallback: THREE.Vector3): THREE.Vector3 {
+    const scale = this.currentModel?.pose?.transform?.translation_scale ?? 1;
+    if (!this.currentRootMotion) return fallback.clone();
+    return new THREE.Vector3(
+      this.currentRootMotion[0] * scale,
+      this.currentRootMotion[1] * scale,
+      this.currentRootMotion[2] * scale,
+    );
   }
 
   private disposeGrid(grid: THREE.GridHelper): void {
@@ -244,4 +316,16 @@ export class ViewerScene {
     for (const geometry of geometries) geometry.dispose();
     for (const texture of textures) texture.dispose();
   }
+}
+
+function isPlaybackMode(mode: string): mode is PlaybackMode {
+  return mode === 'world' || mode === 'treadmill' || mode === 'pose';
+}
+
+function infiniteGridOffset(value: number): number {
+  return Math.round(value / GRID_CELL_SIZE) * GRID_CELL_SIZE;
+}
+
+function wrappedGridOffset(value: number): number {
+  return ((value % GRID_CELL_SIZE) + GRID_CELL_SIZE) % GRID_CELL_SIZE;
 }

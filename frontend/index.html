@@ -115,6 +115,11 @@
             <button id="animationRepeat" title="Repeat playback" aria-label="Repeat playback" aria-pressed="true">↻</button>
             <button id="animationPose" class="debug-apply" title="Apply pose" aria-label="Apply animation pose" disabled>◇</button>
           </div>
+          <select id="animationPlaybackMode" class="playback-mode" aria-label="Animation playback mode">
+            <option value="world">World motion</option>
+            <option value="treadmill">Treadmill</option>
+            <option value="pose">Pose only</option>
+          </select>
           <div class="pose-grid playback-debug">
             <label>
               <span>Frame</span>

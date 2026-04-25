@@ -75,6 +75,7 @@ const animationController = new AnimationController({
     play: requireElement('animationPlay', HTMLButtonElement),
     repeat: requireElement('animationRepeat', HTMLButtonElement),
     pose: requireElement('animationPose', HTMLButtonElement),
+    mode: requireElement('animationPlaybackMode', HTMLSelectElement),
     next: requireElement('animationNext', HTMLButtonElement),
     result: requireElement('animationResult', HTMLDivElement),
   },
