@@ -184,10 +184,13 @@ export interface Lm2Model {
 }
 
 export interface AnimationSequenceFrame {
+  sequence_index: number;
+  segment: 'intro' | 'loop';
   frame: number;
   previous_frame: number;
   next_frame: number;
   elapsed_ms: number;
+  timeline_ms: number;
   duration_ms: number;
   root_motion?: [number, number, number];
   vertices: [number, number, number, number][];
@@ -200,6 +203,9 @@ export interface AnimationSequencePayload {
   step_ms: number;
   keyframes: number;
   loop_frame: number;
+  loop_index: number;
+  playback_end_index: number;
+  loop_cycle_root_delta: [number, number, number];
   frames: AnimationSequenceFrame[];
 }
 

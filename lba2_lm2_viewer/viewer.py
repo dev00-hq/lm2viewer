@@ -1947,6 +1947,7 @@ def animation_command(argv: list[str]) -> int:
     from .animation import (
         build_animation_evidence,
         parse_lba2_animation_records,
+        playback_frame_indices,
         write_animation_evidence,
     )
 
@@ -1987,6 +1988,11 @@ def animation_command(argv: list[str]) -> int:
         help="optional previous keyframe index for loop-transition samples",
     )
     parser.add_argument(
+        "--sample-loop-transition",
+        action="store_true",
+        help="sample the canonical loop-start transition from the last keyframe",
+    )
+    parser.add_argument(
         "--elapsed-ms",
         type=int,
         default=0,
@@ -2001,6 +2007,15 @@ def animation_command(argv: list[str]) -> int:
         raise Lm2Error(f"catalog asset is not a decoded animation: {args.asset}")
     payload, resource = read_hqr_payload(asset_root, asset["source"])
     animation = parse_lba2_animation_records(payload)
+    sample_frame = args.sample_frame
+    previous_frame = args.previous_frame
+    if args.sample_loop_transition:
+        if args.previous_frame is not None:
+            parser.error("--sample-loop-transition cannot be combined with --previous-frame")
+        frame_pairs, loop_pair_index = playback_frame_indices(animation)
+        if loop_pair_index >= len(frame_pairs):
+            raise Lm2Error("animation does not have a loop transition to sample")
+        sample_frame, previous_frame = frame_pairs[loop_pair_index]
 
     body: dict[str, Any] | None = None
     if args.body_asset is not None:
@@ -2022,8 +2037,8 @@ def animation_command(argv: list[str]) -> int:
             "classic_index": asset["source"].get("classic_index"),
             "resource": resource,
         },
-        sample_frame=args.sample_frame,
-        previous_frame=args.previous_frame,
+        sample_frame=sample_frame,
+        previous_frame=previous_frame,
         elapsed_ms=args.elapsed_ms,
         body=body,
     )

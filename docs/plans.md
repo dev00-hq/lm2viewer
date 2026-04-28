@@ -192,11 +192,14 @@ Deliverable:
 - Implemented: tests for header, keyframe, boneframe, loop, and interpolation
   behavior.
 - Implemented: CLI evidence JSON with raw records, one sampled frame step, and
-  optional BODY bone-count compatibility.
+  optional BODY bone-count compatibility. Evidence also records the canonical
+  playback transition table so loop-start samples are not inferred from frame
+  numbers alone.
 - Implemented: posed BODY + ANIM vertex transform stepping in the viewer for
   selected catalog model and ANIM pairs.
-- Deferred: continuous playback; add it only after more original-runtime visual
-  evidence confirms the frame-step path.
+- Implemented: continuous viewer playback with explicit intro/loop sequence
+  metadata. Repeat-off playback stops before the generated loop segment; repeat
+  playback accumulates loop-cycle root motion for translating animations.
 
 Use the updated MBN model viewer decompilation as reference for animation header
 layout, keyframe records, boneframe records, animation case handling, rotation

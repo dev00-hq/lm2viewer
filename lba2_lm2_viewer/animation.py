@@ -182,6 +182,47 @@ def next_frame_index(animation: Lba2Animation, frame_index: int) -> int:
     return next_index
 
 
+def playback_frame_indices(animation: Lba2Animation) -> tuple[tuple[tuple[int, int], ...], int]:
+    """Return (target frame, previous frame) pairs plus the loop segment index."""
+    initial_pairs = tuple(
+        (frame_index, previous_frame_index(animation, frame_index))
+        for frame_index in range(animation.keyframe_count)
+    )
+    if animation.keyframe_count <= 1:
+        return initial_pairs, 0
+
+    loop_index = len(initial_pairs)
+    loop_pairs = []
+    for frame_index in range(animation.loop_start_keyframe, animation.keyframe_count):
+        previous_index = (
+            animation.keyframe_count - 1
+            if frame_index == animation.loop_start_keyframe
+            else frame_index - 1
+        )
+        loop_pairs.append((frame_index, previous_index))
+    return initial_pairs + tuple(loop_pairs), loop_index
+
+
+def playback_transitions(animation: Lba2Animation) -> dict[str, Any]:
+    """Return the canonical playback frame transition table for evidence output."""
+    pairs, loop_index = playback_frame_indices(animation)
+    has_loop_segment = animation.keyframe_count > 1
+    playback_end_index = loop_index if has_loop_segment else len(pairs)
+    return {
+        "loop_index": loop_index,
+        "playback_end_index": playback_end_index,
+        "transitions": [
+            {
+                "sequence_index": index,
+                "segment": "loop" if has_loop_segment and index >= loop_index else "intro",
+                "target_frame_index": target,
+                "previous_frame_index": previous,
+            }
+            for index, (target, previous) in enumerate(pairs)
+        ],
+    }
+
+
 def sample_keyframe_transition(
     animation: Lba2Animation,
     target_frame_index: int,
@@ -373,6 +414,7 @@ def build_animation_evidence(
         "schema_version": SCHEMA_VERSION,
         "source": source,
         "animation": animation.to_json(),
+        "playback": playback_transitions(animation),
         "body_compatibility": body_compatibility,
         "samples": [
             sample_keyframe_transition(

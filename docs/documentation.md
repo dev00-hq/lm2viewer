@@ -125,17 +125,25 @@ descriptors.
 
 ## Animation Evidence Probe
 
-Write decoded ANIM records and one deterministic frame-step sample:
+Write decoded ANIM records, canonical playback transitions, and one deterministic
+frame-step sample:
 
 ```powershell
 lba2-lm2-viewer animation --asset-root "C:\LBA2" --asset "ANIM.HQR:1" --body-asset "BODY.HQR:1" --out out\anim-001.evidence.json --sample-frame 1 --previous-frame 0 --elapsed-ms 50
 ```
 
+To sample the playback loop-start transition, use:
+
+```powershell
+lba2-lm2-viewer animation --asset-root "C:\LBA2" --asset "ANIM.HQR:1" --out out\anim-001.evidence.json --sample-loop-transition
+```
+
 The JSON uses schema version `lm2_animation_evidence.v0`. It preserves raw
 keyframe and boneframe values, records the decoded header and summary, applies
 the recovered `0040ce90` wrapped 12-bit rotation and `0040cf10` signed-linear
-interpolation rules, and can record BODY bone-count compatibility. It is an RE
-evidence artifact, not a runtime asset.
+interpolation rules, records the intro/loop playback transition table, and can
+record BODY bone-count compatibility. It is an RE evidence artifact, not a
+runtime asset.
 
 ## Animation Frame Stepping
 
@@ -144,6 +152,13 @@ the explorer. The Animation panel can pose the selected BODY at a target
 keyframe and elapsed time, or step to the previous/next frame. The backend owns
 the BODY + ANIM transform path and returns normal model JSON with posed
 vertices plus pose metadata for inspection.
+
+The playback endpoint returns a sampled sequence with explicit `sequence_index`,
+`segment`, `timeline_ms`, `loop_index`, `playback_end_index`, and
+`loop_cycle_root_delta` fields. The frontend uses those fields for repeat-off
+stopping, scrubbing/resume identity, and world-motion loops. Static OBJ/model
+contract exports stay independent of playback state and reload decoded model
+bytes from the selected catalog asset.
 
 ## ANIM3DS Cataloging
 

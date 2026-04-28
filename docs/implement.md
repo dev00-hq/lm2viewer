@@ -113,8 +113,11 @@ Implementation order:
 3. Export evidence JSON. Implemented by `lba2-lm2-viewer animation`.
 4. Add posed frame stepping for selected BODY + ANIM pairs. Implemented by the
    backend pose path and frontend Animation panel.
-5. Add continuous playback only after additional original-runtime visual
-   evidence backs the posed stepping path.
+5. Add continuous playback. Implemented by the backend sequence endpoint and
+   frontend Animation controller. Playback uses explicit intro/loop sequence
+   indexes so the loop-start frame can interpolate from the last keyframe, and
+   world-motion repeat cycles accumulate root-motion deltas instead of snapping
+   back to the first loop pass.
 
 Use updated MBN model viewer decompilation as reference for:
 
@@ -126,7 +129,8 @@ Use updated MBN model viewer decompilation as reference for:
 - linear interpolation
 - body transform application
 
-Do not add visual playback from guessed semantics.
+Do not add new visual playback semantics without source, MBN, or original-runtime
+evidence.
 
 ## ANIM3DS Track
 

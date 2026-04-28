@@ -6,7 +6,15 @@ import { AnimationController } from './ui/animationController';
 import { CatalogUi } from './ui/catalog';
 import { renderStats } from './ui/stats';
 import { UvInspector } from './ui/uvInspector';
-import { ViewerScene, type CanvasBackgroundMode, type VisibilityState } from './viewer/scene';
+import {
+  DEFAULT_CANVAS_BACKGROUND_SHADE,
+  ViewerScene,
+  canvasBackgroundColor,
+  canvasBackgroundSliderStops,
+  type CanvasBackgroundMode,
+  type CanvasBackgroundShade,
+  type VisibilityState,
+} from './viewer/scene';
 
 const canvas = requireElement('canvas', HTMLCanvasElement);
 const scene = new ViewerScene({ canvas });
@@ -21,6 +29,9 @@ const showSpheres = requireElement('showSpheres', HTMLInputElement);
 const wireframe = requireElement('wireframe', HTMLInputElement);
 const showGrid = requireElement('showGrid', HTMLInputElement);
 const lightCanvas = requireElement('lightCanvas', HTMLInputElement);
+const canvasBackgroundToggle = requireElement('canvasBackgroundToggle', HTMLButtonElement);
+const canvasBackgroundShade = requireElement('canvasBackgroundShade', HTMLButtonElement);
+const canvasBackgroundShadePicker = requireElement('canvasBackgroundShadePicker', HTMLDivElement);
 const lockHorizon = requireElement('lockHorizon', HTMLInputElement);
 const assetRootInput = requireElement('assetRoot', HTMLInputElement);
 const pathInput = requireElement('path', HTMLInputElement);
@@ -53,6 +64,12 @@ let currentCatalog: Catalog | null = null;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
+let selectedCanvasBackgroundShade: CanvasBackgroundShade = DEFAULT_CANVAS_BACKGROUND_SHADE;
+
+const backgroundStorageKeys = {
+  mode: 'lba2-lm2-viewer.canvasBackgroundMode',
+  shade: 'lba2-lm2-viewer.canvasBackgroundShade',
+};
 
 const catalogUi = new CatalogUi({
   summary: requireElement('catalogSummary', HTMLDivElement),
@@ -97,6 +114,29 @@ for (const element of [showFaces, showLines, showSpheres, wireframe, showGrid]) 
 }
 lockHorizon.addEventListener('change', refreshHorizonLock);
 lightCanvas.addEventListener('change', refreshCanvasBackground);
+canvasBackgroundToggle.addEventListener('click', () => {
+  lightCanvas.checked = !lightCanvas.checked;
+  refreshCanvasBackground();
+  if (!canvasBackgroundShadePicker.hidden) renderBackgroundShadePicker();
+});
+canvasBackgroundShade.addEventListener('click', () => {
+  renderBackgroundShadePicker();
+  canvasBackgroundShadePicker.hidden = !canvasBackgroundShadePicker.hidden;
+  canvasBackgroundShade.setAttribute('aria-expanded', String(!canvasBackgroundShadePicker.hidden));
+  if (!canvasBackgroundShadePicker.hidden) {
+    canvasBackgroundShadePicker.querySelector<HTMLInputElement>('#canvasBackgroundShadeSlider')?.focus();
+  }
+});
+document.addEventListener('pointerdown', (event) => {
+  if (canvasBackgroundShadePicker.hidden) return;
+  const target = event.target;
+  if (!(target instanceof Node)) return;
+  if (canvasBackgroundShade.contains(target) || canvasBackgroundShadePicker.contains(target)) return;
+  hideBackgroundShadePicker();
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') hideBackgroundShadePicker();
+});
 requireElement('resetView', HTMLButtonElement).addEventListener('click', () => scene.resetView());
 requireElement('zoomIn', HTMLButtonElement).addEventListener('click', () => scene.zoomBy(0.72));
 requireElement('zoomOut', HTMLButtonElement).addEventListener('click', () => scene.zoomBy(1.38));
@@ -149,6 +189,7 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+restoreCanvasBackgroundPreference();
 void initialLoad();
 refreshCanvasBackground();
 refreshHorizonLock();
@@ -304,8 +345,58 @@ function refreshHorizonLock(): void {
 
 function refreshCanvasBackground(): void {
   const mode: CanvasBackgroundMode = lightCanvas.checked ? 'light' : 'dark';
-  scene.setBackgroundMode(mode);
+  scene.setBackground(mode, selectedCanvasBackgroundShade);
   document.body.dataset.canvasBackground = mode;
+  document.body.dataset.canvasBackgroundShade = String(selectedCanvasBackgroundShade);
+  canvasBackgroundToggle.textContent = mode === 'light' ? 'Light' : 'Dark';
+  canvasBackgroundToggle.setAttribute('aria-pressed', String(mode === 'light'));
+  canvasBackgroundToggle.title = mode === 'light' ? 'Switch to dark canvas background' : 'Switch to light canvas background';
+  const shadeColor = canvasBackgroundColor(mode, selectedCanvasBackgroundShade);
+  canvasBackgroundShade.style.setProperty('--shade-color', shadeColor);
+  canvasBackgroundShade.textContent = '';
+  canvasBackgroundShade.title = `Choose ${mode} canvas background shade`;
+  canvasBackgroundShade.setAttribute('aria-label', `${mode} canvas background shade ${selectedCanvasBackgroundShade}`);
+  localStorage.setItem(backgroundStorageKeys.mode, mode);
+  localStorage.setItem(backgroundStorageKeys.shade, String(selectedCanvasBackgroundShade));
+}
+
+function restoreCanvasBackgroundPreference(): void {
+  const storedMode = localStorage.getItem(backgroundStorageKeys.mode);
+  const storedShade = localStorage.getItem(backgroundStorageKeys.shade);
+  lightCanvas.checked = storedMode === 'light';
+  selectedCanvasBackgroundShade = storedCanvasBackgroundShade(storedShade);
+}
+
+function renderBackgroundShadePicker(): void {
+  const mode: CanvasBackgroundMode = lightCanvas.checked ? 'light' : 'dark';
+  const [start, end] = canvasBackgroundSliderStops(mode);
+  const slider = document.createElement('input');
+  slider.id = 'canvasBackgroundShadeSlider';
+  slider.className = 'shade-slider';
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '100';
+  slider.step = '1';
+  slider.value = String(selectedCanvasBackgroundShade);
+  slider.setAttribute('aria-label', `${mode} canvas background shade`);
+  slider.style.setProperty('--slider-start', start);
+  slider.style.setProperty('--slider-end', end);
+  slider.addEventListener('input', () => {
+    selectedCanvasBackgroundShade = Number(slider.value);
+    refreshCanvasBackground();
+  });
+  canvasBackgroundShadePicker.replaceChildren(slider);
+}
+
+function hideBackgroundShadePicker(): void {
+  canvasBackgroundShadePicker.hidden = true;
+  canvasBackgroundShade.setAttribute('aria-expanded', 'false');
+}
+
+function storedCanvasBackgroundShade(value: string | null): CanvasBackgroundShade {
+  const shade = Number(value);
+  if (!Number.isFinite(shade)) return selectedCanvasBackgroundShade;
+  return Math.max(0, Math.min(100, Math.round(shade)));
 }
 
 async function runAction(action: () => Promise<void>, progress?: { label: string; pollServer?: boolean }): Promise<void> {

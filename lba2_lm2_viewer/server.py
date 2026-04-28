@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from .animation import parse_lba2_animation_records
+from .animation import parse_lba2_animation_records, playback_frame_indices
 from .viewer import (
     DEFAULT_HOST,
     DEFAULT_PORT,
@@ -257,8 +257,16 @@ class ViewerServer:
             animation = parse_lba2_animation_records(animation_payload)
             frames: list[dict[str, Any]] = []
             cumulative_root = [0, 0, 0]
-            for frame_index, keyframe in enumerate(animation.keyframes):
-                previous_frame = frame_index - 1 if frame_index > 0 else 0
+            frame_pairs, loop_pair_index = playback_frame_indices(animation)
+            loop_index = 0
+            timeline_ms = 0
+            loop_root_baseline = [0, 0, 0]
+            has_loop_segment = animation.keyframe_count > 1
+            for pair_index, (frame_index, previous_frame) in enumerate(frame_pairs):
+                if pair_index == loop_pair_index:
+                    loop_index = len(frames)
+                    loop_root_baseline = cumulative_root.copy()
+                keyframe = animation.keyframes[frame_index]
                 previous_sample_root = [0, 0, 0]
                 elapsed_values = list(range(0, max(1, keyframe.duration), step_ms))
                 if not elapsed_values:
@@ -282,10 +290,15 @@ class ViewerServer:
                     previous_sample_root = sample_root
                     frames.append(
                         {
+                            "sequence_index": len(frames),
+                            "segment": "loop"
+                            if has_loop_segment and pair_index >= loop_pair_index
+                            else "intro",
                             "frame": frame_index,
                             "previous_frame": previous_frame,
                             "next_frame": sample["next_frame_index"],
                             "elapsed_ms": elapsed_ms,
+                            "timeline_ms": timeline_ms,
                             "duration_ms": sample["duration_ms"],
                             "root_motion": cumulative_root.copy(),
                             "vertices": [
@@ -295,12 +308,19 @@ class ViewerServer:
                             "pose": pose,
                         }
                     )
+                    timeline_ms += step_ms
+            loop_cycle_root_delta = [
+                cumulative_root[index] - loop_root_baseline[index] for index in range(3)
+            ]
             return {
                 "body_asset_id": body_asset["id"],
                 "animation_asset_id": animation_asset["id"],
                 "step_ms": step_ms,
                 "keyframes": animation.keyframe_count,
                 "loop_frame": animation.loop_start_keyframe,
+                "loop_index": loop_index,
+                "playback_end_index": loop_index if has_loop_segment else len(frames),
+                "loop_cycle_root_delta": loop_cycle_root_delta,
                 "frames": frames,
             }
 

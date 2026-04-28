@@ -314,6 +314,96 @@ class AnimationParserTests(unittest.TestCase):
         self.assertEqual(sample["previous_frame_index"], 2)
         self.assertEqual(sample["bones"][0]["values"][0], 0x0010)
 
+    def test_build_evidence_records_playback_transition_table(self) -> None:
+        decoded = animation.parse_lba2_animation_records(
+            anim_payload(
+                [
+                    (100, (0, 0, 0), []),
+                    (100, (0, 0, 0), []),
+                    (100, (0, 0, 0), []),
+                ],
+                loop_start=1,
+            )
+        )
+
+        evidence = animation.build_animation_evidence(
+            decoded,
+            source={"catalog_asset_id": "ANIM.HQR:1"},
+        )
+
+        playback = evidence["playback"]
+        self.assertEqual(playback["loop_index"], 3)
+        self.assertEqual(playback["playback_end_index"], 3)
+        self.assertEqual(
+            playback["transitions"],
+            [
+                {
+                    "sequence_index": 0,
+                    "segment": "intro",
+                    "target_frame_index": 0,
+                    "previous_frame_index": 0,
+                },
+                {
+                    "sequence_index": 1,
+                    "segment": "intro",
+                    "target_frame_index": 1,
+                    "previous_frame_index": 0,
+                },
+                {
+                    "sequence_index": 2,
+                    "segment": "intro",
+                    "target_frame_index": 2,
+                    "previous_frame_index": 1,
+                },
+                {
+                    "sequence_index": 3,
+                    "segment": "loop",
+                    "target_frame_index": 1,
+                    "previous_frame_index": 2,
+                },
+                {
+                    "sequence_index": 4,
+                    "segment": "loop",
+                    "target_frame_index": 2,
+                    "previous_frame_index": 1,
+                },
+            ],
+        )
+
+    def test_playback_frame_indices_add_loop_segment_with_last_previous_frame(self) -> None:
+        decoded = animation.parse_lba2_animation_records(
+            anim_payload(
+                [
+                    (100, (0, 0, 0), []),
+                    (100, (0, 0, 0), []),
+                    (100, (0, 0, 0), []),
+                ],
+                loop_start=0,
+            )
+        )
+
+        frame_pairs, loop_index = animation.playback_frame_indices(decoded)
+
+        self.assertEqual(loop_index, 3)
+        self.assertEqual(frame_pairs, ((0, 0), (1, 0), (2, 1), (0, 2), (1, 0), (2, 1)))
+
+    def test_playback_frame_indices_preserve_intro_before_nonzero_loop(self) -> None:
+        decoded = animation.parse_lba2_animation_records(
+            anim_payload(
+                [
+                    (100, (0, 0, 0), []),
+                    (100, (0, 0, 0), []),
+                    (100, (0, 0, 0), []),
+                ],
+                loop_start=1,
+            )
+        )
+
+        frame_pairs, loop_index = animation.playback_frame_indices(decoded)
+
+        self.assertEqual(loop_index, 3)
+        self.assertEqual(frame_pairs, ((0, 0), (1, 0), (2, 1), (1, 2), (2, 1)))
+
     def test_write_animation_evidence_emits_json_with_body_compatibility(self) -> None:
         decoded = animation.parse_lba2_animation_records(
             anim_payload([(100, (0, 0, 0), [(0, 1, 2, 3), (1, 4, 5, 6)])])
@@ -360,7 +450,42 @@ class AnimationParserTests(unittest.TestCase):
             evidence = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(evidence["schema_version"], animation.SCHEMA_VERSION)
             self.assertEqual(evidence["animation"]["keyframe_count"], 1)
+            self.assertEqual(evidence["playback"]["loop_index"], 0)
             self.assertEqual(evidence["animation"]["keyframes"][0]["bones"][0]["raw"], [0, 4, 5, 6])
+
+    def test_animation_command_can_sample_canonical_loop_transition(self) -> None:
+        data = anim_payload(
+            [
+                (100, (0, 0, 0), [(0, 0, 0, 0)]),
+                (100, (0, 0, 0), [(0, 10, 0, 0)]),
+                (100, (0, 0, 0), [(0, 20, 0, 0)]),
+            ],
+            loop_start=1,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "ANIM.HQR").write_bytes(hqr([resource_entry(data)]))
+            output = root / "anim.evidence.json"
+
+            with redirect_stdout(StringIO()):
+                exit_code = viewer.animation_command(
+                    [
+                        "--asset-root",
+                        str(root),
+                        "--asset",
+                        "ANIM.HQR:1",
+                        "--out",
+                        str(output),
+                        "--sample-loop-transition",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            evidence = json.loads(output.read_text(encoding="utf-8"))
+            sample = evidence["samples"][0]
+            self.assertEqual(sample["target_frame_index"], 1)
+            self.assertEqual(sample["previous_frame_index"], 2)
+            self.assertEqual(sample["bones"][0]["values"][0], 20)
 
     def test_catalog_keeps_anim3ds_entries_raw_even_when_header_looks_like_anim(self) -> None:
         data = anim_payload([(100, (1, 2, 3), [(0, 4, 5, 6)])])

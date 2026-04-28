@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:viewer": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/dev-viewer.ps1",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1"
   },

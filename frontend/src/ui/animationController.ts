@@ -49,6 +49,8 @@ export class AnimationController {
   private playbackResolve: (() => void) | undefined;
   private sequence: AnimationSequencePayload | null = null;
   private currentFrame: AnimationSequenceFrame | null = null;
+  private currentSequenceIndex: number | null = null;
+  private currentLoopCycle = 0;
   private lastUiUpdateAt = 0;
   private repeatEnabled = true;
   private pendingSeekIndex: number | null = null;
@@ -172,6 +174,8 @@ export class AnimationController {
     this.stop();
     this.sequence = null;
     this.currentFrame = null;
+    this.currentSequenceIndex = null;
+    this.currentLoopCycle = 0;
     this.options.elements.result.textContent = '';
     this.updateTimelineReadout(0);
   }
@@ -218,14 +222,11 @@ export class AnimationController {
     try {
       const sequence = await this.getSequence();
       if (token !== this.playbackToken) return;
-      const startIndex = this.sequenceIndexFor(
-        sequence,
-        numericInput(this.options.elements.frame, 'frame'),
-        numericInput(this.options.elements.elapsed, 'elapsed milliseconds'),
-      );
+      const inputFrame = numericInput(this.options.elements.frame, 'frame');
+      const inputElapsedMs = numericInput(this.options.elements.elapsed, 'elapsed milliseconds');
+      const startIndex = this.resumeIndexFor(sequence, inputFrame, inputElapsedMs);
       this.busy = false;
       this.playing = true;
-      this.currentFrame = null;
       this.lastUiUpdateAt = 0;
       this.updateControls();
       await this.runPlayback(sequence, startIndex, token);
@@ -253,6 +254,7 @@ export class AnimationController {
       this.sequence.step_ms !== playbackStepMs
     ) {
       this.sequence = await loadAnimationSequence(bodyAsset, animationAsset, playbackStepMs);
+      this.validateSequence(this.sequence);
     }
     if (this.sequence.frames.length === 0) {
       throw new Error('Selected animation produced no playback frames.');
@@ -260,12 +262,41 @@ export class AnimationController {
     return this.sequence;
   }
 
-  private renderFrame(frame: AnimationSequenceFrame): void {
+  private validateSequence(sequence: AnimationSequencePayload): void {
+    const invalidLoopIndex = sequence.loop_index < 0 || sequence.loop_index >= sequence.frames.length;
+    const invalidPlaybackEnd = sequence.playback_end_index < 0 || sequence.playback_end_index > sequence.frames.length;
+    if (invalidLoopIndex || invalidPlaybackEnd || sequence.playback_end_index > sequence.frames.length) {
+      throw new Error('Animation sequence payload contains invalid playback indexes.');
+    }
+    for (let index = 0; index < sequence.frames.length; index += 1) {
+      if (sequence.frames[index].sequence_index !== index) {
+        throw new Error('Animation sequence payload contains non-contiguous sequence indexes.');
+      }
+    }
+  }
+
+  private renderFrame(frame: AnimationSequenceFrame, loopCycle = this.currentLoopCycle): void {
     if (!this.options.scene.model || !this.bodyAsset || !this.animationAsset) {
       throw new Error('Select a catalog model and decoded ANIM entry before playback.');
     }
-    this.options.scene.updateModelVertices(frame.vertices, frame.pose, this.bodyAsset, frame.root_motion);
+    const rootMotion = this.rootMotionFor(frame, loopCycle);
+    this.options.scene.updateModelVertices(frame.vertices, frame.pose, this.bodyAsset, rootMotion);
     this.currentFrame = frame;
+    this.currentSequenceIndex = frame.sequence_index;
+    this.currentLoopCycle = loopCycle;
+  }
+
+  private rootMotionFor(frame: AnimationSequenceFrame, loopCycle: number): [number, number, number] | undefined {
+    if (!frame.root_motion) return undefined;
+    const sequence = this.sequence;
+    if (!sequence || frame.sequence_index < sequence.loop_index || loopCycle <= 0) {
+      return frame.root_motion;
+    }
+    return [
+      frame.root_motion[0] + sequence.loop_cycle_root_delta[0] * loopCycle,
+      frame.root_motion[1] + sequence.loop_cycle_root_delta[1] * loopCycle,
+      frame.root_motion[2] + sequence.loop_cycle_root_delta[2] * loopCycle,
+    ];
   }
 
   private updateReadout(frame: AnimationSequenceFrame): void {
@@ -274,45 +305,73 @@ export class AnimationController {
     elements.frame.value = String(frame.frame);
     elements.elapsed.value = String(frame.elapsed_ms);
     this.updateTimelineReadout(this.timelineMs(frame));
-    elements.result.textContent = `Frame ${frame.frame}, previous ${frame.previous_frame}, next ${frame.next_frame}, ${frame.duration_ms} ms duration`;
+    const segment = frame.segment === 'loop' ? 'loop' : 'intro';
+    elements.result.textContent = `Frame ${frame.frame}, previous ${frame.previous_frame}, next ${frame.next_frame}, ${frame.duration_ms} ms duration, ${segment} sample ${frame.sequence_index}`;
     this.options.setOverlay(`${this.bodyAsset.label} playing ${this.animationAsset.label}`);
+  }
+
+  private resumeIndexFor(sequence: AnimationSequencePayload, frame: number, elapsedMs: number): number {
+    if (
+      this.currentFrame &&
+      this.currentSequenceIndex !== null &&
+      this.currentFrame.frame === frame &&
+      this.currentFrame.elapsed_ms === elapsedMs &&
+      this.currentSequenceIndex >= 0 &&
+      this.currentSequenceIndex < sequence.frames.length
+    ) {
+      return this.currentSequenceIndex;
+    }
+    this.currentLoopCycle = 0;
+    return this.sequenceIndexFor(sequence, frame, elapsedMs);
   }
 
   private sequenceIndexFor(sequence: AnimationSequencePayload, frame: number, elapsedMs: number): number {
     if (this.animationAsset) validateAnimationFrame(frame, this.animationAsset);
     let bestIndex = -1;
     let bestElapsed = -1;
-    for (let index = 0; index < sequence.frames.length; index += 1) {
+    const endIndex = this.playbackEndIndex(sequence);
+    for (let index = 0; index < endIndex; index += 1) {
       const item = sequence.frames[index];
       if (item.frame !== frame || item.elapsed_ms > elapsedMs) continue;
-      if (item.elapsed_ms >= bestElapsed) {
+      if (item.elapsed_ms > bestElapsed) {
         bestIndex = index;
         bestElapsed = item.elapsed_ms;
       }
     }
     if (bestIndex >= 0) return bestIndex;
-    const fallback = sequence.frames.findIndex((item) => item.frame === frame);
+    const fallback = sequence.frames.findIndex((item, index) => index < endIndex && item.frame === frame);
     return fallback >= 0 ? fallback : 0;
   }
 
   private loopIndex(sequence: AnimationSequencePayload): number {
-    const index = sequence.frames.findIndex((frame) => frame.frame === sequence.loop_frame && frame.elapsed_ms === 0);
-    return index >= 0 ? index : 0;
+    if (sequence.loop_index < 0 || sequence.loop_index >= sequence.frames.length) {
+      throw new Error('Animation sequence payload contains an invalid loop index.');
+    }
+    return sequence.loop_index;
+  }
+
+  private playbackEndIndex(sequence: AnimationSequencePayload): number {
+    if (sequence.playback_end_index < 0 || sequence.playback_end_index > sequence.frames.length) {
+      throw new Error('Animation sequence payload contains an invalid playback end index.');
+    }
+    return sequence.playback_end_index;
   }
 
   private async seekTo(timelineMs: number): Promise<void> {
     const sequence = await this.getSequence();
     const index = this.sequenceIndexAtTimeline(sequence, timelineMs);
     this.pendingSeekIndex = index;
+    this.currentLoopCycle = 0;
     const frame = sequence.frames[index];
-    this.renderFrame(frame);
+    this.renderFrame(frame, 0);
     this.updateReadout(frame);
   }
 
   private sequenceIndexAtTimeline(sequence: AnimationSequencePayload, timelineMs: number): number {
     let bestIndex = 0;
     let bestDistance = Number.POSITIVE_INFINITY;
-    for (let index = 0; index < sequence.frames.length; index += 1) {
+    const endIndex = this.playbackEndIndex(sequence);
+    for (let index = 0; index < endIndex; index += 1) {
       const distance = Math.abs(this.timelineMs(sequence.frames[index]) - timelineMs);
       if (distance < bestDistance) {
         bestIndex = index;
@@ -323,17 +382,7 @@ export class AnimationController {
   }
 
   private timelineMs(frame: AnimationSequenceFrame): number {
-    return this.frameStartMs(frame.frame) + frame.elapsed_ms;
-  }
-
-  private frameStartMs(frame: number): number {
-    if (!this.selectedStats()) return 0;
-    let total = 0;
-    for (let index = 0; index < frame; index += 1) {
-      const sequenceFrame = this.sequence?.frames.find((item) => item.frame === index);
-      total += sequenceFrame?.duration_ms ?? 0;
-    }
-    return total;
+    return frame.timeline_ms;
   }
 
   private updateTimelineReadout(timelineMs: number): void {
@@ -355,6 +404,7 @@ export class AnimationController {
         resolve();
       };
       let sequenceIndex = startIndex;
+      let loopCycle = this.currentLoopCycle;
       let nextFrameAt = performance.now();
       const tick = (now: number) => {
         this.playbackFrame = undefined;
@@ -365,13 +415,15 @@ export class AnimationController {
         if (this.pendingSeekIndex !== null) {
           sequenceIndex = this.pendingSeekIndex;
           this.pendingSeekIndex = null;
+          loopCycle = 0;
           nextFrameAt = now;
         }
-        const frame = this.advanceSequence(sequence, now, nextFrameAt, sequenceIndex);
+        const frame = this.advanceSequence(sequence, now, nextFrameAt, sequenceIndex, loopCycle);
         sequenceIndex = frame.nextIndex;
+        loopCycle = frame.loopCycle;
         nextFrameAt = frame.nextFrameAt;
         if (frame.item) {
-          this.renderFrame(frame.item);
+          this.renderFrame(frame.item, frame.itemLoopCycle);
           if (now - this.lastUiUpdateAt >= uiUpdateIntervalMs) {
             this.updateReadout(frame.item);
             this.lastUiUpdateAt = now;
@@ -392,16 +444,26 @@ export class AnimationController {
     now: number,
     nextFrameAt: number,
     startIndex: number,
-  ): { item: AnimationSequenceFrame | null; nextIndex: number; nextFrameAt: number } {
+    startLoopCycle: number,
+  ): { item: AnimationSequenceFrame | null; itemLoopCycle: number; nextIndex: number; loopCycle: number; nextFrameAt: number } {
     let item: AnimationSequenceFrame | null = null;
+    let itemLoopCycle = startLoopCycle;
     let index = startIndex;
+    let loopCycle = startLoopCycle;
     let dueAt = nextFrameAt;
+    const endIndex = this.repeatEnabled ? sequence.frames.length : this.playbackEndIndex(sequence);
     while (now >= dueAt) {
+      if (index >= endIndex) {
+        this.playing = false;
+        break;
+      }
       item = sequence.frames[index];
+      itemLoopCycle = loopCycle;
       index += 1;
       if (index >= sequence.frames.length) {
         if (this.repeatEnabled) {
           index = this.loopIndex(sequence);
+          loopCycle += 1;
         } else {
           this.playing = false;
           break;
@@ -409,7 +471,7 @@ export class AnimationController {
       }
       dueAt += sequence.step_ms;
     }
-    return { item, nextIndex: index, nextFrameAt: dueAt };
+    return { item, itemLoopCycle, nextIndex: index, loopCycle, nextFrameAt: dueAt };
   }
 
   private async stepFrame(direction: -1 | 1): Promise<void> {
