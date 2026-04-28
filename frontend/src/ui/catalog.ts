@@ -1,3 +1,4 @@
+import { animationCompatibilityLabel, animationMatchesModel } from '../compatibility';
 import type { AnimationStats, Catalog, CatalogAsset, KindFilter, ModelStats, RawAnimationStats } from '../types';
 
 export interface CatalogUiOptions {
@@ -71,7 +72,7 @@ export class CatalogUi {
 
     const animation = stats as AnimationStats;
     const compatibility = this.selectedModel
-      ? `${animationMatchesModel(asset, this.selectedModel) ? 'compatible with selected model' : 'bone count does not match selected model'}<br>`
+      ? `${animationCompatibilityLabel(asset, this.selectedModel)}<br>`
       : '';
     const metadata = animationMetadataText(asset);
     const metadataDetail = metadata ? `${escapeHtml(metadata)}<br>` : '';
@@ -108,7 +109,7 @@ export class CatalogUi {
   private filterContext(kind: KindFilter): string {
     if (kind !== 'animation' || !this.selectedModel) return '';
     const stats = this.selectedModel.stats as ModelStats;
-    return `Filtered to decoded animations with ${stats.bones || 0} boneframes for ${this.selectedModel.label}. `;
+    return `Filtered to compatible decoded animations with ${stats.bones || 0} boneframes for ${this.selectedModel.label}. `;
   }
 
   private assetButton(asset: CatalogAsset): HTMLButtonElement {
@@ -133,13 +134,6 @@ export class CatalogUi {
     button.addEventListener('click', () => this.options.onSelect(asset));
     return button;
   }
-}
-
-function animationMatchesModel(animation: CatalogAsset, model: CatalogAsset): boolean {
-  if (animation.kind !== 'animation' || animation.entry_type !== 'animation') return false;
-  if (!('keyframes' in animation.stats)) return false;
-  const modelStats = model.stats as ModelStats;
-  return animation.stats.boneframes === modelStats.bones;
 }
 
 function searchableText(asset: CatalogAsset): string {

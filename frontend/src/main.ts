@@ -1,7 +1,8 @@
 import './styles.css';
 import { buildCatalog, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
+import { animationCompatibilityPrefix, animationMatchesModel } from './compatibility';
 import { requireElement } from './dom';
-import type { Catalog, CatalogAsset, DecodeProgress, Lm2Model, ModelStats, PolygonMode } from './types';
+import type { Catalog, CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './types';
 import { AnimationController } from './ui/animationController';
 import { CatalogUi } from './ui/catalog';
 import { renderStats } from './ui/stats';
@@ -266,7 +267,7 @@ function updateCanvasAnimationSelect(modelAsset: CatalogAsset | null): void {
 
   canvasAnimationSelect.append(new Option(`${animations.length} compatible animations`, ''));
   for (const animation of animations) {
-    canvasAnimationSelect.append(new Option(animation.label, animation.id));
+    canvasAnimationSelect.append(new Option(`${animationCompatibilityPrefix(animation, modelAsset)}${animation.label}`, animation.id));
   }
   canvasAnimationSelect.disabled = false;
   const selectedAnimation = animationController.selectedAnimationAsset;
@@ -279,13 +280,6 @@ function compatibleAnimations(modelAsset: CatalogAsset): CatalogAsset[] {
   return (currentCatalog?.assets || [])
     .filter((asset) => animationMatchesModel(asset, modelAsset))
     .sort((a, b) => a.source.entry_index - b.source.entry_index || a.label.localeCompare(b.label));
-}
-
-function animationMatchesModel(animation: CatalogAsset, model: CatalogAsset): boolean {
-  if (animation.kind !== 'animation' || animation.entry_type !== 'animation') return false;
-  if (!('keyframes' in animation.stats)) return false;
-  const modelStats = model.stats as ModelStats;
-  return animation.stats.boneframes === modelStats.bones;
 }
 
 function findCatalogAsset(id: string): CatalogAsset | null {
