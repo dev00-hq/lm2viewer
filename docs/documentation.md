@@ -162,14 +162,16 @@ bytes from the selected catalog asset.
 
 ## ANIM3DS Cataloging
 
-`ANIM3DS.HQR` entries are intentionally not semantically decoded yet. The
-catalog records each non-empty entry as raw animation evidence with decoded
-size, decoded SHA-256, header words, raw parse status, `decode_status:
-deferred`, a decode note, and unknown descriptors for byte ranges. Descriptors
-include offset, length, SHA-256, confidence, and a note instead of embedding raw
-game bytes. Real `ANIM.HQR` parse failures remain raw animation evidence too,
-but they use `decode_status: parse_failed` and keep the parser exception in
-`parse_error`.
+`ANIM3DS.HQR` uses classic zero-based HQR indexing. Entry 127 is decoded as the
+classic `T_ANIM_3DS` frame-range table: four name bytes, signed start frame, and
+signed end frame per record. The catalog exposes ANIM3DS entries as `sprite`
+assets, with entry 127 classified as `anim3ds-info` metadata. Raw ANIM3DS
+sprite frames are linked back to their owning range when the table is available.
+
+The individual ANIM3DS frame payloads are still retained as raw LSP sprite
+evidence with decoded size, SHA-256, header words, deferred decode status, and
+unknown descriptors. Real `ANIM.HQR` parse failures remain separate raw
+animation evidence with `decode_status: parse_failed` and `parse_error`.
 
 ## Texture And UV Inspector
 

@@ -45,6 +45,18 @@ def hqr(entries: list[bytes]) -> bytes:
     return struct.pack("<I", table_end) + b"".join(struct.pack("<I", offset) for offset in offsets) + payloads
 
 
+def classic_hqr(entries: list[bytes]) -> bytes:
+    table_end = len(entries) * 4
+    offsets: list[int] = []
+    cursor = table_end
+    payloads = bytearray()
+    for payload in entries:
+        offsets.append(cursor if payload else 0)
+        payloads.extend(payload)
+        cursor += len(payload)
+    return b"".join(struct.pack("<I", offset) for offset in offsets) + payloads
+
+
 def file3d_record(commands: bytes) -> bytes:
     return struct.pack("<I", 4) + commands + b"\xff"
 
@@ -491,18 +503,21 @@ class AnimationParserTests(unittest.TestCase):
         data = anim_payload([(100, (1, 2, 3), [(0, 4, 5, 6)])])
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "ANIM3DS.HQR").write_bytes(hqr([resource_entry(data)]))
+            (root / "ANIM3DS.HQR").write_bytes(classic_hqr([resource_entry(data)]))
 
             catalog = viewer.build_catalog(root)
 
             self.assertEqual(catalog["summary"]["animations"], 0)
             self.assertEqual(catalog["summary"]["decoded_animations"], 0)
-            self.assertEqual(catalog["summary"]["raw_animations"], 1)
-            self.assertEqual(catalog["summary"]["animation_assets"], 1)
+            self.assertEqual(catalog["summary"]["raw_animations"], 0)
+            self.assertEqual(catalog["summary"]["animation_assets"], 0)
+            self.assertEqual(catalog["summary"]["sprite_assets"], 1)
+            self.assertEqual(catalog["summary"]["sprite_frames"], 1)
             asset = catalog["assets"][0]
-            self.assertEqual(asset["entry_type"], "animation-raw")
-            self.assertEqual(asset["animation_state"], "raw")
-            self.assertEqual(asset["features"], {"parsed": False})
+            self.assertEqual(asset["kind"], "sprite")
+            self.assertEqual(asset["entry_type"], "anim3ds-frame")
+            self.assertNotIn("animation_state", asset)
+            self.assertEqual(asset["features"], {"parsed": False, "sprite_frame": True})
             stats = asset["stats"]
             self.assertEqual(stats["decoded_bytes"], len(data))
             self.assertEqual(stats["decoded_sha256"], hashlib.sha256(data).hexdigest())
@@ -513,7 +528,7 @@ class AnimationParserTests(unittest.TestCase):
             self.assertEqual(stats["header_word_count"], 8)
             self.assertEqual(stats["parse_status"], "raw")
             self.assertEqual(stats["decode_status"], "deferred")
-            self.assertEqual(stats["decode_note"], "ANIM3DS semantic decode is not implemented")
+            self.assertIn("ANIM3DS frame is an LSP sprite payload", stats["decode_note"])
             self.assertNotIn("parse_error", stats)
             self.assertEqual(stats["semantic_layout"], "unknown")
             self.assertEqual(len(stats["unknown_descriptors"]), 2)
@@ -545,16 +560,18 @@ class AnimationParserTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "ANIM3DS.HQR").write_bytes(
-                hqr([resource_entry(first), b"", resource_entry(second)])
+                classic_hqr([resource_entry(first), b"", resource_entry(second)])
             )
 
             catalog = viewer.build_catalog(root)
 
             assets = catalog["assets"]
-            self.assertEqual([asset["id"] for asset in assets], ["ANIM3DS.HQR:1", "ANIM3DS.HQR:3"])
+            self.assertEqual([asset["id"] for asset in assets], ["ANIM3DS.HQR:0", "ANIM3DS.HQR:2"])
             self.assertEqual(catalog["summary"]["animations"], 0)
-            self.assertEqual(catalog["summary"]["raw_animations"], 2)
-            self.assertEqual(catalog["summary"]["animation_assets"], 2)
+            self.assertEqual(catalog["summary"]["raw_animations"], 0)
+            self.assertEqual(catalog["summary"]["animation_assets"], 0)
+            self.assertEqual(catalog["summary"]["sprite_assets"], 2)
+            self.assertEqual(catalog["summary"]["sprite_frames"], 2)
             self.assertEqual(assets[0]["stats"]["decoded_sha256"], hashlib.sha256(first).hexdigest())
             self.assertEqual(assets[1]["stats"]["decoded_sha256"], hashlib.sha256(second).hexdigest())
             self.assertNotEqual(
@@ -562,26 +579,71 @@ class AnimationParserTests(unittest.TestCase):
                 assets[1]["stats"]["unknown_descriptors"][0]["sha256"],
             )
 
+    def test_catalog_decodes_anim3ds_frame_range_table(self) -> None:
+        info = (
+            b"COQU" + struct.pack("<hh", 0, 2) +
+            b"ROUE" + struct.pack("<hh", 3, 5)
+        )
+        entries = [resource_entry(b"frame0"), resource_entry(b"frame1"), b""] + [b""] * 125
+        entries[127] = resource_entry(info)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "ANIM3DS.HQR").write_bytes(classic_hqr(entries))
+
+            catalog = viewer.build_catalog(root)
+
+            self.assertEqual(catalog["hqr_files"][0]["indexing"], "classic")
+            table = viewer.find_catalog_asset(catalog, "ANIM3DS.HQR:127")
+            self.assertEqual(table["kind"], "sprite")
+            self.assertEqual(table["entry_type"], "anim3ds-info")
+            self.assertNotIn("animation_state", table)
+            self.assertEqual(table["label"], "ANIM3DS frame range table (2 animations)")
+            self.assertEqual(table["features"]["metadata_only"], True)
+            self.assertEqual(catalog["summary"]["sprite_assets"], 3)
+            self.assertEqual(catalog["summary"]["sprite_frames"], 2)
+            self.assertEqual(catalog["summary"]["sprite_metadata"], 1)
+            stats = table["stats"]
+            self.assertEqual(stats["parse_status"], "metadata")
+            self.assertEqual(stats["decode_status"], "decoded")
+            self.assertEqual(stats["semantic_layout"], "anim3ds_frame_ranges")
+            self.assertEqual(stats["frame_min"], 0)
+            self.assertEqual(stats["frame_max"], 5)
+            self.assertEqual(stats["range_warnings"][0]["name"], "COQU")
+            self.assertEqual(stats["range_warnings"][0]["missing_frames"], [2])
+            self.assertEqual(stats["range_warnings"][1]["name"], "ROUE")
+            self.assertEqual(stats["range_warnings"][1]["missing_frames"], [3, 4, 5])
+            self.assertEqual(stats["entries"][0]["name"], "COQU")
+            self.assertEqual(stats["entries"][0]["start_frame"], 0)
+            self.assertEqual(stats["entries"][0]["end_frame"], 2)
+            frame = viewer.find_catalog_asset(catalog, "ANIM3DS.HQR:0")
+            self.assertEqual(frame["kind"], "sprite")
+            self.assertEqual(frame["entry_type"], "anim3ds-frame")
+            self.assertEqual(frame["label"], "COQU sprite frame 0 (ANIM3DS.HQR:0)")
+            self.assertEqual(frame["stats"]["anim3ds_info"]["name"], "COQU")
+            self.assertEqual(frame["stats"]["anim3ds_info"]["relative_frame"], 0)
+
     def test_catalog_counts_decoded_and_raw_animation_entries_separately(self) -> None:
         decoded = anim_payload([(100, (1, 2, 3), [(0, 4, 5, 6)])])
         raw = b"\x01\x00\x02\x00anim3ds"
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "ANIM.HQR").write_bytes(hqr([resource_entry(decoded)]))
-            (root / "ANIM3DS.HQR").write_bytes(hqr([resource_entry(raw)]))
+            (root / "ANIM3DS.HQR").write_bytes(classic_hqr([resource_entry(raw)]))
 
             catalog = viewer.build_catalog(root)
 
             self.assertEqual(catalog["summary"]["animations"], 1)
             self.assertEqual(catalog["summary"]["decoded_animations"], 1)
-            self.assertEqual(catalog["summary"]["raw_animations"], 1)
-            self.assertEqual(catalog["summary"]["animation_assets"], 2)
+            self.assertEqual(catalog["summary"]["raw_animations"], 0)
+            self.assertEqual(catalog["summary"]["animation_assets"], 1)
+            self.assertEqual(catalog["summary"]["sprite_assets"], 1)
             decoded_asset = viewer.find_catalog_asset(catalog, "ANIM.HQR:1")
-            raw_asset = viewer.find_catalog_asset(catalog, "ANIM3DS.HQR:1")
+            raw_asset = viewer.find_catalog_asset(catalog, "ANIM3DS.HQR:0")
             self.assertEqual(decoded_asset["entry_type"], "animation")
             self.assertEqual(decoded_asset["animation_state"], "decoded")
-            self.assertEqual(raw_asset["entry_type"], "animation-raw")
-            self.assertEqual(raw_asset["animation_state"], "raw")
+            self.assertEqual(raw_asset["kind"], "sprite")
+            self.assertEqual(raw_asset["entry_type"], "anim3ds-frame")
+            self.assertNotIn("animation_state", raw_asset)
 
     def test_catalog_labels_anim_entries_from_file3d_metadata(self) -> None:
         decoded = anim_payload([(100, (1, 2, 3), [(0, 4, 5, 6)])])
@@ -619,11 +681,11 @@ class AnimationParserTests(unittest.TestCase):
             self.assertIn("parse_error", stats)
             self.assertNotIn("ANIM3DS", stats["unknown_descriptors"][0]["note"])
 
-    def test_animation_command_rejects_raw_animation_catalog_entries(self) -> None:
+    def test_animation_command_rejects_non_animation_catalog_entries(self) -> None:
         data = anim_payload([(100, (1, 2, 3), [(0, 4, 5, 6)])])
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "ANIM3DS.HQR").write_bytes(hqr([resource_entry(data)]))
+            (root / "ANIM3DS.HQR").write_bytes(classic_hqr([resource_entry(data)]))
 
             with self.assertRaisesRegex(viewer.Lm2Error, "not a decoded animation"):
                 with redirect_stdout(StringIO()):
@@ -632,7 +694,7 @@ class AnimationParserTests(unittest.TestCase):
                             "--asset-root",
                             str(root),
                             "--asset",
-                            "ANIM3DS.HQR:1",
+                            "ANIM3DS.HQR:0",
                             "--out",
                             str(root / "anim3ds.evidence.json"),
                         ]

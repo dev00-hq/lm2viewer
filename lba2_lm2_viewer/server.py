@@ -593,7 +593,8 @@ def serve(
             "Catalog loaded: "
             f"{summary.get('models', 0)} models, "
             f"{summary.get('decoded_animations', 0)} decoded animations, "
-            f"{summary.get('raw_animations', 0)} raw animation entries"
+            f"{summary.get('raw_animations', 0)} raw animation entries, "
+            f"{summary.get('sprite_assets', 0)} sprite assets"
         )
     if open_browser:
         threading.Timer(0.25, lambda: webbrowser.open(url)).start()

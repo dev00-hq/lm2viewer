@@ -1,5 +1,5 @@
 import { animationCompatibilityLabel, animationMatchesModel } from '../compatibility';
-import type { AnimationStats, Catalog, CatalogAsset, KindFilter, ModelStats, RawAnimationStats } from '../types';
+import type { AnimationStats, Anim3dsInfoStats, Catalog, CatalogAsset, KindFilter, ModelStats, RawAnimationStats } from '../types';
 
 export interface CatalogUiOptions {
   summary: HTMLElement;
@@ -53,15 +53,33 @@ export class CatalogUi {
       return;
     }
 
+    if ('semantic_layout' in stats && stats.semantic_layout === 'anim3ds_frame_ranges') {
+      const anim3ds = stats as Anim3dsInfoStats;
+      this.options.detail.innerHTML =
+        `<strong>${escapeHtml(asset.label)}</strong><br>` +
+        `${escapeHtml(asset.source.hqr)}[${asset.source.entry_index}]<br>` +
+        `ANIM3DS sprite animation metadata, ${anim3ds.entry_count} ranges<br>` +
+        `frames ${anim3ds.frame_min}..${anim3ds.frame_max}, ${anim3ds.frame_total} referenced frames<br>` +
+        `${renderAnim3dsWarnings(anim3ds.range_warnings)} ` +
+        `${renderAnim3dsRanges(anim3ds.entries)}<br>` +
+        `sha256: ${escapeHtml(asset.decoded_sha256)}<br>` +
+        `${escapeHtml(asset.relative_path || '')}`;
+      return;
+    }
+
     if ('parse_status' in stats && stats.parse_status === 'raw') {
       const raw = stats as RawAnimationStats;
       const descriptors = raw.unknown_descriptors || [];
       const parseError = raw.parse_error ? `<br>parse error: ${escapeHtml(raw.parse_error)}` : '';
+      const anim3dsInfo = raw.anim3ds_info
+        ? `<br>ANIM3DS range: ${escapeHtml(raw.anim3ds_info.name)} frame ${escapeHtml(raw.anim3ds_info.relative_frame)} ` +
+          `(${escapeHtml(raw.anim3ds_info.start_frame)}..${escapeHtml(raw.anim3ds_info.end_frame)})`
+        : '';
       this.options.detail.innerHTML =
         `<strong>${escapeHtml(asset.label)}</strong><br>` +
         `${escapeHtml(asset.source.hqr)}[${asset.source.entry_index}]<br>` +
-        `raw animation evidence, ${asset.decoded_bytes} bytes<br>` +
-        `decode status: ${escapeHtml(raw.decode_status)} - ${escapeHtml(raw.decode_note)}${parseError}<br>` +
+        `${asset.kind === 'sprite' ? 'raw ANIM3DS sprite frame evidence' : 'raw animation evidence'}, ${asset.decoded_bytes} bytes<br>` +
+        `decode status: ${escapeHtml(raw.decode_status)} - ${escapeHtml(raw.decode_note)}${parseError}${anim3dsInfo}<br>` +
         `header words: ${escapeHtml((raw.header_words || []).join(', '))}<br>` +
         `unknown descriptors: ${descriptors.length}<br>` +
         `${renderUnknownDescriptors(descriptors)}` +
@@ -101,7 +119,7 @@ export class CatalogUi {
     assets.sort((a, b) => scoreAsset(b, query) - scoreAsset(a, query) || assetSortKey(a).localeCompare(assetSortKey(b)));
     const visible = assets.slice(0, 260);
     this.options.summary.textContent =
-      `${summary.models || 0} models, ${summary.decoded_animations || 0} decoded animations, ${summary.raw_animations || 0} raw animation entries across ${summary.hqr_files || 0} HQR files. ` +
+      `${summary.models || 0} models, ${summary.decoded_animations || 0} decoded animations, ${summary.raw_animations || 0} raw animation entries, ${summary.sprite_assets || 0} sprite assets across ${summary.hqr_files || 0} HQR files. ` +
       `${this.filterContext(kind)}Showing ${visible.length} of ${assets.length} matching entries.`;
     this.options.list.replaceChildren(...visible.map((asset) => this.assetButton(asset)));
   }
@@ -175,12 +193,25 @@ function statsSearchText(stats: CatalogAsset['stats']): string {
         .join(' '),
     ].join(' ');
   }
+  if ('semantic_layout' in stats && stats.semantic_layout === 'anim3ds_frame_ranges') {
+    return [
+      stats.parse_status,
+      stats.decode_status,
+      stats.decode_note,
+      stats.semantic_layout,
+      stats.entry_count,
+      stats.frame_min,
+      stats.frame_max,
+      stats.entries.map((entry) => `${entry.name} ${entry.start_frame} ${entry.end_frame}`).join(' '),
+    ].join(' ');
+  }
   return Object.values(stats || {}).join(' ');
 }
 
 function scoreAsset(asset: CatalogAsset, query: string): number {
   let score = 0;
   if (asset.kind === 'model') score += 1000;
+  if (asset.kind === 'sprite') score += 100;
   if (asset.source?.hqr === 'BODY.HQR') score += 300;
   if (asset.label && !asset.label.endsWith(`entry ${asset.source?.entry_index}`)) score += 120;
   if (query && asset.label?.toLowerCase().includes(query)) score += 500;
@@ -199,7 +230,15 @@ function assetMeta(asset: CatalogAsset): string {
     return `${source} - ${stats.vertices || 0} verts, ${stats.polygons || 0} polys, ${stats.bones || 0} bones`;
   }
   if ('parse_status' in asset.stats && asset.stats.parse_status === 'raw') {
-    return `${source} - ${asset.decoded_bytes} bytes, raw animation evidence`;
+    const raw = asset.stats as RawAnimationStats;
+    if (raw.anim3ds_info) {
+      return `${source} - ${asset.decoded_bytes} bytes, ${raw.anim3ds_info.name} frame ${raw.anim3ds_info.relative_frame}`;
+    }
+    return `${source} - ${asset.decoded_bytes} bytes, ${asset.kind === 'sprite' ? 'raw sprite frame evidence' : 'raw animation evidence'}`;
+  }
+  if ('semantic_layout' in asset.stats && asset.stats.semantic_layout === 'anim3ds_frame_ranges') {
+    const anim3ds = asset.stats as Anim3dsInfoStats;
+    return `${source} - ${anim3ds.entry_count} ANIM3DS ranges, frames ${anim3ds.frame_min}..${anim3ds.frame_max}`;
   }
   const animation = asset.stats as AnimationStats;
   const metadata = animationMetadataText(asset);
@@ -234,6 +273,37 @@ function renderUnknownDescriptors(descriptors: RawAnimationStats['unknown_descri
         `<span>${escapeHtml(descriptor.confidence)}</span>` +
         `<span>${escapeHtml(descriptor.sha256)}</span>` +
         `<span>${escapeHtml(descriptor.note)}</span>` +
+        `</div>`,
+    )
+    .join('');
+  return `<div class="unknown-descriptors">${rows}</div>`;
+}
+
+function renderAnim3dsRanges(entries: Anim3dsInfoStats['entries']): string {
+  const rows = entries
+    .map(
+      (entry) =>
+        `<div class="unknown-descriptor">` +
+        `<span>${escapeHtml(entry.index)}</span>` +
+        `<span>${escapeHtml(entry.name)}</span>` +
+        `<span>frames ${escapeHtml(entry.start_frame)}..${escapeHtml(entry.end_frame)}</span>` +
+        `<span>${escapeHtml(entry.frame_count)} frames</span>` +
+        `</div>`,
+    )
+    .join('');
+  return `<div class="unknown-descriptors">${rows}</div>`;
+}
+
+function renderAnim3dsWarnings(warnings: Anim3dsInfoStats['range_warnings']): string {
+  if (warnings.length === 0) return '';
+  const rows = warnings
+    .map(
+      (warning) =>
+        `<div class="unknown-descriptor">` +
+        `<span>${escapeHtml(warning.name)}</span>` +
+        `<span>missing ${escapeHtml(warning.missing_frames.length)} frames</span>` +
+        `<span>${escapeHtml(warning.missing_frames.join(', '))}</span>` +
+        `<span>${escapeHtml(warning.note)}</span>` +
         `</div>`,
     )
     .join('');

@@ -45,6 +45,7 @@ PACKAGE_SUFFIXES = {".hqr"}
 FRONTEND_DIST = Path(__file__).resolve().with_name("frontend") / "dist"
 ANIM_ARCHIVE_NAME = "ANIM.HQR"
 ANIM3DS_ARCHIVE_NAME = "ANIM3DS.HQR"
+ANIM3DS_INFO_ENTRY_INDEX = 127
 ANIMATION_ARCHIVE_NAMES = {ANIM_ARCHIVE_NAME, ANIM3DS_ARCHIVE_NAME}
 PALETTE_ARCHIVE_NAME = "RESS.HQR"
 PALETTE_ENTRY_INDEX = 0
@@ -1272,6 +1273,18 @@ def animation_catalog_label(
     return f"{label} ({archive_name}:{entry_index})"
 
 
+def anim3ds_catalog_label(entry_index: int, stats: dict[str, Any]) -> str:
+    if stats.get("semantic_layout") == "anim3ds_frame_ranges":
+        count = stats.get("entry_count", 0)
+        return f"ANIM3DS frame range table ({count} animations)"
+    info = stats.get("anim3ds_info")
+    if isinstance(info, dict):
+        name = info.get("name") or f"animation {info.get('animation_index', '?')}"
+        relative_frame = info.get("relative_frame")
+        return f"{name} sprite frame {relative_frame} (ANIM3DS.HQR:{entry_index})"
+    return f"ANIM3DS sprite frame {entry_index}"
+
+
 def decoded_entry(raw: bytes) -> tuple[bytes, dict[str, Any]]:
     decoded, header = lba_hqr.decode_resource_entry(raw)
     return decoded, {
@@ -1532,6 +1545,88 @@ def raw_animation_catalog_stats(
     }
 
 
+def parse_anim3ds_info(payload: bytes) -> list[dict[str, Any]]:
+    if len(payload) == 0:
+        raise Lm2Error("ANIM3DS info table is empty")
+    if len(payload) % 8 != 0:
+        raise Lm2Error(
+            f"ANIM3DS info table length {len(payload)} is not a multiple of 8"
+        )
+    entries: list[dict[str, Any]] = []
+    for index, offset in enumerate(range(0, len(payload), 8)):
+        name_bytes = payload[offset : offset + 4]
+        start_frame, end_frame = struct.unpack_from("<hh", payload, offset + 4)
+        if start_frame < 0 or end_frame < start_frame:
+            raise Lm2Error(
+                f"invalid ANIM3DS frame range at info entry {index}: "
+                f"{start_frame}..{end_frame}"
+            )
+        entries.append(
+            {
+                "index": index,
+                "name": name_bytes.decode("ascii", errors="replace").rstrip("\x00 "),
+                "name_bytes": list(name_bytes),
+                "start_frame": start_frame,
+                "end_frame": end_frame,
+                "frame_count": end_frame - start_frame + 1,
+            }
+        )
+    return entries
+
+
+def anim3ds_info_catalog_stats(
+    payload: bytes, range_warnings: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    entries = parse_anim3ds_info(payload)
+    return {
+        "decoded_bytes": len(payload),
+        "decoded_sha256": hashlib.sha256(payload).hexdigest(),
+        "parse_status": "metadata",
+        "decode_status": "decoded",
+        "decode_note": (
+            "Decoded classic T_ANIM_3DS frame ranges; ANIM3DS frames are LSP "
+            "sprite frames, not skeletal BODY animations."
+        ),
+        "semantic_layout": "anim3ds_frame_ranges",
+        "entry_count": len(entries),
+        "entries": entries,
+        "frame_min": min(entry["start_frame"] for entry in entries),
+        "frame_max": max(entry["end_frame"] for entry in entries),
+        "frame_total": sum(entry["frame_count"] for entry in entries),
+        "range_warnings": range_warnings or [],
+    }
+
+
+def anim3ds_frame_lookup(info_entries: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    lookup: dict[int, dict[str, Any]] = {}
+    for info_entry in info_entries:
+        for frame in range(info_entry["start_frame"], info_entry["end_frame"] + 1):
+            lookup[frame] = info_entry
+    return lookup
+
+
+def validate_anim3ds_frame_ranges(
+    info_entries: list[dict[str, Any]], available_frames: set[int]
+) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    for info_entry in info_entries:
+        missing = [
+            frame
+            for frame in range(info_entry["start_frame"], info_entry["end_frame"] + 1)
+            if frame not in available_frames
+        ]
+        if missing:
+            warnings.append(
+                {
+                    "animation_index": info_entry["index"],
+                    "name": info_entry["name"],
+                    "missing_frames": missing,
+                    "note": "ANIM3DS frame range references missing or empty HQR entries.",
+                }
+            )
+    return warnings
+
+
 def build_catalog(
     asset_root: Path,
     progress: DecodeProgress | None = None,
@@ -1557,6 +1652,7 @@ def build_catalog(
         "hqr_files": [],
         "assets": [],
     }
+
     if selected_files is not None:
         catalog["selected_files"] = [
             path.relative_to(asset_root).as_posix() for path in selected_files
@@ -1567,18 +1663,22 @@ def build_catalog(
         selected_files if selected_files is not None else hqr_paths(asset_root)
     ):
         hqr_relative = hqr_path.relative_to(asset_root).as_posix()
-        is_body_archive = hqr_path.name.upper() == "BODY.HQR"
+        archive_name = hqr_path.name.upper()
+        is_body_archive = archive_name == "BODY.HQR"
+        is_anim3ds_archive = archive_name == ANIM3DS_ARCHIVE_NAME
         data = hqr_path.read_bytes()
         entries = (
             lba_hqr.parse_classic_table(data)
-            if is_body_archive
+            if is_body_archive or is_anim3ds_archive
             else lba_hqr.parse_table(data)
         )
         archive_jobs.append(
             {
                 "path": hqr_path,
                 "relative": hqr_relative,
+                "archive_name": archive_name,
                 "is_body_archive": is_body_archive,
+                "is_anim3ds_archive": is_anim3ds_archive,
                 "data": data,
                 "entries": entries,
             }
@@ -1599,18 +1699,49 @@ def build_catalog(
     for archive in archive_jobs:
         hqr_path = archive["path"]
         hqr_relative = archive["relative"]
+        archive_name = archive["archive_name"]
         is_body_archive = archive["is_body_archive"]
+        is_anim3ds_archive = archive["is_anim3ds_archive"]
         data = archive["data"]
         entries = archive["entries"]
+        anim3ds_ranges: list[dict[str, Any]] = []
+        anim3ds_frames: dict[int, dict[str, Any]] = {}
+        anim3ds_range_warnings: list[dict[str, Any]] = []
+        if is_anim3ds_archive:
+            info_entry = next(
+                (entry for entry in entries if entry.index == ANIM3DS_INFO_ENTRY_INDEX),
+                None,
+            )
+            if info_entry is not None and info_entry.byte_length > 0:
+                try:
+                    info_payload, _ = decoded_entry(lba_hqr.read_entry(data, info_entry))
+                    anim3ds_ranges = parse_anim3ds_info(info_payload)
+                    anim3ds_frames = anim3ds_frame_lookup(anim3ds_ranges)
+                    available_frames = {
+                        entry.index
+                        for entry in entries
+                        if entry.byte_length > 0
+                        and entry.index != ANIM3DS_INFO_ENTRY_INDEX
+                    }
+                    anim3ds_range_warnings = validate_anim3ds_frame_ranges(
+                        anim3ds_ranges, available_frames
+                    )
+                except (Lm2Error, lba_hqr.HqrError):
+                    anim3ds_ranges = []
+                    anim3ds_frames = {}
+                    anim3ds_range_warnings = []
         file_summary: dict[str, Any] = {
             "path": hqr_relative,
-            "indexing": "classic" if is_body_archive else "one-based",
+            "indexing": "classic" if is_body_archive or is_anim3ds_archive else "one-based",
             "entry_count": len(entries),
             "non_empty_entries": sum(1 for entry in entries if entry.byte_length > 0),
             "models": 0,
             "animations": 0,
             "decoded_animations": 0,
             "raw_animations": 0,
+            "sprites": 0,
+            "sprite_frames": 0,
+            "sprite_metadata": 0,
             "recognized": 0,
             "bytes": len(data),
         }
@@ -1683,7 +1814,6 @@ def build_catalog(
                     progress.update(current=processed_entries)
                 continue
 
-            archive_name = hqr_path.name.upper()
             if archive_name in ANIMATION_ARCHIVE_NAMES:
                 if archive_name == ANIM_ARCHIVE_NAME:
                     try:
@@ -1704,12 +1834,30 @@ def build_catalog(
                         "can_fall": animation.can_fall,
                         "parsed": True,
                     }
+                elif (
+                    archive_name == ANIM3DS_ARCHIVE_NAME
+                    and catalog_entry_index == ANIM3DS_INFO_ENTRY_INDEX
+                ):
+                    stats = anim3ds_info_catalog_stats(payload, anim3ds_range_warnings)
+                    asset_kind = "sprite"
+                    entry_type = "anim3ds-info"
+                    animation_state = None
+                    features = {
+                        "parsed": True,
+                        "metadata_only": True,
+                        "sprite_animation": True,
+                    }
                 else:
+                    asset_kind = "animation"
                     if archive_name == ANIM3DS_ARCHIVE_NAME:
+                        asset_kind = "sprite"
                         stats = raw_animation_catalog_stats(
                             payload,
                             decode_status="deferred",
-                            decode_note="ANIM3DS semantic decode is not implemented",
+                            decode_note=(
+                                "ANIM3DS frame is an LSP sprite payload; sprite "
+                                "pixel decode is not implemented in this viewer."
+                            ),
                         )
                     else:
                         stats = raw_animation_catalog_stats(
@@ -1721,6 +1869,22 @@ def build_catalog(
                     entry_type = "animation-raw"
                     animation_state = "raw"
                     features = {"parsed": False}
+                    if archive_name == ANIM3DS_ARCHIVE_NAME:
+                        entry_type = "anim3ds-frame"
+                        animation_state = None
+                        features["sprite_frame"] = True
+                        if catalog_entry_index in anim3ds_frames:
+                            info = anim3ds_frames[catalog_entry_index]
+                            stats["anim3ds_info"] = {
+                                "animation_index": info["index"],
+                                "name": info["name"],
+                                "start_frame": info["start_frame"],
+                                "end_frame": info["end_frame"],
+                                "relative_frame": catalog_entry_index
+                                - info["start_frame"],
+                            }
+                if animation is not None:
+                    asset_kind = "animation"
                 animation_metadata = (
                     file3d_animation_metadata.get(catalog_entry_index)
                     if archive_name == ANIM_ARCHIVE_NAME
@@ -1728,14 +1892,17 @@ def build_catalog(
                 )
                 asset = {
                     "id": asset_id,
-                    "kind": "animation",
-                    "label": animation_catalog_label(
-                        Path(hqr_relative).name,
-                        catalog_entry_index,
-                        animation_metadata,
+                    "kind": asset_kind,
+                    "label": (
+                        anim3ds_catalog_label(catalog_entry_index, stats)
+                        if archive_name == ANIM3DS_ARCHIVE_NAME
+                        else animation_catalog_label(
+                            Path(hqr_relative).name,
+                            catalog_entry_index,
+                            animation_metadata,
+                        )
                     ),
                     "entry_type": entry_type,
-                    "animation_state": animation_state,
                     "source": source,
                     "path": hqr_relative,
                     "relative_path": f"{hqr_relative}[{catalog_entry_index}]",
@@ -1744,14 +1911,22 @@ def build_catalog(
                     "stats": stats,
                     "features": features,
                 }
+                if animation_state is not None:
+                    asset["animation_state"] = animation_state
                 if animation_metadata is not None:
                     asset["animation_metadata"] = animation_metadata
                 catalog["assets"].append(asset)
                 if animation_state == "decoded":
                     file_summary["animations"] += 1
                     file_summary["decoded_animations"] += 1
-                else:
+                elif asset_kind == "animation":
                     file_summary["raw_animations"] += 1
+                elif entry_type == "anim3ds-info":
+                    file_summary["sprite_metadata"] += 1
+                    file_summary["sprites"] += 1
+                else:
+                    file_summary["sprite_frames"] += 1
+                    file_summary["sprites"] += 1
                 file_summary["recognized"] += 1
 
             processed_entries += 1
@@ -1770,6 +1945,17 @@ def build_catalog(
         for asset in catalog["assets"]
         if asset["kind"] == "animation" and asset.get("animation_state") == "raw"
     )
+    sprite_assets = sum(1 for asset in catalog["assets"] if asset["kind"] == "sprite")
+    sprite_frames = sum(
+        1
+        for asset in catalog["assets"]
+        if asset["kind"] == "sprite" and asset.get("entry_type") == "anim3ds-frame"
+    )
+    sprite_metadata = sum(
+        1
+        for asset in catalog["assets"]
+        if asset["kind"] == "sprite" and asset.get("entry_type") == "anim3ds-info"
+    )
     catalog["summary"] = {
         "hqr_files": len(catalog["hqr_files"]),
         "assets": len(catalog["assets"]),
@@ -1778,6 +1964,9 @@ def build_catalog(
         "decoded_animations": decoded_animations,
         "raw_animations": raw_animations,
         "animation_assets": decoded_animations + raw_animations,
+        "sprite_assets": sprite_assets,
+        "sprite_frames": sprite_frames,
+        "sprite_metadata": sprite_metadata,
     }
     return catalog
 

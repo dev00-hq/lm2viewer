@@ -214,10 +214,14 @@ Deliverable:
 - Implemented: catalog every non-empty ANIM3DS entry with raw parse status,
   deferred decode status, decoded size, decoded hash, header words, and unknown
   byte-range descriptors.
+- Implemented: use classic zero-based ANIM3DS indexing and decode entry 127 as
+  the `T_ANIM_3DS` frame-range table from the original runtime source.
+- Implemented: classify ANIM3DS entries as sprite assets, not BODY-compatible
+  animations.
+- Implemented: link raw ANIM3DS sprite frames to their owning frame-range record.
 - Implemented: catalog summaries distinguish decoded animations from raw
   animation evidence.
-- Deferred: add deeper decode only when source, MBN, or original runtime
-  evidence identifies the semantic layout.
+- Deferred: LSP sprite pixel decode/render for ANIM3DS frame payloads.
 - Deferred: connect ANIM3DS entries to contracts once usage evidence is known.
 
 ANIM3DS deep decode should not block the first validated BODY + ANIM frame

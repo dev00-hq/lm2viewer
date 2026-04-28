@@ -1,4 +1,4 @@
-export type AssetKind = 'model' | 'animation';
+export type AssetKind = 'model' | 'animation' | 'sprite';
 export type KindFilter = AssetKind | 'all';
 export type PolygonMode = 'original' | 'triangulated';
 
@@ -19,6 +19,9 @@ export interface Catalog {
     decoded_animations: number;
     raw_animations: number;
     animation_assets: number;
+    sprite_assets?: number;
+    sprite_frames?: number;
+    sprite_metadata?: number;
   };
   hqr_files: HqrFileSummary[];
   assets: CatalogAsset[];
@@ -33,6 +36,9 @@ export interface HqrFileSummary {
   animations: number;
   decoded_animations: number;
   raw_animations: number;
+  sprites?: number;
+  sprite_frames?: number;
+  sprite_metadata?: number;
   recognized: number;
   bytes: number;
 }
@@ -60,7 +66,7 @@ export interface CatalogAsset {
   relative_path: string;
   decoded_bytes: number;
   decoded_sha256: string;
-  stats: ModelStats | AnimationStats | RawAnimationStats;
+  stats: ModelStats | AnimationStats | RawAnimationStats | Anim3dsInfoStats;
   features?: Record<string, boolean | number | string>;
   animation_metadata?: {
     generic_ids: number[];
@@ -101,6 +107,13 @@ export interface RawAnimationStats {
   decode_note: string;
   parse_error?: string;
   semantic_layout: 'unknown';
+  anim3ds_info?: {
+    animation_index: number;
+    name: string;
+    start_frame: number;
+    end_frame: number;
+    relative_frame: number;
+  };
   unknown_descriptors: Array<{
     section: string;
     offset: number;
@@ -109,6 +122,33 @@ export interface RawAnimationStats {
     confidence: string;
     note: string;
     related_decoded_fields?: string[];
+  }>;
+}
+
+export interface Anim3dsInfoStats {
+  decoded_bytes: number;
+  decoded_sha256: string;
+  parse_status: 'metadata';
+  decode_status: 'decoded';
+  decode_note: string;
+  semantic_layout: 'anim3ds_frame_ranges';
+  entry_count: number;
+  frame_min: number;
+  frame_max: number;
+  frame_total: number;
+  range_warnings: Array<{
+    animation_index: number;
+    name: string;
+    missing_frames: number[];
+    note: string;
+  }>;
+  entries: Array<{
+    index: number;
+    name: string;
+    name_bytes: number[];
+    start_frame: number;
+    end_frame: number;
+    frame_count: number;
   }>;
 }
 
@@ -230,6 +270,9 @@ export interface DecodeProgress {
     decoded_animations?: number;
     raw_animations?: number;
     animation_assets?: number;
+    sprite_assets?: number;
+    sprite_frames?: number;
+    sprite_metadata?: number;
   } | null;
 }
 

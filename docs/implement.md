@@ -134,23 +134,31 @@ evidence.
 
 ## ANIM3DS Track
 
-ANIM3DS entries remain raw evidence until source, MBN, or original runtime
-evidence identifies their semantic layout.
+ANIM3DS frame payloads remain raw LSP sprite evidence. The original runtime
+source identifies entry 127 as the `T_ANIM_3DS` frame-range table, so that
+metadata layout is decoded.
 
 Implemented:
 
 1. Catalog every non-empty `ANIM3DS.HQR` entry.
-2. Preserve raw parse status, deferred decode status, decoded size, decoded
-   SHA-256, and header words.
-3. Emit unknown descriptors with offsets, lengths, SHA-256 hashes, confidence,
+2. Use classic zero-based indexing for ANIM3DS, matching the original runtime.
+3. Decode entry 127 as `T_ANIM_3DS` records: name, start frame, end frame, and
+   frame count.
+4. Classify ANIM3DS entries as `sprite` assets so they stay out of BODY
+   animation compatibility and animation counts.
+5. Link raw sprite frames to their owning ANIM3DS range when the table is
+   available.
+6. Preserve raw parse status, deferred decode status, decoded size, decoded
+   SHA-256, and header words for individual frame payloads.
+7. Emit unknown descriptors with offsets, lengths, SHA-256 hashes, confidence,
    and notes rather than raw bytes.
-4. Keep raw ANIM3DS deferment separate from real `ANIM.HQR` parse failures:
+8. Keep raw ANIM3DS deferment separate from real `ANIM.HQR` parse failures:
    deferred ANIM3DS entries use `decode_status: deferred`, while parser
    failures use `decode_status: parse_failed` and `parse_error`.
 
 Deferred:
 
-1. Semantic ANIM3DS decode.
+1. LSP sprite pixel decode/render for ANIM3DS frames.
 2. Contract connections for ANIM3DS usage evidence.
 
 ## Validation Matrix
