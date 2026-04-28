@@ -73,9 +73,12 @@ export class CatalogUi {
     const compatibility = this.selectedModel
       ? `${animationMatchesModel(asset, this.selectedModel) ? 'compatible with selected model' : 'bone count does not match selected model'}<br>`
       : '';
+    const metadata = animationMetadataText(asset);
+    const metadataDetail = metadata ? `${escapeHtml(metadata)}<br>` : '';
     this.options.detail.innerHTML =
       `<strong>${escapeHtml(asset.label)}</strong><br>` +
       `${escapeHtml(asset.source.hqr)}[${asset.source.entry_index}]<br>` +
+      metadataDetail +
       `${animation.keyframes || 0} keyframes, ${animation.boneframes || 0} boneframes, loop frame ${animation.loop_frame ?? '-'}<br>` +
       `${animation.can_fall ? 'contains translation/fall frames' : 'rotation-only frames'}<br>` +
       `${compatibility}` +
@@ -146,6 +149,7 @@ function searchableText(asset: CatalogAsset): string {
     asset.animation_state,
     asset.label,
     asset.entry_type,
+    animationMetadataText(asset),
     asset.source?.hqr,
     asset.source?.entry_index,
     statsSearchText(asset.stats),
@@ -204,7 +208,25 @@ function assetMeta(asset: CatalogAsset): string {
     return `${source} - ${asset.decoded_bytes} bytes, raw animation evidence`;
   }
   const animation = asset.stats as AnimationStats;
-  return `${source} - ${animation.keyframes || 0} keyframes, ${animation.boneframes || 0} bones, loop ${animation.loop_frame ?? '-'}`;
+  const metadata = animationMetadataText(asset);
+  const prefix = metadata ? `${metadata} - ` : '';
+  return `${source} - ${prefix}${animation.keyframes || 0} keyframes, ${animation.boneframes || 0} bones, loop ${animation.loop_frame ?? '-'}`;
+}
+
+function animationMetadataText(asset: CatalogAsset): string {
+  const metadata = asset.animation_metadata;
+  if (!metadata) return '';
+  const labels = metadata.labels || [];
+  const names = metadata.generic_names || [];
+  const parts: string[] = [];
+  if (labels.length > 0) parts.push(labels.join(', '));
+  if (names.length > 0) parts.push(names.join(', '));
+  if (metadata.compatible_body_ids?.length) {
+    const preview = metadata.compatible_body_ids.slice(0, 6).map((id) => `BODY.HQR:${id}`).join(', ');
+    const extra = metadata.compatible_body_ids.length > 6 ? ` +${metadata.compatible_body_ids.length - 6}` : '';
+    parts.push(`File3D bodies ${preview}${extra}`);
+  }
+  return parts.join(' | ');
 }
 
 function renderUnknownDescriptors(descriptors: RawAnimationStats['unknown_descriptors']): string {

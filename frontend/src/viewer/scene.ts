@@ -18,6 +18,8 @@ export interface VisibilityState {
 export type CanvasBackgroundMode = 'dark' | 'light';
 export type PlaybackMode = 'world' | 'treadmill' | 'pose';
 const GRID_CELL_SIZE = 10;
+const GRID_SIZE = 1350;
+const GRID_DIVISIONS = 135;
 
 const backgroundPalettes: Record<CanvasBackgroundMode, { clear: number; gridCenter: number; grid: number }> = {
   dark: { clear: 0x151719, gridCenter: 0x46515c, grid: 0x2a3035 },
@@ -38,6 +40,7 @@ export class ViewerScene {
   private currentModel: Lm2Model | null = null;
   private currentRootMotion: [number, number, number] | null = null;
   private worldFollowTarget: THREE.Vector3 | null = null;
+  private cameraFollowPaused = false;
   private lockHorizon = false;
   private canvasBackgroundMode: CanvasBackgroundMode = 'dark';
   private visibility: VisibilityState = {
@@ -61,6 +64,9 @@ export class ViewerScene {
     this.controls.zoomSpeed = 1.2;
     this.controls.panSpeed = 0.8;
     this.controls.dynamicDampingFactor = 0.12;
+    this.controls.addEventListener('start', () => {
+      this.cameraFollowPaused = true;
+    });
 
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x39424a, 2.8));
     const directional = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -86,6 +92,7 @@ export class ViewerScene {
     this.currentModel = model;
     this.currentRootMotion = null;
     this.worldFollowTarget = null;
+    this.cameraFollowPaused = false;
     this.modelRoot.clear();
     this.modelRoot.position.set(0, 0, 0);
     this.modelRoot.add(...buildModelRoot(model).children);
@@ -116,6 +123,7 @@ export class ViewerScene {
   setPlaybackMode(mode: string): void {
     if (!isPlaybackMode(mode) || this.playbackMode === mode) return;
     this.playbackMode = mode;
+    this.cameraFollowPaused = false;
     this.applyPlaybackTransform();
   }
 
@@ -145,6 +153,7 @@ export class ViewerScene {
 
   frameModel(): void {
     if (!this.currentModel || this.modelRoot.children.length === 0) return;
+    this.cameraFollowPaused = false;
     const box = new THREE.Box3().setFromObject(this.modelRoot);
     if (box.isEmpty()) return;
     const center = box.getCenter(new THREE.Vector3());
@@ -222,7 +231,7 @@ export class ViewerScene {
 
   private createGrid(): THREE.GridHelper {
     const palette = backgroundPalettes[this.canvasBackgroundMode];
-    return new THREE.GridHelper(600, 60, palette.gridCenter, palette.grid);
+    return new THREE.GridHelper(GRID_SIZE, GRID_DIVISIONS, palette.gridCenter, palette.grid);
   }
 
   private applyPlaybackTransform(): void {
@@ -232,11 +241,7 @@ export class ViewerScene {
     if (this.playbackMode === 'world') {
       this.modelRoot.position.copy(actorPosition);
       this.followWorldTarget(actorPosition);
-      this.grid.position.set(
-        infiniteGridOffset(actorPosition.x),
-        0,
-        infiniteGridOffset(actorPosition.z),
-      );
+      this.grid.position.set(0, 0, 0);
       return;
     }
     this.worldFollowTarget = null;
@@ -250,6 +255,10 @@ export class ViewerScene {
   }
 
   private followWorldTarget(nextTarget: THREE.Vector3): void {
+    if (this.cameraFollowPaused) {
+      this.worldFollowTarget = nextTarget.clone();
+      return;
+    }
     const offset = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
     if (!this.worldFollowTarget) {
       this.worldFollowTarget = nextTarget.clone();
@@ -320,10 +329,6 @@ export class ViewerScene {
 
 function isPlaybackMode(mode: string): mode is PlaybackMode {
   return mode === 'world' || mode === 'treadmill' || mode === 'pose';
-}
-
-function infiniteGridOffset(value: number): number {
-  return Math.round(value / GRID_CELL_SIZE) * GRID_CELL_SIZE;
 }
 
 function wrappedGridOffset(value: number): number {

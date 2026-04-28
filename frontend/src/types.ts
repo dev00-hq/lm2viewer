@@ -8,6 +8,9 @@ export interface Catalog {
   source_mode?: 'folder' | 'files';
   selected_files?: string[];
   output_root?: string;
+  metadata?: {
+    file3d_animation_labels?: boolean;
+  };
   summary: {
     hqr_files: number;
     assets: number;
@@ -59,6 +62,13 @@ export interface CatalogAsset {
   decoded_sha256: string;
   stats: ModelStats | AnimationStats | RawAnimationStats;
   features?: Record<string, boolean | number | string>;
+  animation_metadata?: {
+    generic_ids: number[];
+    generic_names: string[];
+    labels: string[];
+    file3d_objects: number[];
+    compatible_body_ids: number[];
+  };
 }
 
 export interface ModelStats {

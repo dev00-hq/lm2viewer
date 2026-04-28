@@ -45,6 +45,18 @@ def hqr(entries: list[bytes]) -> bytes:
     return struct.pack("<I", table_end) + b"".join(struct.pack("<I", offset) for offset in offsets) + payloads
 
 
+def file3d_record(commands: bytes) -> bytes:
+    return struct.pack("<I", 4) + commands + b"\xff"
+
+
+def file3d_anim(generic_id: int, animation_index: int) -> bytes:
+    return b"\x03" + struct.pack("<H", generic_id) + b"\x04" + struct.pack("<h", animation_index) + b"\x00"
+
+
+def file3d_body(generic_id: int, body_index: int) -> bytes:
+    return b"\x01" + bytes([generic_id]) + b"\x04" + struct.pack("<h", body_index) + b"\x00"
+
+
 class AnimationParserTests(unittest.TestCase):
     def test_parse_full_anim_records_preserves_raw_keyframes(self) -> None:
         data = anim_payload(
@@ -445,6 +457,24 @@ class AnimationParserTests(unittest.TestCase):
             self.assertEqual(decoded_asset["animation_state"], "decoded")
             self.assertEqual(raw_asset["entry_type"], "animation-raw")
             self.assertEqual(raw_asset["animation_state"], "raw")
+
+    def test_catalog_labels_anim_entries_from_file3d_metadata(self) -> None:
+        decoded = anim_payload([(100, (1, 2, 3), [(0, 4, 5, 6)])])
+        file3d = file3d_record(file3d_body(0, 0) + file3d_anim(1, 1))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "ANIM.HQR").write_bytes(hqr([resource_entry(decoded)]))
+            (root / "RESS.HQR").write_bytes(
+                hqr([b""] * 43 + [resource_entry(file3d)])
+            )
+
+            catalog = viewer.build_catalog(root)
+
+            asset = viewer.find_catalog_asset(catalog, "ANIM.HQR:1")
+            self.assertEqual(asset["label"], "Walk (ANIM.HQR:1)")
+            self.assertEqual(asset["animation_metadata"]["generic_names"], ["GEN_ANIM_MARCHE"])
+            self.assertEqual(asset["animation_metadata"]["compatible_body_ids"], [1])
+            self.assertTrue(catalog["metadata"]["file3d_animation_labels"])
 
     def test_catalog_distinguishes_anim_parse_failures_from_anim3ds_deferment(self) -> None:
         data = b"\xff"

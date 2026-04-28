@@ -52,6 +52,110 @@ PALETTE_BYTES = 256 * 3
 TEXTURE_ENTRY_INDEX = 6
 TEXTURE_ATLAS_SIZE = 256
 TEXTURE_ATLAS_PIXELS = TEXTURE_ATLAS_SIZE * TEXTURE_ATLAS_SIZE
+FILE3D_ENTRY_INDEX = 44
+FILE3D_COMMAND_BODY = 1
+FILE3D_COMMAND_ANIM = 3
+FILE3D_COMMAND_END = 255
+GENERIC_ANIMATION_LABELS = {
+    0: "Idle",
+    1: "Walk",
+    2: "Back up",
+    3: "Turn left",
+    4: "Turn right",
+    5: "Take hit",
+    6: "Impact",
+    7: "Fall",
+    8: "Land",
+    9: "Hard land",
+    10: "Death",
+    11: "Action",
+    12: "Climb up",
+    13: "Ladder",
+    14: "Jump",
+    15: "Throw",
+    16: "Hide",
+    17: "Punch 1",
+    18: "Punch 2",
+    19: "Punch 3",
+    20: "Found item",
+    21: "Drown",
+    22: "Impact 2",
+    23: "Sword attack",
+    24: "Draw sword",
+    25: "Jump left",
+    26: "Jump right",
+    27: "Push",
+    28: "Talk",
+    29: "Dart",
+    30: "Climb down",
+    31: "Ladder down",
+    32: "Dock/attach",
+    33: "Skate",
+    34: "Skate left",
+    35: "Blowgun",
+    36: "Glove right",
+    37: "Glove left",
+    38: "Laser pistol",
+    39: "Lightning",
+    40: "Dodge right",
+    41: "Dodge left",
+    42: "Dodge forward",
+    43: "Dodge backward",
+    44: "Burning",
+    45: "Blowtron",
+    46: "Gas death",
+    47: "Labyrinth death",
+}
+GENERIC_ANIMATION_NAMES = {
+    0: "GEN_ANIM_RIEN",
+    1: "GEN_ANIM_MARCHE",
+    2: "GEN_ANIM_RECULE",
+    3: "GEN_ANIM_GAUCHE",
+    4: "GEN_ANIM_DROITE",
+    5: "GEN_ANIM_ENCAISSE",
+    6: "GEN_ANIM_CHOC",
+    7: "GEN_ANIM_TOMBE",
+    8: "GEN_ANIM_RECEPTION",
+    9: "GEN_ANIM_RECEPTION_2",
+    10: "GEN_ANIM_MORT",
+    11: "GEN_ANIM_ACTION",
+    12: "GEN_ANIM_MONTE",
+    13: "GEN_ANIM_ECHELLE",
+    14: "GEN_ANIM_SAUTE",
+    15: "GEN_ANIM_LANCE",
+    16: "GEN_ANIM_CACHE",
+    17: "GEN_ANIM_COUP_1",
+    18: "GEN_ANIM_COUP_2",
+    19: "GEN_ANIM_COUP_3",
+    20: "GEN_ANIM_TROUVE",
+    21: "GEN_ANIM_NOYADE",
+    22: "GEN_ANIM_CHOC2",
+    23: "GEN_ANIM_SABRE",
+    24: "GEN_ANIM_DEGAINE",
+    25: "GEN_ANIM_SAUTE_GAUCHE",
+    26: "GEN_ANIM_SAUTE_DROIT",
+    27: "GEN_ANIM_POUSSE",
+    28: "GEN_ANIM_PARLE",
+    29: "GEN_ANIM_DART",
+    30: "GEN_ANIM_DESCEND",
+    31: "GEN_ANIM_ECHDESC",
+    32: "GEN_ANIM_ARRIMAGE",
+    33: "GEN_ANIM_SKATE",
+    34: "GEN_ANIM_SKATEG",
+    35: "GEN_ANIM_SARBACANE",
+    36: "GEN_ANIM_GANT_DROIT",
+    37: "GEN_ANIM_GANT_GAUCHE",
+    38: "GEN_ANIM_PISTOLASER",
+    39: "GEN_ANIM_FOUDRE",
+    40: "GEN_ANIM_ESQUIVE_DROITE",
+    41: "GEN_ANIM_ESQUIVE_GAUCHE",
+    42: "GEN_ANIM_ESQUIVE_AVANT",
+    43: "GEN_ANIM_ESQUIVE_ARRIERE",
+    44: "GEN_ANIM_FEU",
+    45: "GEN_ANIM_SARBATRON",
+    46: "GEN_ANIM_GAZ",
+    47: "GEN_ANIM_LABYRINTHE",
+}
 
 
 class Lm2Error(ValueError):
@@ -1020,6 +1124,154 @@ def load_body_metadata() -> dict[int, dict[str, str]]:
     return entries
 
 
+def load_file3d_animation_metadata(asset_root: Path) -> dict[int, dict[str, Any]]:
+    resource_path = asset_root / PALETTE_ARCHIVE_NAME
+    if not resource_path.exists():
+        return {}
+    data = resource_path.read_bytes()
+    entries = lba_hqr.parse_table(data)
+    matches = [entry for entry in entries if entry.index == FILE3D_ENTRY_INDEX]
+    if not matches or matches[0].byte_length == 0:
+        return {}
+    raw = lba_hqr.read_entry(data, matches[0])
+    payload, _ = decoded_entry(raw)
+    return parse_file3d_animation_metadata(payload)
+
+
+def parse_file3d_animation_metadata(payload: bytes) -> dict[int, dict[str, Any]]:
+    if len(payload) < 4:
+        raise Lm2Error("File3D payload is too small")
+    table_end = struct.unpack_from("<I", payload, 0)[0]
+    if table_end < 4 or table_end % 4 != 0 or table_end > len(payload):
+        raise Lm2Error(f"invalid File3D table header: 0x{table_end:x}")
+    offsets = [
+        struct.unpack_from("<I", payload, index * 4)[0]
+        for index in range(table_end // 4)
+    ]
+    for offset in offsets:
+        if offset != 0 and (offset < table_end or offset > len(payload)):
+            raise Lm2Error(f"invalid File3D record offset: 0x{offset:x}")
+
+    metadata: dict[int, dict[str, Any]] = {}
+    for object_index, offset in enumerate(offsets):
+        if offset == 0:
+            continue
+        next_offset = len(payload)
+        for candidate in offsets[object_index + 1 :]:
+            if candidate > offset:
+                next_offset = min(next_offset, candidate)
+        body_indices, animation_records = parse_file3d_record(
+            payload[offset:next_offset], object_index
+        )
+        body_catalog_indices = sorted(
+            {body_index + 1 for body_index in body_indices if body_index >= 0}
+        )
+        for animation_index, generic_id in animation_records:
+            if animation_index < 0:
+                continue
+            item = metadata.setdefault(
+                animation_index,
+                {
+                    "generic_ids": set(),
+                    "generic_names": set(),
+                    "labels": set(),
+                    "file3d_objects": set(),
+                    "compatible_body_ids": set(),
+                },
+            )
+            item["generic_ids"].add(generic_id)
+            item["generic_names"].add(
+                GENERIC_ANIMATION_NAMES.get(generic_id, f"GEN_ANIM_{generic_id}")
+            )
+            item["labels"].add(
+                GENERIC_ANIMATION_LABELS.get(generic_id, f"Generic animation {generic_id}")
+            )
+            item["file3d_objects"].add(object_index)
+            item["compatible_body_ids"].update(body_catalog_indices)
+
+    return {
+        index: {
+            "generic_ids": sorted(value["generic_ids"]),
+            "generic_names": sorted(value["generic_names"]),
+            "labels": sorted(value["labels"]),
+            "file3d_objects": sorted(value["file3d_objects"]),
+            "compatible_body_ids": sorted(value["compatible_body_ids"]),
+        }
+        for index, value in metadata.items()
+    }
+
+
+def parse_file3d_record(
+    record: bytes, object_index: int
+) -> tuple[list[int], list[tuple[int, int]]]:
+    cursor = 0
+    body_indices: list[int] = []
+    animation_records: list[tuple[int, int]] = []
+    while cursor < len(record):
+        command = record[cursor]
+        cursor += 1
+        if command == FILE3D_COMMAND_END:
+            break
+        if command == FILE3D_COMMAND_ANIM:
+            require_file3d_bytes(record, cursor, 3, object_index)
+            generic_id = struct.unpack_from("<H", record, cursor)[0]
+            cursor += 2
+            size_offset = cursor
+            size = record[cursor]
+            require_file3d_bytes(record, size_offset, size, object_index)
+            animation_index = struct.unpack_from("<h", record, cursor + 1)[0]
+            animation_records.append((animation_index, generic_id))
+            cursor = size_offset + size
+            continue
+        if command == FILE3D_COMMAND_BODY:
+            require_file3d_bytes(record, cursor, 2, object_index)
+            cursor += 1
+            size_offset = cursor
+            size = record[cursor]
+            require_file3d_bytes(record, size_offset, size, object_index)
+            body_index = struct.unpack_from("<h", record, cursor + 1)[0]
+            body_indices.append(body_index)
+            cursor = size_offset + size
+            continue
+
+        require_file3d_bytes(record, cursor, 2, object_index)
+        cursor += 1
+        size_offset = cursor
+        size = record[cursor]
+        require_file3d_bytes(record, size_offset, size, object_index)
+        cursor = size_offset + size
+    return body_indices, animation_records
+
+
+def require_file3d_bytes(
+    record: bytes, offset: int, size: int, object_index: int
+) -> None:
+    if size < 0 or offset + size > len(record):
+        raise Lm2Error(
+            f"File3D object {object_index} record is truncated at offset 0x{offset:x}"
+        )
+
+
+def animation_catalog_label(
+    archive_name: str, entry_index: int, metadata: dict[str, Any] | None
+) -> str:
+    if not metadata:
+        return f"{archive_name} animation {entry_index}"
+    labels = metadata.get("labels")
+    generic_names = metadata.get("generic_names")
+    if isinstance(labels, list) and labels:
+        label = ", ".join(str(value) for value in labels[:2])
+        if len(labels) > 2:
+            label += f" +{len(labels) - 2}"
+    elif isinstance(generic_names, list) and generic_names:
+        label = ", ".join(str(value) for value in generic_names[:2])
+        if len(generic_names) > 2:
+            label += f" +{len(generic_names) - 2}"
+    else:
+        return f"{archive_name} animation {entry_index}"
+    return f"{label} ({archive_name}:{entry_index})"
+
+
 def decoded_entry(raw: bytes) -> tuple[bytes, dict[str, Any]]:
     decoded, header = lba_hqr.decode_resource_entry(raw)
     return decoded, {
@@ -1290,11 +1542,18 @@ def build_catalog(
     if not asset_root.is_dir():
         raise Lm2Error(f"asset root is not a directory: {asset_root}")
     body_metadata = load_body_metadata()
+    try:
+        file3d_animation_metadata = load_file3d_animation_metadata(asset_root)
+    except (Lm2Error, lba_hqr.HqrError):
+        file3d_animation_metadata = {}
     catalog: dict[str, Any] = {
         "schema": "lba2-lm2-explorer-v1",
         "asset_root": str(asset_root.resolve()),
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "source_mode": "files" if selected_files is not None else "folder",
+        "metadata": {
+            "file3d_animation_labels": bool(file3d_animation_metadata),
+        },
         "hqr_files": [],
         "assets": [],
     }
@@ -1462,10 +1721,19 @@ def build_catalog(
                     entry_type = "animation-raw"
                     animation_state = "raw"
                     features = {"parsed": False}
+                animation_metadata = (
+                    file3d_animation_metadata.get(catalog_entry_index)
+                    if archive_name == ANIM_ARCHIVE_NAME
+                    else None
+                )
                 asset = {
                     "id": asset_id,
                     "kind": "animation",
-                    "label": f"{Path(hqr_relative).name} animation {catalog_entry_index}",
+                    "label": animation_catalog_label(
+                        Path(hqr_relative).name,
+                        catalog_entry_index,
+                        animation_metadata,
+                    ),
                     "entry_type": entry_type,
                     "animation_state": animation_state,
                     "source": source,
@@ -1476,6 +1744,8 @@ def build_catalog(
                     "stats": stats,
                     "features": features,
                 }
+                if animation_metadata is not None:
+                    asset["animation_metadata"] = animation_metadata
                 catalog["assets"].append(asset)
                 if animation_state == "decoded":
                     file_summary["animations"] += 1
