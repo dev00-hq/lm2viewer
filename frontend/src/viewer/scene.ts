@@ -79,7 +79,6 @@ export class ViewerScene {
   private canvasBackgroundMode: CanvasBackgroundMode = "dark";
   private canvasBackgroundShade: CanvasBackgroundShade =
     DEFAULT_CANVAS_BACKGROUND_SHADE;
-  private transparentBackground = false;
   private visibility: VisibilityState = {
     faces: true,
     lines: true,
@@ -93,11 +92,9 @@ export class ViewerScene {
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
-      alpha: true,
-      preserveDrawingBuffer: true,
     });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.applyClearColor();
+    this.renderer.setClearColor(this.backgroundPalette().clear);
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100000);
     this.camera.position.set(0, 80, 160);
@@ -200,7 +197,7 @@ export class ViewerScene {
     }
     if (lines) lines.visible = visibility.lines;
     if (spheres) spheres.visible = visibility.spheres;
-    this.grid.visible = visibility.grid && !this.transparentBackground;
+    this.grid.visible = visibility.grid;
   }
 
   frameModel(): void {
@@ -245,7 +242,7 @@ export class ViewerScene {
       return;
     this.canvasBackgroundMode = mode;
     this.canvasBackgroundShade = shade;
-    this.applyClearColor();
+    this.renderer.setClearColor(this.backgroundPalette().clear);
 
     const wasVisible = this.grid.visible;
     this.scene.remove(this.grid);
@@ -253,13 +250,6 @@ export class ViewerScene {
     this.grid = this.createGrid();
     this.grid.visible = wasVisible;
     this.scene.add(this.grid);
-  }
-
-  setTransparentBackground(transparent: boolean): void {
-    if (this.transparentBackground === transparent) return;
-    this.transparentBackground = transparent;
-    this.applyClearColor();
-    this.applyVisibility(this.visibility);
   }
 
   zoomBy(factor: number): void {
@@ -324,14 +314,6 @@ export class ViewerScene {
       gridCenter: mixColor(gradient.gridCenter, this.canvasBackgroundShade),
       grid: mixColor(gradient.grid, this.canvasBackgroundShade),
     };
-  }
-
-  private applyClearColor(): void {
-    if (this.transparentBackground) {
-      this.renderer.setClearColor(0x000000, 0);
-      return;
-    }
-    this.renderer.setClearColor(this.backgroundPalette().clear, 1);
   }
 
   private applyPlaybackTransform(): void {
