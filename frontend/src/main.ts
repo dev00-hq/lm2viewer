@@ -29,6 +29,7 @@ const showLines = requireElement('showLines', HTMLInputElement);
 const showSpheres = requireElement('showSpheres', HTMLInputElement);
 const wireframe = requireElement('wireframe', HTMLInputElement);
 const showGrid = requireElement('showGrid', HTMLInputElement);
+const transparentCanvas = requireElement('transparentCanvas', HTMLInputElement);
 const lightCanvas = requireElement('lightCanvas', HTMLInputElement);
 const canvasBackgroundToggle = requireElement('canvasBackgroundToggle', HTMLButtonElement);
 const canvasBackgroundShade = requireElement('canvasBackgroundShade', HTMLButtonElement);
@@ -113,6 +114,7 @@ Object.assign(globalThis, { lm2Viewer: { camera: scene.camera, controls: scene.c
 for (const element of [showFaces, showLines, showSpheres, wireframe, showGrid]) {
   element.addEventListener('change', refreshVisibility);
 }
+transparentCanvas.addEventListener('change', refreshTransparentCanvas);
 lockHorizon.addEventListener('change', refreshHorizonLock);
 lightCanvas.addEventListener('change', refreshCanvasBackground);
 canvasBackgroundToggle.addEventListener('click', () => {
@@ -193,6 +195,7 @@ window.addEventListener('keydown', (event) => {
 restoreCanvasBackgroundPreference();
 void initialLoad();
 refreshCanvasBackground();
+refreshTransparentCanvas();
 refreshHorizonLock();
 tick();
 
@@ -329,6 +332,11 @@ function refreshVisibility(): void {
     grid: showGrid.checked,
   };
   scene.applyVisibility(visibility);
+}
+
+function refreshTransparentCanvas(): void {
+  scene.setTransparentBackground(transparentCanvas.checked);
+  refreshVisibility();
 }
 
 function refreshHorizonLock(): void {
