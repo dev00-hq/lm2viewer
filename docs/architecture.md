@@ -66,15 +66,14 @@ Implemented:
   UV groups, bounds, and selected flags.
 - RESS palette and texture atlas decode needed by current model rendering.
 - ANIM record decode, catalog summaries, CLI frame-step evidence, posed BODY +
-  ANIM viewer frame stepping, and ANIM3DS raw catalog metadata with unknown
-  descriptors.
+  ANIM viewer frame stepping, and ANIM3DS frame-range plus LSP sprite-frame
+  catalog evidence.
 - Contract manifests and export probes.
 - Read-only texture/UV inspector.
 
 Planned:
 
-- Continuous animation playback after more original-runtime visual evidence.
-- ANIM3DS semantic decode once evidence identifies the layout.
+- Contract connections for ANIM3DS usage evidence once usage semantics are known.
 
 ## Frontend Boundary
 

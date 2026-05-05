@@ -9,6 +9,41 @@ from lba2_lm2_viewer import viewer
 
 
 class ViewerServerConcurrencyTests(unittest.TestCase):
+    def test_rebuild_clears_previous_loaded_assets_before_new_catalog_build(self) -> None:
+        viewer_server = server.ViewerServer(None, None)
+        old_catalog = {"asset_root": "old", "summary": {"assets": 1}, "assets": [{"id": "old"}]}
+        old_model = {"source": "old"}
+        old_palette = [0x000000]
+        old_atlas = {"width": 1, "height": 1}
+        viewer_server.catalog = old_catalog
+        viewer_server.last_model = old_model
+        viewer_server.palette = old_palette
+        viewer_server.texture_atlas = old_atlas
+
+        observed: dict[str, object] = {}
+
+        def fake_build_catalog(
+            asset_root: Path,
+            progress: viewer.DecodeProgress | None = None,
+            selected_files: list[Path] | None = None,
+        ) -> dict[str, object]:
+            observed["catalog"] = viewer_server.catalog
+            observed["last_model"] = viewer_server.last_model
+            observed["palette"] = viewer_server.palette
+            observed["texture_atlas"] = viewer_server.texture_atlas
+            return {"asset_root": str(asset_root), "summary": {}, "assets": []}
+
+        with (
+            patch.object(server, "build_catalog", side_effect=fake_build_catalog),
+            patch.object(server.ViewerServer, "load_visual_assets", return_value=None),
+        ):
+            viewer_server.set_asset_root(Path("next"))
+
+        self.assertIsNone(observed["catalog"])
+        self.assertIsNone(observed["last_model"])
+        self.assertIsNone(observed["palette"])
+        self.assertIsNone(observed["texture_atlas"])
+
     def test_catalog_build_operations_do_not_overlap(self) -> None:
         viewer_server = server.ViewerServer(None, None)
         events: list[tuple[str, str]] = []

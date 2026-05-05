@@ -134,9 +134,9 @@ evidence.
 
 ## ANIM3DS Track
 
-ANIM3DS frame payloads remain raw LSP sprite evidence. The original runtime
-source identifies entry 127 as the `T_ANIM_3DS` frame-range table, so that
-metadata layout is decoded.
+ANIM3DS frame payloads are LSP sprite evidence. The original runtime source
+identifies entry 127 as the `T_ANIM_3DS` frame-range table, so that metadata
+layout is decoded.
 
 Implemented:
 
@@ -148,8 +148,8 @@ Implemented:
    animation compatibility and animation counts.
 5. Link raw sprite frames to their owning ANIM3DS range when the table is
    available.
-6. Preserve raw parse status, deferred decode status, decoded size, decoded
-   SHA-256, and header words for individual frame payloads.
+6. Decode individual LSP sprite frames into width, height, offsets, palette
+   indices, and pixels for frontend preview.
 7. Emit unknown descriptors with offsets, lengths, SHA-256 hashes, confidence,
    and notes rather than raw bytes.
 8. Keep raw ANIM3DS deferment separate from real `ANIM.HQR` parse failures:
@@ -158,8 +158,7 @@ Implemented:
 
 Deferred:
 
-1. LSP sprite pixel decode/render for ANIM3DS frames.
-2. Contract connections for ANIM3DS usage evidence.
+1. Contract connections for ANIM3DS usage evidence.
 
 ## Validation Matrix
 

@@ -4,6 +4,7 @@ This folder is the source-of-truth docs pack for the LBA2 LM2 Viewer.
 
 - `plans.md`: milestones, scope, decisions, validation, and risks
 - `architecture.md`: system shape and subsystem boundaries
+- `design.md`: UX contract for visual evidence workbenches and inspectors
 - `documentation.md`: current operator and contributor guide
 - `implement.md`: implementation contract for future coding work
 - `prompt.md`: reusable bootstrap prompt for another agent

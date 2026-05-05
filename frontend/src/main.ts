@@ -1,10 +1,13 @@
 import './styles.css';
-import { buildCatalog, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
+import { buildCatalog, catalogAudioUrl, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadAssetEntityWorkflow, loadCatalogAsset, loadPath, loadRuntimeSpriteEntityWorkflow, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
 import { animationCompatibilityPrefix, animationMatchesModel } from './compatibility';
 import { requireElement } from './dom';
-import type { Catalog, CatalogAsset, DecodeProgress, Lm2Model, PolygonMode } from './types';
+import type { Catalog, CatalogAsset, DecodeProgress, Lm2Model, PolygonMode, SpritePayload } from './types';
 import { AnimationController } from './ui/animationController';
 import { CatalogUi } from './ui/catalog';
+import { EntityView } from './ui/entityView';
+import { RuntimeSpriteResolver } from './ui/runtimeSpriteResolver';
+import { SpriteViewer } from './ui/spriteViewer';
 import { renderStats } from './ui/stats';
 import { UvInspector } from './ui/uvInspector';
 import {
@@ -19,6 +22,8 @@ import {
 
 const canvas = requireElement('canvas', HTMLCanvasElement);
 const scene = new ViewerScene({ canvas });
+
+type MainView = 'model' | 'sprite' | 'entity';
 
 const stats = requireElement('stats', HTMLDivElement);
 const errorBox = requireElement('error', HTMLDivElement);
@@ -46,9 +51,26 @@ const progressFill = requireElement('progressFill', HTMLDivElement);
 const exportAssetButton = requireElement('exportAsset', HTMLButtonElement);
 const exportPolygonMode = requireElement('exportPolygonMode', HTMLSelectElement);
 const exportResult = requireElement('exportResult', HTMLDivElement);
+const samplePreview = requireElement('samplePreview', HTMLDivElement);
+const sampleAudio = requireElement('sampleAudio', HTMLAudioElement);
+const samplePreviewMeta = requireElement('samplePreviewMeta', HTMLDivElement);
 const animationPanel = requireElement('animationPanel', HTMLDivElement);
 const animationPanelResize = requireElement('animationPanelResize', HTMLDivElement);
 const canvasAnimationSelect = requireElement('canvasAnimationSelect', HTMLSelectElement);
+const mainViews: Record<MainView, { tab: HTMLButtonElement; panel: HTMLElement }> = {
+  model: {
+    tab: requireElement('modelViewTab', HTMLButtonElement),
+    panel: requireElement('modelViewPanel', HTMLElement),
+  },
+  sprite: {
+    tab: requireElement('spriteViewTab', HTMLButtonElement),
+    panel: requireElement('spriteViewPanel', HTMLElement),
+  },
+  entity: {
+    tab: requireElement('entityViewTab', HTMLButtonElement),
+    panel: requireElement('entityViewPanel', HTMLElement),
+  },
+};
 const uvInspector = new UvInspector({
   root: requireElement('uvInspector', HTMLDivElement),
   polygon: requireElement('uvPolygon', HTMLSelectElement),
@@ -79,6 +101,72 @@ const catalogUi = new CatalogUi({
   list: requireElement('assetList', HTMLDivElement),
   detail: requireElement('assetDetail', HTMLDivElement),
   onSelect: selectCatalogAsset,
+});
+const spriteViewer = new SpriteViewer({
+  panel: requireElement('spriteViewPanel', HTMLElement),
+  canvas: requireElement('spriteCanvas', HTMLCanvasElement),
+  title: requireElement('spriteTitle', HTMLDivElement),
+  meta: requireElement('spriteMeta', HTMLDivElement),
+  facts: requireElement('spriteFacts', HTMLDivElement),
+  zoomIn: requireElement('spriteZoomIn', HTMLButtonElement),
+  zoomOut: requireElement('spriteZoomOut', HTMLButtonElement),
+  fit: requireElement('spriteFit', HTMLButtonElement),
+  previous: requireElement('spritePrevious', HTMLButtonElement),
+  play: requireElement('spritePlay', HTMLButtonElement),
+  next: requireElement('spriteNext', HTMLButtonElement),
+  scrub: requireElement('spriteScrub', HTMLInputElement),
+  frameLabel: requireElement('spriteFrameLabel', HTMLDivElement),
+  loadFrame: loadSpriteFrame,
+  onFrameLoaded: (asset, payload) => {
+    catalogUi.select(asset);
+    catalogUi.renderDetail(payload.sprite);
+  },
+});
+const entityView = new EntityView({
+  panel: requireElement('entityViewPanel', HTMLElement),
+  title: requireElement('entityTitle', HTMLDivElement),
+  trail: requireElement('entityTrail', HTMLDivElement),
+  usages: requireElement('entityUsages', HTMLDivElement),
+  detail: requireElement('entityDetail', HTMLDivElement),
+  visualLinks: requireElement('entityVisualLinks', HTMLDivElement),
+  openAsset: (assetId) => {
+    const asset = findCatalogAsset(assetId);
+    if (!asset) {
+      errorBox.textContent = `Catalog asset not found: ${assetId}`;
+      return;
+    }
+    void selectCatalogAsset(asset);
+  },
+});
+const runtimeSpriteResolver = new RuntimeSpriteResolver({
+  root: requireElement('runtimeSpriteResolver', HTMLElement),
+  flags: requireElement('runtimeSpriteFlags', HTMLInputElement),
+  sprite: requireElement('runtimeSpriteIndex', HTMLInputElement),
+  bodyNum: requireElement('runtimeSpriteBodyNum', HTMLInputElement),
+  objectIndex: requireElement('runtimeSpriteObjectIndex', HTMLInputElement),
+  labelTrack: requireElement('runtimeSpriteLabelTrack', HTMLInputElement),
+  resolve: requireElement('runtimeSpriteResolve', HTMLButtonElement),
+  open: requireElement('runtimeSpriteOpen', HTMLButtonElement),
+  result: requireElement('runtimeSpriteResult', HTMLDivElement),
+  openAsset: (assetId) => {
+    const asset = findCatalogAsset(assetId);
+    if (!asset) {
+      errorBox.textContent = `Catalog asset not found: ${assetId}`;
+      return;
+    }
+    void selectCatalogAsset(asset);
+  },
+  openWorkflow: (request) => {
+    void runAction(async () => {
+      const workflow = await loadRuntimeSpriteEntityWorkflow(request);
+      entityView.setWorkflow(workflow);
+      setMainView('entity');
+      overlay.textContent = workflow.selected_entity?.entity_id || workflow.resolved_asset?.id || 'Runtime sprite evidence';
+    }, { label: 'Loading entity workflow' });
+  },
+  setError: (message) => {
+    errorBox.textContent = message;
+  },
 });
 const animationController = new AnimationController({
   elements: {
@@ -159,6 +247,9 @@ requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => ru
 ));
 exportAssetButton.addEventListener('click', () => runAction(exportSelectedAsset, { label: 'Exporting evidence probe' }));
 setupAnimationPanelResize();
+mainViews.model.tab.addEventListener('click', () => setMainView('model'));
+mainViews.sprite.tab.addEventListener('click', () => setMainView('sprite'));
+mainViews.entity.tab.addEventListener('click', () => setMainView('entity'));
 canvasAnimationSelect.addEventListener('change', selectCanvasAnimation);
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
@@ -177,7 +268,10 @@ drop.addEventListener('drop', (event) => {
   if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
 });
 
-window.addEventListener('resize', () => scene.resize());
+window.addEventListener('resize', () => {
+  scene.resize();
+  spriteViewer.resize();
+});
 window.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || isEditableTarget(event.target)) return;
   if (event.key.toLowerCase() === 'l') {
@@ -205,28 +299,155 @@ async function initialLoad(): Promise<void> {
 function setCatalog(catalog: Awaited<ReturnType<typeof fetchCatalog>>): void {
   currentCatalog = catalog;
   catalogUi.setCatalog(catalog);
+  runtimeSpriteResolver.setCatalog(catalog);
   if (catalog?.asset_root) assetRootInput.value = catalog.asset_root;
   updateCanvasAnimationSelect(animationController.selectedBodyAsset);
 }
 
 async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
   animationController.stop();
+  spriteViewer.stop();
   await runAction(async () => {
     catalogUi.select(asset);
     const payload = await loadCatalogAsset(asset);
     if ('animation' in payload) {
+      setSamplePreview(null);
       animationController.setAnimationAsset(payload.animation);
       updateCanvasAnimationSelect(animationController.selectedBodyAsset);
       uvInspector.setModel(null);
       catalogUi.renderDetail(payload.animation);
+      await showAssetEntityWorkflow(payload.animation, hasSceneUsages(payload.animation));
       overlay.textContent = `${payload.animation.label} selected`;
       return;
     }
+    if ('sprite' in payload) {
+      setSamplePreview(null);
+      uvInspector.setModel(null);
+      catalogUi.renderDetail(payload.sprite);
+      await showAssetEntityWorkflow(payload.sprite, hasSceneUsages(payload.sprite));
+      spriteViewer.setSprite(payload, spriteRangeAssets(payload.sprite));
+      if (!hasSceneUsages(payload.sprite)) setMainView('sprite');
+      overlay.textContent = `${payload.sprite.label} selected`;
+      const stats = payload.sprite.stats;
+      setSelectedExportAsset(
+        'semantic_layout' in stats
+          && (
+            (payload.sprite.kind === 'sprite' && (stats.semantic_layout === 'lsp_sprite_frame' || stats.semantic_layout === 'raw_sprite_frame'))
+            || (
+              payload.sprite.kind === 'resource'
+              && (
+                stats.semantic_layout === 'bkg_grid_map'
+                || stats.semantic_layout === 'screen_indexed_image_640x480'
+                || stats.semantic_layout === 'lba2_indexed_image_256'
+                || stats.semantic_layout === 'lba2_texture_atlas_indexed'
+                || stats.semantic_layout === 'holomap_plan_image_640x480'
+              )
+            )
+            || (payload.sprite.kind === 'scene' && stats.semantic_layout === 'scene_runtime_layout_partial')
+          )
+          ? payload.sprite
+          : null,
+      );
+      updateExportControls();
+      return;
+    }
+    if ('scene' in payload) {
+      setSamplePreview(null);
+      uvInspector.setModel(null);
+      catalogUi.renderDetail(payload.scene);
+      await showAssetEntityWorkflow(payload.scene, false);
+      setMainView('model');
+      overlay.textContent = `${payload.scene.label} selected`;
+      const stats = payload.scene.stats;
+      const background = 'reconnaissance' in stats ? stats.reconnaissance.background : null;
+      setSelectedExportAsset(background?.resolved_gri_entry !== undefined ? payload.scene : null);
+      updateExportControls();
+      return;
+    }
+    if ('resource' in payload) {
+      setSamplePreview(null);
+      uvInspector.setModel(null);
+      catalogUi.renderDetail(payload.resource);
+      await showAssetEntityWorkflow(payload.resource, hasSceneUsages(payload.resource));
+      setMainView('model');
+      overlay.textContent = `${payload.resource.label} selected`;
+      const stats = payload.resource.stats;
+      setSelectedExportAsset(
+        'semantic_layout' in stats && stats.semantic_layout === 'bkg_grid_map'
+          ? payload.resource
+          : 'semantic_layout' in stats && stats.semantic_layout === 'sample_wave_audio'
+            ? payload.resource
+          : 'semantic_layout' in stats && stats.semantic_layout === 'text_payload_bank'
+            ? payload.resource
+          : 'semantic_layout' in stats && stats.semantic_layout === 'smacker_video'
+            ? payload.resource
+          : null,
+      );
+      setSamplePreview(
+        'semantic_layout' in stats && stats.semantic_layout === 'sample_wave_audio'
+          ? payload.resource
+          : null,
+      );
+      updateExportControls();
+      if (hasSceneUsages(payload.resource)) setMainView('entity');
+      return;
+    }
     showModel(payload);
+    if (payload.catalog_asset) await showAssetEntityWorkflow(payload.catalog_asset, hasSceneUsages(payload.catalog_asset));
   }, { label: asset.kind === 'model' ? `Decoding ${asset.label}` : `Loading ${asset.label}` });
 }
 
+async function showAssetEntityWorkflow(asset: CatalogAsset, activate: boolean): Promise<void> {
+  try {
+    const workflow = await loadAssetEntityWorkflow(asset);
+    entityView.setWorkflow(workflow);
+    if (activate) setMainView('entity');
+  } catch {
+    entityView.setWorkflow(null);
+  }
+}
+
+function hasSceneUsages(asset: CatalogAsset): boolean {
+  return (asset.scene_usages?.length || 0) > 0;
+}
+
+async function loadSpriteFrame(asset: CatalogAsset): Promise<SpritePayload> {
+  const payload = await loadCatalogAsset(asset);
+  if (!('sprite' in payload)) throw new Error(`Catalog asset is not a sprite frame: ${asset.id}`);
+  return payload;
+}
+
+function spriteRangeAssets(spriteAsset: CatalogAsset): CatalogAsset[] {
+  const stats = spriteAsset.stats;
+  if (!currentCatalog || !('semantic_layout' in stats) || stats.semantic_layout !== 'lsp_sprite_frame' || !stats.anim3ds_info) {
+    return [spriteAsset];
+  }
+  const range = stats.anim3ds_info;
+  const assets = currentCatalog.assets.filter((asset) => {
+    if (asset.kind !== 'sprite' || asset.entry_type !== 'anim3ds-frame') return false;
+    const assetStats = asset.stats;
+    if (!('semantic_layout' in assetStats) || assetStats.semantic_layout !== 'lsp_sprite_frame' || !assetStats.anim3ds_info) return false;
+    return assetStats.anim3ds_info.name === range.name
+      && assetStats.anim3ds_info.start_frame === range.start_frame
+      && assetStats.anim3ds_info.end_frame === range.end_frame;
+  });
+  assets.sort((a, b) => {
+    const aStats = a.stats;
+    const bStats = b.stats;
+    const aFrame = 'semantic_layout' in aStats && aStats.semantic_layout === 'lsp_sprite_frame'
+      ? aStats.anim3ds_info?.relative_frame ?? a.source.entry_index
+      : a.source.entry_index;
+    const bFrame = 'semantic_layout' in bStats && bStats.semantic_layout === 'lsp_sprite_frame'
+      ? bStats.anim3ds_info?.relative_frame ?? b.source.entry_index
+      : b.source.entry_index;
+    return aFrame - bFrame || a.source.entry_index - b.source.entry_index;
+  });
+  return assets.length > 0 ? assets : [spriteAsset];
+}
+
 function showModel(model: Lm2Model): void {
+  setSamplePreview(null);
+  setMainView('model');
   scene.loadModel(model);
   renderStats(stats, model);
   uvInspector.setModel(model);
@@ -239,6 +460,25 @@ function showModel(model: Lm2Model): void {
   updateExportControls();
   animationController.updateControls();
   if (model.catalog_asset) catalogUi.select(model.catalog_asset);
+}
+
+function setMainView(view: MainView): void {
+  for (const [key, entry] of Object.entries(mainViews) as Array<[MainView, typeof mainViews[MainView]]>) {
+    const active = key === view;
+    entry.panel.hidden = !active;
+    entry.panel.classList.toggle('active', active);
+    entry.tab.classList.toggle('active', active);
+    entry.tab.setAttribute('aria-selected', String(active));
+  }
+  if (view === 'model') {
+    overlay.hidden = false;
+    scene.resize();
+  } else if (view === 'sprite') {
+    overlay.hidden = true;
+    spriteViewer.resize();
+  } else {
+    overlay.hidden = true;
+  }
 }
 
 function selectCanvasAnimation(): void {
@@ -287,23 +527,49 @@ function findCatalogAsset(id: string): CatalogAsset | null {
 }
 
 async function exportSelectedAsset(): Promise<void> {
-  if (!selectedExportAsset) throw new Error('Select a catalog model before exporting.');
+  if (!selectedExportAsset) throw new Error('Select an exportable catalog model, sprite frame, sample, indexed image, background grid, or scene background before exporting.');
   exportResult.textContent = '';
   const polygonMode = selectedPolygonMode();
   const result = await exportCatalogAsset(selectedExportAsset, polygonMode);
-  const fileCount = [
-    result.manifest.files.obj,
-    result.manifest.files.mtl,
-    result.manifest.files.manifest,
-    result.manifest.files.shared_atlas_png,
-    ...(result.manifest.files.uv_group_pngs || []).map((entry) => entry.path),
-  ].filter(Boolean).length;
+  const fileEntries = collectManifestFiles(result.manifest.files);
+  const fileCount = fileEntries.filter(Boolean).length;
   exportResult.textContent = `Wrote ${fileCount} files to ${result.output_dir}`;
   overlay.textContent = `Exported ${result.manifest.source.catalog_label || result.manifest.source.catalog_asset_id}`;
 }
 
+function collectManifestFiles(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap((entry) => collectManifestFiles(entry));
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (typeof record.path === 'string') return [record.path];
+    return Object.values(record).flatMap((entry) => collectManifestFiles(entry));
+  }
+  return [];
+}
+
 function updateExportControls(): void {
   exportAssetButton.disabled = selectedExportAsset === null;
+}
+
+function setSamplePreview(asset: CatalogAsset | null): void {
+  sampleAudio.pause();
+  sampleAudio.removeAttribute('src');
+  sampleAudio.load();
+  samplePreview.hidden = asset === null;
+  samplePreviewMeta.textContent = '';
+  if (!asset) return;
+  const stats = asset.stats;
+  if (!('semantic_layout' in stats) || stats.semantic_layout !== 'sample_wave_audio') return;
+  sampleAudio.src = catalogAudioUrl(asset);
+  const fields = stats.fields || {};
+  samplePreviewMeta.textContent = [
+    `Sample ${stats.sample_runtime_index ?? asset.source.entry_index}`,
+    stats.audio_format || 'audio',
+    `${fields.sample_rate ?? '-'}Hz`,
+    `${fields.channels ?? '-'}ch`,
+    `${stats.duration_ms ?? '-'} ms`,
+  ].join(' | ');
 }
 
 function setSelectedExportAsset(asset: CatalogAsset | null): void {

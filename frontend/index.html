@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LBA2 LM2 Viewer</title>
+    <title>LBA2 Evidence Workbench</title>
   </head>
   <body>
     <div id="app">
       <aside>
-        <h1>LBA2 LM2 Viewer</h1>
+        <h1>LBA2 Evidence Workbench</h1>
         <input id="file" type="file" accept=".lm2,.ldc,.bin,application/octet-stream" />
         <div id="drop">Drop an .lm2/.ldc file here</div>
 
@@ -38,10 +38,43 @@
             <option value="model">Models</option>
             <option value="animation">Animations</option>
             <option value="sprite">Sprites</option>
+            <option value="scene">Scenes</option>
+            <option value="resource">Resources</option>
           </select>
         </div>
         <div id="assetList" class="asset-list"></div>
         <div id="assetDetail" class="asset-detail">Select a catalog entry to inspect it.</div>
+
+        <h2>Runtime Sprite</h2>
+        <div id="runtimeSpriteResolver" class="runtime-sprite-resolver">
+          <div class="runtime-grid">
+            <label>
+              <span>Flags</span>
+              <input id="runtimeSpriteFlags" type="text" value="0x400" aria-label="Runtime object flags" />
+            </label>
+            <label>
+              <span>Sprite</span>
+              <input id="runtimeSpriteIndex" type="number" min="-1" step="1" value="127" aria-label="Runtime Sprite value" />
+            </label>
+            <label>
+              <span>Body.Num</span>
+              <input id="runtimeSpriteBodyNum" type="number" min="-1" step="1" value="127" aria-label="Runtime Obj.Body.Num value" />
+            </label>
+            <label>
+              <span>Object</span>
+              <input id="runtimeSpriteObjectIndex" type="number" min="0" step="1" value="7" aria-label="Runtime object index" />
+            </label>
+            <label>
+              <span>LabelTrack</span>
+              <input id="runtimeSpriteLabelTrack" type="number" step="1" aria-label="Runtime LabelTrack value" />
+            </label>
+          </div>
+          <div class="row">
+            <button id="runtimeSpriteResolve" type="button">Resolve</button>
+            <button id="runtimeSpriteOpen" type="button" disabled>Open</button>
+          </div>
+          <div id="runtimeSpriteResult" class="runtime-result" role="status" aria-live="polite"></div>
+        </div>
         <div class="export-panel">
           <div class="row">
             <select id="exportPolygonMode" aria-label="Export polygon mode">
@@ -49,6 +82,10 @@
               <option value="triangulated">Triangulated</option>
             </select>
             <button id="exportAsset" disabled>Export</button>
+          </div>
+          <div id="samplePreview" class="sample-preview" hidden>
+            <audio id="sampleAudio" controls preload="none"></audio>
+            <div id="samplePreviewMeta" class="sample-preview-meta"></div>
           </div>
           <div id="exportResult" class="export-result" role="status" aria-live="polite"></div>
         </div>
@@ -93,53 +130,97 @@
         <div id="error" class="error"></div>
       </aside>
       <main>
-        <canvas id="canvas"></canvas>
-        <div class="canvas-animation-picker">
-          <select id="canvasAnimationSelect" aria-label="Compatible animations for selected model" disabled>
-            <option value="">No model selected</option>
-          </select>
+        <div class="main-tabs" role="tablist" aria-label="Main view">
+          <button id="modelViewTab" class="main-tab active" type="button" role="tab" aria-selected="true" aria-controls="modelViewPanel">Model View</button>
+          <button id="spriteViewTab" class="main-tab" type="button" role="tab" aria-selected="false" aria-controls="spriteViewPanel">Sprite View</button>
+          <button id="entityViewTab" class="main-tab" type="button" role="tab" aria-selected="false" aria-controls="entityViewPanel">Entity View</button>
         </div>
-        <div id="animationPanel" class="animation-panel">
-          <div class="playback-header">
-            <div id="animationSelection" class="animation-selection">Select a model and an ANIM entry.</div>
-            <div class="playback-pills">
-              <div id="animationPlaybackState" class="playback-state">Idle</div>
-              <button id="canvasBackgroundToggle" class="playback-pill-button" type="button" aria-pressed="false" title="Toggle light canvas background">Dark</button>
-              <button id="canvasBackgroundShade" class="playback-pill-button playback-shade-pill" type="button" aria-expanded="false" aria-haspopup="menu" title="Choose canvas background shade" aria-label="Canvas background shade"></button>
-              <div id="canvasBackgroundShadePicker" class="shade-picker" role="menu" hidden></div>
+        <section id="modelViewPanel" class="main-view active" role="tabpanel" aria-labelledby="modelViewTab">
+          <canvas id="canvas"></canvas>
+          <div class="canvas-animation-picker">
+            <select id="canvasAnimationSelect" aria-label="Compatible animations for selected model" disabled>
+              <option value="">No model selected</option>
+            </select>
+          </div>
+          <div id="animationPanel" class="animation-panel">
+            <div class="playback-header">
+              <div id="animationSelection" class="animation-selection">Select a model and an ANIM entry.</div>
+              <div class="playback-pills">
+                <div id="animationPlaybackState" class="playback-state">Idle</div>
+                <button id="canvasBackgroundToggle" class="playback-pill-button" type="button" aria-pressed="false" title="Toggle light canvas background">Dark</button>
+                <button id="canvasBackgroundShade" class="playback-pill-button playback-shade-pill" type="button" aria-expanded="false" aria-haspopup="menu" title="Choose canvas background shade" aria-label="Canvas background shade"></button>
+                <div id="canvasBackgroundShadePicker" class="shade-picker" role="menu" hidden></div>
+              </div>
             </div>
+            <div class="playback-time-row">
+              <span id="animationTimeCurrent">0:00.000</span>
+              <span id="animationTimeTotal">0:00.000</span>
+            </div>
+            <input id="animationScrub" class="playback-scrub" type="range" min="0" max="0" step="1" value="0" aria-label="Animation timeline" disabled />
+            <div class="button-row animation-controls">
+              <button id="animationPrevious" title="Previous frame" aria-label="Previous animation frame">&lt;</button>
+              <button id="animationPlay" class="transport-primary" title="Play animation" aria-pressed="false" disabled>&gt;</button>
+              <button id="animationNext" title="Next frame" aria-label="Next animation frame">&gt;</button>
+              <button id="animationRepeat" title="Repeat playback" aria-label="Repeat playback" aria-pressed="true">↻</button>
+              <button id="animationPose" class="debug-apply" title="Apply pose" aria-label="Apply animation pose" disabled>◇</button>
+            </div>
+            <select id="animationPlaybackMode" class="playback-mode" aria-label="Animation playback mode">
+              <option value="world">World motion</option>
+              <option value="treadmill">Treadmill</option>
+              <option value="pose">Pose only</option>
+            </select>
+            <div class="pose-grid playback-debug">
+              <label>
+                <span>Frame</span>
+                <input id="animationFrame" type="number" min="0" step="1" value="0" />
+              </label>
+              <label>
+                <span>ms</span>
+                <input id="animationElapsed" type="number" min="0" step="1" value="0" />
+              </label>
+            </div>
+            <div id="animationResult" class="export-result" role="status" aria-live="polite"></div>
+            <div id="animationPanelResize" class="animation-panel-resize" title="Resize playback controls" aria-hidden="true"></div>
           </div>
-          <div class="playback-time-row">
-            <span id="animationTimeCurrent">0:00.000</span>
-            <span id="animationTimeTotal">0:00.000</span>
+          <div id="horizonIndicator" class="horizon-indicator" aria-live="polite">Horizon free</div>
+        </section>
+        <section id="spriteViewPanel" class="main-view sprite-view" role="tabpanel" aria-labelledby="spriteViewTab" hidden>
+          <div class="sprite-toolbar">
+            <div id="spriteTitle" class="sprite-title">No sprite selected</div>
+            <div class="sprite-controls" aria-label="Sprite controls">
+              <button id="spriteZoomOut" type="button" title="Zoom out" aria-label="Zoom out">-</button>
+              <button id="spriteFit" type="button" title="Fit sprite" aria-label="Fit sprite">Fit</button>
+              <button id="spriteZoomIn" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+            </div>
+            <div class="sprite-playback" aria-label="Sprite range playback">
+              <button id="spritePrevious" type="button" title="Previous sprite frame" aria-label="Previous sprite frame">&lt;</button>
+              <button id="spritePlay" type="button" title="Play sprite range" aria-label="Play sprite range" aria-pressed="false">&gt;</button>
+              <button id="spriteNext" type="button" title="Next sprite frame" aria-label="Next sprite frame">&gt;</button>
+              <input id="spriteScrub" class="sprite-scrub" type="range" min="0" max="0" step="1" value="0" aria-label="Sprite range frame" disabled />
+              <div id="spriteFrameLabel" class="sprite-frame-label">0 / 0</div>
+            </div>
+            <div id="spriteMeta" class="sprite-meta">Select a sprite asset from the catalog.</div>
+            <div id="spriteFacts" class="sprite-facts" aria-label="Sprite runtime facts"></div>
           </div>
-          <input id="animationScrub" class="playback-scrub" type="range" min="0" max="0" step="1" value="0" aria-label="Animation timeline" disabled />
-          <div class="button-row animation-controls">
-            <button id="animationPrevious" title="Previous frame" aria-label="Previous animation frame">&lt;</button>
-            <button id="animationPlay" class="transport-primary" title="Play animation" aria-pressed="false" disabled>&gt;</button>
-            <button id="animationNext" title="Next frame" aria-label="Next animation frame">&gt;</button>
-            <button id="animationRepeat" title="Repeat playback" aria-label="Repeat playback" aria-pressed="true">↻</button>
-            <button id="animationPose" class="debug-apply" title="Apply pose" aria-label="Apply animation pose" disabled>◇</button>
+          <div id="spriteStage" class="sprite-stage">
+            <canvas id="spriteCanvas" aria-label="Sprite preview"></canvas>
           </div>
-          <select id="animationPlaybackMode" class="playback-mode" aria-label="Animation playback mode">
-            <option value="world">World motion</option>
-            <option value="treadmill">Treadmill</option>
-            <option value="pose">Pose only</option>
-          </select>
-          <div class="pose-grid playback-debug">
-            <label>
-              <span>Frame</span>
-              <input id="animationFrame" type="number" min="0" step="1" value="0" />
-            </label>
-            <label>
-              <span>ms</span>
-              <input id="animationElapsed" type="number" min="0" step="1" value="0" />
-            </label>
+        </section>
+        <section id="entityViewPanel" class="main-view entity-view" role="tabpanel" aria-labelledby="entityViewTab" hidden>
+          <div class="entity-header">
+            <div id="entityTitle" class="entity-title">No entity selected</div>
+            <div id="entityTrail" class="entity-trail" aria-label="Evidence trail"></div>
           </div>
-          <div id="animationResult" class="export-result" role="status" aria-live="polite"></div>
-          <div id="animationPanelResize" class="animation-panel-resize" title="Resize playback controls" aria-hidden="true"></div>
-        </div>
-        <div id="horizonIndicator" class="horizon-indicator" aria-live="polite">Horizon free</div>
+          <div class="entity-layout">
+            <div class="entity-usage-panel">
+              <h2>Usages</h2>
+              <div id="entityUsages" class="entity-usages">Select a catalog asset or resolve a runtime sprite.</div>
+              <h2>Visual Links</h2>
+              <div id="entityVisualLinks" class="entity-visual-links"></div>
+            </div>
+            <div id="entityDetail" class="entity-detail"></div>
+          </div>
+        </section>
         <div id="overlay">No model loaded</div>
       </main>
     </div>

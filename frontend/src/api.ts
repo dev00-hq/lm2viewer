@@ -1,4 +1,4 @@
-import type { AnimationPayload, AnimationSequencePayload, Catalog, CatalogAsset, DecodeProgress, ErrorPayload, ExportPayload, Lm2Model, PolygonMode } from './types';
+import type { AnimationPayload, AnimationSequencePayload, Catalog, CatalogAsset, DecodeProgress, EntityWorkflowPayload, ErrorPayload, ExportPayload, Lm2Model, PolygonMode, ResourcePayload, RuntimeSpriteResolvePayload, ScenePayload, SpritePayload } from './types';
 
 async function readJson<T extends object>(response: Response): Promise<T> {
   const payload = await response.json() as T | ErrorPayload;
@@ -56,11 +56,48 @@ export async function pickCatalogFiles(): Promise<Catalog> {
   return readJson<Catalog>(await fetch('/api/catalog/pick-files', { method: 'POST' }));
 }
 
-export async function loadCatalogAsset(asset: CatalogAsset): Promise<Lm2Model | AnimationPayload> {
-  return readJson<Lm2Model | AnimationPayload>(await fetch('/api/catalog/load', {
+export async function loadCatalogAsset(asset: CatalogAsset): Promise<Lm2Model | AnimationPayload | SpritePayload | ScenePayload | ResourcePayload> {
+  return readJson<Lm2Model | AnimationPayload | SpritePayload | ScenePayload | ResourcePayload>(await fetch('/api/catalog/load', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id: asset.id }),
+  }));
+}
+
+export async function resolveRuntimeSprite(request: {
+  object_index?: number | null;
+  flags: number;
+  sprite_index: number;
+  body_num?: number | null;
+  label_track?: number | null;
+}): Promise<RuntimeSpriteResolvePayload> {
+  return readJson<RuntimeSpriteResolvePayload>(await fetch('/api/runtime/sprite-resolve', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+  }));
+}
+
+export async function loadAssetEntityWorkflow(asset: CatalogAsset | string): Promise<EntityWorkflowPayload> {
+  const id = typeof asset === 'string' ? asset : asset.id;
+  return readJson<EntityWorkflowPayload>(await fetch('/api/entity/asset', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id }),
+  }));
+}
+
+export async function loadRuntimeSpriteEntityWorkflow(request: {
+  object_index?: number | null;
+  flags: number;
+  sprite_index: number;
+  body_num?: number | null;
+  label_track?: number | null;
+}): Promise<EntityWorkflowPayload> {
+  return readJson<EntityWorkflowPayload>(await fetch('/api/entity/runtime-sprite', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
   }));
 }
 
@@ -70,6 +107,10 @@ export async function exportCatalogAsset(asset: CatalogAsset, polygonMode: Polyg
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id: asset.id, polygon_mode: polygonMode }),
   }));
+}
+
+export function catalogAudioUrl(asset: CatalogAsset): string {
+  return `/api/catalog/audio?id=${encodeURIComponent(asset.id)}`;
 }
 
 export async function poseAnimation(
