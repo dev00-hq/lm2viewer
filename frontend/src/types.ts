@@ -139,6 +139,33 @@ export interface Catalog {
   assets: CatalogAsset[];
 }
 
+export interface PortPromotionPacketsPayload {
+  schema: 'viewer_port_promotion_packets.v0';
+  port_root: string;
+  manifest: string;
+  packets: PortPromotionPacket[];
+}
+
+export interface PortPromotionPacket {
+  id: string;
+  status: 'decode_only' | 'live_negative' | 'live_positive' | 'approved_exception' | string;
+  evidence_class: string;
+  canonical_runtime: boolean;
+  runtime_contracts: string[];
+  packet: string;
+  fixture: string | null;
+  fixture_available: boolean;
+  fixture_source?: {
+    scene?: number;
+    background?: number;
+    active_cube?: number;
+    zone_index?: number;
+    save?: string;
+    save_lane?: string;
+    [key: string]: unknown;
+  } | null;
+}
+
 export interface HqrFileSummary {
   path: string;
   indexing?: string;

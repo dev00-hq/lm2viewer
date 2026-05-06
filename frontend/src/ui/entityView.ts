@@ -1,4 +1,5 @@
-import type { EntityContract, EntityUsageGroup, EntityWorkflowPayload } from '../types';
+import type { EntityFacetSelectionKind } from '../selection';
+import type { EntityContract, EntityUsageGroup, EntityWorkflowPayload, SceneAssetUsage } from '../types';
 
 export interface EntityViewOptions {
   panel: HTMLElement;
@@ -8,6 +9,8 @@ export interface EntityViewOptions {
   detail: HTMLElement;
   visualLinks: HTMLElement;
   openAsset: (assetId: string) => void;
+  selectEntityFacet: (workflow: EntityWorkflowPayload, kind: EntityFacetSelectionKind) => void;
+  selectUsageFacet: (usage: SceneAssetUsage, kind: EntityFacetSelectionKind) => void;
 }
 
 export class EntityView {
@@ -35,7 +38,7 @@ export class EntityView {
     this.options.title.textContent = entity?.label || workflow.resolved_asset?.label || 'Evidence workflow';
     this.renderTrail(workflow);
     this.renderUsages(workflow.usage_groups);
-    this.renderEntity(entity, workflow);
+    this.renderEntitySummary(entity, workflow);
     this.renderVisualLinks(entity);
   }
 
@@ -81,11 +84,25 @@ export class EntityView {
         .map((usage) => `${usage.kind}: ${usage.reference_key || usage.resolution_rule || usage.index_rule || usage.target_asset_id || ''}`)
         .join(' | ');
       row.append(head, classes, detail);
+      const actions = usageFacetActions(group.usages);
+      if (actions.length > 0) {
+        const buttons = document.createElement('div');
+        buttons.className = 'entity-evidence-actions';
+        for (const action of actions) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = action.label;
+          button.title = action.title;
+          button.addEventListener('click', () => this.options.selectUsageFacet(action.usage, action.kind));
+          buttons.append(button);
+        }
+        row.append(buttons);
+      }
       return row;
     }));
   }
 
-  private renderEntity(entity: EntityContract | null, workflow: EntityWorkflowPayload): void {
+  private renderEntitySummary(entity: EntityContract | null, workflow: EntityWorkflowPayload): void {
     if (!entity) {
       const empty = document.createElement('div');
       empty.className = 'entity-empty';
@@ -102,49 +119,28 @@ export class EntityView {
       fact('Confidence', entity.confidence),
       fact('Usage', `${entity.provenance.usage_kind || '-'} / ${entity.provenance.usage_class || '-'}`),
       fact('Position', formatPosition(entity.position)),
-      fact('Resolution', entity.provenance.resolution_rule || '-'),
+      fact('Visual links', String(entity.linked_visual_assets.length)),
+      fact('Port implications', String(entity.port_implications.length)),
+      fact('Unknowns', String(entity.unknowns.length)),
     );
 
-    const contract = document.createElement('section');
-    contract.className = 'entity-section';
-    contract.append(sectionTitle('Render Contract'));
-    contract.append(
-      fact('Draw', entity.render_contract.draw_path || '-'),
-      fact('Sort', entity.render_contract.sort_key || '-'),
-      fact('Recover', entity.render_contract.recovery_path || '-'),
-      fact('Steps', entity.render_contract.contract_steps.join(', ') || '-'),
-      fact('Source', entity.render_contract.source || '-'),
-    );
-
-    const implications = document.createElement('section');
-    implications.className = 'entity-section';
-    implications.append(sectionTitle('Port Implications'));
-    for (const implication of entity.port_implications) {
-      const item = document.createElement('div');
-      item.className = 'entity-implication';
-      item.textContent = `${implication.area}: ${implication.claim} (${implication.evidence})`;
-      implications.append(item);
+    const targets = document.createElement('section');
+    targets.className = 'entity-section';
+    const heading = document.createElement('h3');
+    heading.textContent = 'Evidence Targets';
+    const actions = document.createElement('div');
+    actions.className = 'entity-evidence-actions';
+    for (const target of entityFacetTargets(entity)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = target.label;
+      button.title = target.title;
+      button.addEventListener('click', () => this.options.selectEntityFacet(workflow, target.kind));
+      actions.append(button);
     }
+    targets.append(heading, actions);
 
-    const script = document.createElement('section');
-    script.className = 'entity-section';
-    script.append(sectionTitle('Script And Local Links'));
-    script.append(
-      fact('Asset links', String(entity.script_driven_links.length)),
-      fact('Local links', String(entity.local_links.length)),
-      fact('Cross-script links', String(entity.cross_script_links.length)),
-    );
-
-    const unknowns = document.createElement('section');
-    unknowns.className = 'entity-section';
-    unknowns.append(sectionTitle('Unknowns'));
-    if (entity.unknowns.length) {
-      unknowns.append(...entity.unknowns.map(renderUnknown));
-    } else {
-      unknowns.append(fact('Status', 'No explicit unknowns on this compact entity.'));
-    }
-
-    this.options.detail.replaceChildren(facts, contract, implications, script, unknowns);
+    this.options.detail.replaceChildren(facts, targets);
   }
 
   private renderVisualLinks(entity: EntityContract | null): void {
@@ -166,6 +162,37 @@ export class EntityView {
   }
 }
 
+function entityFacetTargets(entity: EntityContract): Array<{ kind: EntityFacetSelectionKind; label: string; title: string }> {
+  const targets: Array<{ kind: EntityFacetSelectionKind; label: string; title: string }> = [
+    { kind: 'runtime_sprite_state', label: 'Runtime State', title: 'Promote object flags, Sprite, Body.Num, and animation state to the active selection.' },
+    { kind: 'render_contract', label: 'Render Contract', title: 'Promote draw path, sorted insertion, and recovery contract to the active selection.' },
+  ];
+  if (entity.initial_state.file3d_index !== undefined || entity.linked_visual_assets.some((link) => link.role === 'body')) {
+    targets.splice(1, 0, { kind: 'file3d_resolution', label: 'File3D', title: 'Promote File3D/body resolution to the active selection.' });
+  }
+  if (entity.initial_state.anim3ds_range) {
+    targets.splice(1, 0, { kind: 'anim3ds_range_state', label: 'ANIM3DS', title: 'Promote ANIM3DS frame range evidence to the active selection.' });
+  }
+  return targets;
+}
+
+function usageFacetActions(usages: Array<SceneAssetUsage & { usage_class?: string }>): Array<{ usage: SceneAssetUsage; kind: EntityFacetSelectionKind; label: string; title: string }> {
+  const actions: Array<{ usage: SceneAssetUsage; kind: EntityFacetSelectionKind; label: string; title: string }> = [];
+  const file3d = usages.find((usage) => usage.file3d_index !== undefined);
+  if (file3d) {
+    actions.push({ usage: file3d, kind: 'file3d_resolution', label: 'File3D', title: 'Promote this usage File3D resolver to the active selection.' });
+  }
+  const runtimeSprite = usages.find((usage) => usage.runtime_sprite_index !== undefined || usage.backend);
+  if (runtimeSprite) {
+    actions.push({ usage: runtimeSprite, kind: 'runtime_sprite_state', label: 'Runtime Sprite', title: 'Promote this usage runtime sprite resolver to the active selection.' });
+  }
+  const anim3ds = usages.find((usage) => usage.anim3ds_range);
+  if (anim3ds) {
+    actions.push({ usage: anim3ds, kind: 'anim3ds_range_state', label: 'ANIM3DS', title: 'Promote this usage ANIM3DS frame range to the active selection.' });
+  }
+  return actions;
+}
+
 function fact(label: string, value: string): HTMLElement {
   const row = document.createElement('div');
   row.className = 'entity-fact';
@@ -177,12 +204,6 @@ function fact(label: string, value: string): HTMLElement {
   return row;
 }
 
-function sectionTitle(text: string): HTMLElement {
-  const title = document.createElement('h3');
-  title.textContent = text;
-  return title;
-}
-
 function renderUnknown(unknown: { field: string; status: string; note: string }): HTMLElement {
   const row = document.createElement('div');
   row.className = 'entity-unknown';
@@ -190,8 +211,8 @@ function renderUnknown(unknown: { field: string; status: string; note: string })
   return row;
 }
 
-function sceneLabel(sceneIndex: number | null, fallback: string): string {
-  return sceneIndex === null ? fallback : `Scene ${sceneIndex}`;
+function sceneLabel(sceneIndex: number | null, sceneAssetId: string): string {
+  return sceneIndex === null ? sceneAssetId : `Scene ${sceneIndex}`;
 }
 
 function formatPosition(position: EntityContract['position']): string {

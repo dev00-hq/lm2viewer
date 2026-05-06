@@ -7,7 +7,7 @@
   </head>
   <body>
     <div id="app">
-      <aside>
+      <aside id="explorerDock" class="dock explorer-dock">
         <h1>LBA2 Evidence Workbench</h1>
         <input id="file" type="file" accept=".lm2,.ldc,.bin,application/octet-stream" />
         <div id="drop">Drop an .lm2/.ldc file here</div>
@@ -15,19 +15,10 @@
         <h2>HQR Folder</h2>
         <div class="row">
           <input id="assetRoot" type="text" placeholder="C:\path\to\LBA2" />
-          <button id="loadAssetRoot">Index</button>
+        <button id="loadAssetRoot">Index</button>
         </div>
         <button id="pickAssetRoot" class="secondary-action">Choose folder...</button>
         <button id="pickHqrFiles" class="secondary-action">Choose HQR files...</button>
-        <div id="decodeProgress" class="decode-progress" hidden>
-          <div class="progress-header">
-            <span id="progressText">Decoding</span>
-            <span id="progressMeta">0.0s</span>
-          </div>
-          <div id="progressBar" class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div id="progressFill" class="progress-fill"></div>
-          </div>
-        </div>
 
         <h2>Explorer</h2>
         <div id="catalogSummary" class="catalog-summary">No catalog loaded</div>
@@ -43,66 +34,6 @@
           </select>
         </div>
         <div id="assetList" class="asset-list"></div>
-        <div id="assetDetail" class="asset-detail">Select a catalog entry to inspect it.</div>
-
-        <h2>Runtime Sprite</h2>
-        <div id="runtimeSpriteResolver" class="runtime-sprite-resolver">
-          <div class="runtime-grid">
-            <label>
-              <span>Flags</span>
-              <input id="runtimeSpriteFlags" type="text" value="0x400" aria-label="Runtime object flags" />
-            </label>
-            <label>
-              <span>Sprite</span>
-              <input id="runtimeSpriteIndex" type="number" min="-1" step="1" value="127" aria-label="Runtime Sprite value" />
-            </label>
-            <label>
-              <span>Body.Num</span>
-              <input id="runtimeSpriteBodyNum" type="number" min="-1" step="1" value="127" aria-label="Runtime Obj.Body.Num value" />
-            </label>
-            <label>
-              <span>Object</span>
-              <input id="runtimeSpriteObjectIndex" type="number" min="0" step="1" value="7" aria-label="Runtime object index" />
-            </label>
-            <label>
-              <span>LabelTrack</span>
-              <input id="runtimeSpriteLabelTrack" type="number" step="1" aria-label="Runtime LabelTrack value" />
-            </label>
-          </div>
-          <div class="row">
-            <button id="runtimeSpriteResolve" type="button">Resolve</button>
-            <button id="runtimeSpriteOpen" type="button" disabled>Open</button>
-          </div>
-          <div id="runtimeSpriteResult" class="runtime-result" role="status" aria-live="polite"></div>
-        </div>
-        <div class="export-panel">
-          <div class="row">
-            <select id="exportPolygonMode" aria-label="Export polygon mode">
-              <option value="original">Original faces</option>
-              <option value="triangulated">Triangulated</option>
-            </select>
-            <button id="exportAsset" disabled>Export</button>
-          </div>
-          <div id="samplePreview" class="sample-preview" hidden>
-            <audio id="sampleAudio" controls preload="none"></audio>
-            <div id="samplePreviewMeta" class="sample-preview-meta"></div>
-          </div>
-          <div id="exportResult" class="export-result" role="status" aria-live="polite"></div>
-        </div>
-
-        <h2>UV Inspector</h2>
-        <div id="uvInspector" class="uv-inspector">
-          <select id="uvPolygon" aria-label="Polygon"></select>
-          <canvas id="uvAtlas" width="256" height="256" aria-label="Texture atlas preview"></canvas>
-          <div id="uvFacts" class="uv-facts">No model loaded.</div>
-          <div class="button-row">
-            <button id="uvPrevious" title="Previous polygon" aria-label="Previous polygon">&lt;</button>
-            <button id="uvCopy" title="Copy evidence" aria-label="Copy evidence">Copy</button>
-            <button id="uvNext" title="Next polygon" aria-label="Next polygon">&gt;</button>
-          </div>
-          <button id="uvDownload" class="secondary-action">Download JSON</button>
-          <div id="uvResult" class="export-result" role="status" aria-live="polite"></div>
-        </div>
 
         <h2>Server Path</h2>
         <div class="row">
@@ -110,32 +41,16 @@
           <button id="loadPath">Load</button>
         </div>
 
-        <h2>View</h2>
-        <label><input id="showFaces" type="checkbox" checked /> polygons</label>
-        <label><input id="showLines" type="checkbox" checked /> line cylinders</label>
-        <label><input id="showSpheres" type="checkbox" checked /> spheres</label>
-        <label><input id="wireframe" type="checkbox" /> wireframe</label>
-        <label><input id="showGrid" type="checkbox" checked /> grid</label>
-        <label><input id="lightCanvas" type="checkbox" /> light canvas background</label>
-        <label><input id="lockHorizon" type="checkbox" /> lock horizon</label>
-        <div class="button-row">
-          <button id="zoomOut" title="Zoom out" aria-label="Zoom out">-</button>
-          <button id="resetView" title="Reset view (R)">Reset</button>
-          <button id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
-        </div>
-
-        <h2>Stats</h2>
-        <div id="stats" class="stats"></div>
-        <div class="hint">Mouse/touch: drag rotate, wheel or pinch zoom, right drag pan. The parser keeps LBA2 line and sphere primitives visible as generated geometry.</div>
         <div id="error" class="error"></div>
       </aside>
       <main>
-        <div class="main-tabs" role="tablist" aria-label="Main view">
-          <button id="modelViewTab" class="main-tab active" type="button" role="tab" aria-selected="true" aria-controls="modelViewPanel">Model View</button>
-          <button id="spriteViewTab" class="main-tab" type="button" role="tab" aria-selected="false" aria-controls="spriteViewPanel">Sprite View</button>
-          <button id="entityViewTab" class="main-tab" type="button" role="tab" aria-selected="false" aria-controls="entityViewPanel">Entity View</button>
+        <div class="workspace-switcher" aria-label="Workspace">
+          <button id="modelViewTab" class="workspace-button active" type="button" aria-pressed="true" aria-controls="modelViewPanel">Model</button>
+          <button id="spriteViewTab" class="workspace-button" type="button" aria-pressed="false" aria-controls="spriteViewPanel">Sprite</button>
+          <button id="entityViewTab" class="workspace-button" type="button" aria-pressed="false" aria-controls="entityViewPanel">Entity</button>
+          <button id="resourceViewTab" class="workspace-button" type="button" aria-pressed="false" aria-controls="resourceViewPanel">Resource</button>
         </div>
-        <section id="modelViewPanel" class="main-view active" role="tabpanel" aria-labelledby="modelViewTab">
+        <section id="modelViewPanel" class="main-view active" aria-labelledby="modelViewTab">
           <canvas id="canvas"></canvas>
           <div class="canvas-animation-picker">
             <select id="canvasAnimationSelect" aria-label="Compatible animations for selected model" disabled>
@@ -182,9 +97,41 @@
             <div id="animationResult" class="export-result" role="status" aria-live="polite"></div>
             <div id="animationPanelResize" class="animation-panel-resize" title="Resize playback controls" aria-hidden="true"></div>
           </div>
+          <div class="model-tool-panel">
+            <h2>View</h2>
+            <div class="model-toggle-grid">
+              <label><input id="showFaces" type="checkbox" checked /> polygons</label>
+              <label><input id="showLines" type="checkbox" checked /> lines</label>
+              <label><input id="showSpheres" type="checkbox" checked /> spheres</label>
+              <label><input id="wireframe" type="checkbox" /> wireframe</label>
+              <label><input id="showGrid" type="checkbox" checked /> grid</label>
+              <label><input id="lightCanvas" type="checkbox" /> light canvas</label>
+              <label><input id="lockHorizon" type="checkbox" /> horizon lock</label>
+            </div>
+            <div class="button-row">
+              <button id="zoomOut" title="Zoom out" aria-label="Zoom out">-</button>
+              <button id="resetView" title="Reset view (R)">Reset</button>
+              <button id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+            </div>
+            <h2>UV Inspector</h2>
+            <div id="uvInspector" class="uv-inspector">
+              <select id="uvPolygon" aria-label="Polygon"></select>
+              <canvas id="uvAtlas" width="256" height="256" aria-label="Texture atlas preview"></canvas>
+              <div id="uvFacts" class="uv-facts">No model loaded.</div>
+              <div class="button-row">
+                <button id="uvPrevious" title="Previous polygon" aria-label="Previous polygon">&lt;</button>
+                <button id="uvCopy" title="Copy evidence" aria-label="Copy evidence">Copy</button>
+                <button id="uvNext" title="Next polygon" aria-label="Next polygon">&gt;</button>
+              </div>
+              <button id="uvDownload" class="secondary-action">Download JSON</button>
+              <div id="uvResult" class="export-result" role="status" aria-live="polite"></div>
+            </div>
+            <h2>Stats</h2>
+            <div id="stats" class="stats"></div>
+          </div>
           <div id="horizonIndicator" class="horizon-indicator" aria-live="polite">Horizon free</div>
         </section>
-        <section id="spriteViewPanel" class="main-view sprite-view" role="tabpanel" aria-labelledby="spriteViewTab" hidden>
+        <section id="spriteViewPanel" class="main-view sprite-view" aria-labelledby="spriteViewTab" hidden>
           <div class="sprite-toolbar">
             <div id="spriteTitle" class="sprite-title">No sprite selected</div>
             <div class="sprite-controls" aria-label="Sprite controls">
@@ -206,13 +153,43 @@
             <canvas id="spriteCanvas" aria-label="Sprite preview"></canvas>
           </div>
         </section>
-        <section id="entityViewPanel" class="main-view entity-view" role="tabpanel" aria-labelledby="entityViewTab" hidden>
+        <section id="entityViewPanel" class="main-view entity-view" aria-labelledby="entityViewTab" hidden>
           <div class="entity-header">
             <div id="entityTitle" class="entity-title">No entity selected</div>
             <div id="entityTrail" class="entity-trail" aria-label="Evidence trail"></div>
           </div>
           <div class="entity-layout">
             <div class="entity-usage-panel">
+              <h2>Runtime Sprite</h2>
+              <div id="runtimeSpriteResolver" class="runtime-sprite-resolver">
+                <div class="runtime-grid">
+                  <label>
+                    <span>Flags</span>
+                    <input id="runtimeSpriteFlags" type="text" value="0x400" aria-label="Runtime object flags" />
+                  </label>
+                  <label>
+                    <span>Sprite</span>
+                    <input id="runtimeSpriteIndex" type="number" min="-1" step="1" value="127" aria-label="Runtime Sprite value" />
+                  </label>
+                  <label>
+                    <span>Body.Num</span>
+                    <input id="runtimeSpriteBodyNum" type="number" min="-1" step="1" value="127" aria-label="Runtime Obj.Body.Num value" />
+                  </label>
+                  <label>
+                    <span>Object</span>
+                    <input id="runtimeSpriteObjectIndex" type="number" min="0" step="1" value="7" aria-label="Runtime object index" />
+                  </label>
+                  <label>
+                    <span>LabelTrack</span>
+                    <input id="runtimeSpriteLabelTrack" type="number" step="1" aria-label="Runtime LabelTrack value" />
+                  </label>
+                </div>
+                <div class="row">
+                  <button id="runtimeSpriteResolve" type="button">Resolve</button>
+                  <button id="runtimeSpriteOpen" type="button" disabled>Open</button>
+                </div>
+                <div id="runtimeSpriteResult" class="runtime-result" role="status" aria-live="polite"></div>
+              </div>
               <h2>Usages</h2>
               <div id="entityUsages" class="entity-usages">Select a catalog asset or resolve a runtime sprite.</div>
               <h2>Visual Links</h2>
@@ -221,8 +198,72 @@
             <div id="entityDetail" class="entity-detail"></div>
           </div>
         </section>
+        <section id="resourceViewPanel" class="main-view resource-view" aria-labelledby="resourceViewTab" hidden>
+          <div class="resource-header">
+            <div id="resourceTitle" class="resource-title">No resource selected</div>
+            <div id="resourceMeta" class="resource-meta">Select a resource asset from the explorer.</div>
+            <div id="resourceFacts" class="resource-facts" aria-label="Resource facts"></div>
+            <div id="resourceRecords" class="resource-records" aria-label="Resource records">No selectable resource records.</div>
+            <div id="resourceAudio" class="resource-audio" hidden>
+              <audio id="resourceAudioPlayer" controls preload="none"></audio>
+              <div id="resourceAudioMeta" class="resource-audio-meta"></div>
+            </div>
+          </div>
+          <div id="resourceStage" class="resource-stage" hidden>
+            <canvas id="resourceCanvas" aria-label="Resource preview"></canvas>
+          </div>
+        </section>
         <div id="overlay">No model loaded</div>
       </main>
+      <aside id="inspectorDock" class="dock inspector-dock">
+        <h2>Active Selection</h2>
+        <div id="activeSelection" class="active-selection" aria-live="polite">No active selection.</div>
+
+        <h2>Inspector</h2>
+        <input id="inspectorSearch" class="inspector-search" type="text" placeholder="Search inspector sections..." aria-label="Search inspector sections" />
+        <div id="assetDetail" class="asset-detail">Select a catalog entry to inspect it.</div>
+
+        <h2>Export</h2>
+        <div class="export-panel">
+          <div class="row">
+            <select id="exportPolygonMode" aria-label="Export polygon mode">
+              <option value="original">Original faces</option>
+              <option value="triangulated">Triangulated</option>
+            </select>
+            <button id="exportAsset" disabled>Export</button>
+          </div>
+        </div>
+      </aside>
+      <section id="evidenceDock" class="evidence-dock" aria-label="Evidence and timeline">
+        <h2>Decode Progress</h2>
+        <div id="decodeProgress" class="decode-progress" hidden>
+          <div class="progress-header">
+            <span id="progressText">Decoding</span>
+            <span id="progressMeta">0.0s</span>
+          </div>
+          <div id="progressBar" class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+        </div>
+        <h2>Export Artifact</h2>
+        <div id="exportResult" class="export-result" role="status" aria-live="polite"></div>
+        <h2>Sprite Frames</h2>
+        <div id="spriteFrameStrip" class="sprite-frame-strip" aria-label="Sprite frame evidence strip">No sprite frame strip.</div>
+        <h2>Animation Samples</h2>
+        <div id="animationSequenceStrip" class="animation-sequence-strip" aria-label="Animation sample evidence strip">No animation sequence strip.</div>
+        <h2>Scene Usages</h2>
+        <div id="sceneUsageStrip" class="scene-usage-strip" aria-label="Selected asset scene usage strip">No selected usage strip.</div>
+        <h2>Scene Objects</h2>
+        <div id="sceneObjectTable" class="scene-object-table" aria-label="Scene object evidence table">No scene object evidence.</div>
+        <h2>Scene Locals</h2>
+        <div id="sceneLocalTable" class="scene-local-table" aria-label="Scene local zone waypoint and patch evidence table">No scene local evidence.</div>
+        <h2>Port Evidence</h2>
+        <div id="portEvidenceTable" class="port-evidence-table" aria-label="Port promotion packet evidence table">Port evidence not loaded.</div>
+        <h2>Script Evidence</h2>
+        <div id="scriptEvidenceTable" class="script-evidence-table" aria-label="Script and control-flow evidence table">No script/control-flow evidence.</div>
+        <h2>Raw Descriptors</h2>
+        <div id="rawDescriptorTable" class="raw-descriptor-table" aria-label="Raw descriptor evidence table">No raw descriptors.</div>
+      </section>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -17,7 +17,11 @@ from typing import Any
 
 from . import lba_hqr
 from .animation import parse_lba2_animation_records, playback_frame_indices
-from .entities import build_asset_entity_workflow, build_runtime_sprite_entity_workflow
+from .entities import (
+    build_asset_entity_workflow,
+    build_runtime_sprite_entity_workflow,
+    build_scene_object_entity_workflow,
+)
 from .viewer import (
     DEFAULT_HOST,
     DEFAULT_PORT,
@@ -47,13 +51,74 @@ from .viewer import (
     parse_raw_sprite_frame,
     parse_multipart_upload,
     pick_directory_dialog,
-    pick_export_directory_dialog,
     pick_hqr_files_dialog,
     pose_lm2_model,
     read_hqr_payload,
     runtime_object_sprite_state,
     selected_hqr_root,
 )
+
+DEFAULT_BROWSER_EXPORT_ROOT = Path("exports")
+DEFAULT_PORT_REPO_ROOT = Path(r"D:\repos\reverse\littlebigreversing")
+PROMOTABLE_PACKET_STATUSES = {"live_positive", "approved_exception"}
+
+
+def default_browser_export_directory(asset_id: str) -> Path:
+    safe_id = "".join(
+        char if char.isalnum() or char in "._-" else "_" for char in asset_id
+    ).strip("._")
+    return DEFAULT_BROWSER_EXPORT_ROOT / (safe_id or "asset")
+
+
+def read_port_promotion_packets(
+    port_root: Path = DEFAULT_PORT_REPO_ROOT,
+) -> dict[str, Any]:
+    manifest_path = port_root / "docs" / "promotion_packets" / "manifest.json"
+    if not port_root.exists():
+        raise Lm2Error(f"canonical port root is unavailable: {port_root}")
+    if not manifest_path.is_file():
+        raise Lm2Error(f"promotion packet manifest is unavailable: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schema") != "promotion-packets-v1":
+        raise Lm2Error(f"unsupported promotion packet manifest schema: {manifest.get('schema')}")
+
+    packets: list[dict[str, Any]] = []
+    for packet in manifest.get("packets") or []:
+        status = str(packet.get("status") or "")
+        canonical_runtime = bool(packet.get("canonical_runtime"))
+        if canonical_runtime and status not in PROMOTABLE_PACKET_STATUSES:
+            raise Lm2Error(
+                f"{packet.get('id')}: canonical_runtime=true requires live_positive or approved_exception"
+            )
+        fixture = packet.get("fixture")
+        fixture_source = None
+        fixture_path = None
+        if isinstance(fixture, str) and fixture:
+            fixture_path = port_root / fixture
+            if fixture_path.is_file():
+                fixture_payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+                source = fixture_payload.get("source")
+                if isinstance(source, dict):
+                    fixture_source = source
+        packets.append(
+            {
+                "id": packet.get("id"),
+                "status": status,
+                "evidence_class": packet.get("evidence_class"),
+                "canonical_runtime": canonical_runtime,
+                "runtime_contracts": packet.get("runtime_contracts") or [],
+                "packet": packet.get("packet"),
+                "fixture": fixture,
+                "fixture_source": fixture_source,
+                "fixture_available": fixture_path.is_file() if fixture_path is not None else False,
+            }
+        )
+    return {
+        "schema": "viewer_port_promotion_packets.v0",
+        "port_root": str(port_root),
+        "manifest": str(manifest_path),
+        "packets": packets,
+    }
 
 
 def indexed_frame_rgba(
@@ -289,11 +354,122 @@ class ViewerServer:
             raise Lm2Error(f"catalog asset not found: {asset_id}")
         return workflow
 
+    def scene_object_entity_workflow(
+        self, scene_asset_id: str, object_index: int
+    ) -> dict[str, Any]:
+        if self.catalog is None:
+            raise Lm2Error("no catalog loaded")
+        workflow = build_scene_object_entity_workflow(
+            self.catalog, scene_asset_id, object_index
+        )
+        if workflow.get("resolved_asset") is None:
+            raise Lm2Error(f"scene asset not found: {scene_asset_id}")
+        return workflow
+
     def runtime_sprite_entity_workflow(self, request: dict[str, Any]) -> dict[str, Any]:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
         state = self.resolve_runtime_sprite_object(request)
         return build_runtime_sprite_entity_workflow(self.catalog, state)
+
+    def export_evidence_context(
+        self, asset: dict[str, Any], proof_scope: str
+    ) -> dict[str, Any]:
+        packet_links = self.export_promotion_packet_links(asset)
+        return {
+            "stable_id": asset.get("id"),
+            "evidence_status": self.export_evidence_status(asset),
+            "proof_scope": proof_scope,
+            "scene_usage_count": len(asset.get("scene_usages") or []),
+            "runtime_contract_ids": packet_links["runtime_contract_ids"],
+            "promotion_packet_ids": packet_links["promotion_packet_ids"],
+            "promotion_packet_source": packet_links["promotion_packet_source"],
+        }
+
+    def export_evidence_source_fields(
+        self, asset: dict[str, Any], proof_scope: str
+    ) -> dict[str, Any]:
+        context = self.export_evidence_context(asset, proof_scope)
+        return {
+            "evidence_status": context["evidence_status"],
+            "proof_scope": context["proof_scope"],
+            "scene_usage_count": context["scene_usage_count"],
+            "runtime_contract_ids": context["runtime_contract_ids"],
+            "promotion_packet_ids": context["promotion_packet_ids"],
+            "promotion_packet_source": context["promotion_packet_source"],
+        }
+
+    def export_promotion_packet_links(self, asset: dict[str, Any]) -> dict[str, Any]:
+        scene_indices = self.export_scene_indices_for_asset(asset)
+        if not scene_indices:
+            return {
+                "promotion_packet_ids": [],
+                "runtime_contract_ids": [],
+                "promotion_packet_source": "not_scene_linked",
+            }
+        try:
+            payload = read_port_promotion_packets()
+        except Lm2Error as exc:
+            return {
+                "promotion_packet_ids": [],
+                "runtime_contract_ids": [],
+                "promotion_packet_source": f"unavailable: {exc}",
+            }
+        packet_ids: list[str] = []
+        contract_ids: list[str] = []
+        for packet in payload.get("packets") or []:
+            fixture_source = packet.get("fixture_source")
+            if not isinstance(fixture_source, dict):
+                continue
+            if fixture_source.get("scene") not in scene_indices:
+                continue
+            packet_id = packet.get("id")
+            if isinstance(packet_id, str) and packet_id not in packet_ids:
+                packet_ids.append(packet_id)
+            for contract_id in packet.get("runtime_contracts") or []:
+                if isinstance(contract_id, str) and contract_id not in contract_ids:
+                    contract_ids.append(contract_id)
+        return {
+            "promotion_packet_ids": packet_ids,
+            "runtime_contract_ids": contract_ids,
+            "promotion_packet_source": payload.get("manifest") or "canonical_manifest",
+        }
+
+    @staticmethod
+    def export_scene_indices_for_asset(asset: dict[str, Any]) -> set[int]:
+        indices: set[int] = set()
+        source = asset.get("source") or {}
+        if asset.get("kind") == "scene" and source.get("hqr") == "SCENE.HQR":
+            entry_index = source.get("entry_index")
+            if isinstance(entry_index, int):
+                indices.add(entry_index - 1)
+        for usage in asset.get("scene_usages") or []:
+            if not isinstance(usage, dict):
+                continue
+            scene_index = usage.get("scene_index")
+            if isinstance(scene_index, int):
+                indices.add(scene_index)
+                continue
+            scene_entry_index = usage.get("scene_entry_index")
+            if isinstance(scene_entry_index, int):
+                indices.add(scene_entry_index - 1)
+        return indices
+
+    @staticmethod
+    def export_evidence_status(asset: dict[str, Any]) -> str:
+        stats = asset.get("stats") or {}
+        if isinstance(stats, dict):
+            if stats.get("source_provenance"):
+                return "source_backed"
+            if stats.get("runtime_reference_status") == "source-backed":
+                return "source_backed"
+            if stats.get("parse_status") == "raw":
+                return "intentionally_deferred"
+            if stats.get("decode_status") in ("decoded", "partial"):
+                return "decoded_only"
+        if asset.get("kind") in ("model", "animation"):
+            return "decoded_only"
+        return "unknown"
 
     def export_catalog_asset(
         self, asset_id: str, output_dir: Path, polygon_mode: str = "original"
@@ -349,6 +525,10 @@ class ViewerServer:
                 "decoded_sha256": hashlib.sha256(payload).hexdigest(),
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
+                **self.export_evidence_source_fields(
+                    asset,
+                    "decoded model geometry and generated OBJ/texture evidence; not live runtime gameplay proof",
+                ),
             }
             manifest = export_model_probe(
                 model=model,
@@ -470,6 +650,10 @@ class ViewerServer:
                 "decoded_sha256": asset.get("decoded_sha256"),
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "decoded sprite frame pixels and sheet export; not live runtime gameplay proof",
+            ),
             "options": {
                 "format": (
                     "raw_sprite_rgba_png"
@@ -600,6 +784,10 @@ class ViewerServer:
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "decoded RIFF/WAVE sample evidence; not live audio playback or gameplay proof",
+            ),
             "options": {
                 "format": "decoded_riff_wave",
                 "runtime_id_rule": "SAMPLES.HQR catalog id equals zero-based runtime sample id; source hqr_table_index is runtime id + 1.",
@@ -719,6 +907,10 @@ class ViewerServer:
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "decoded text bank and paired order-table evidence; not live dialog flow proof",
+            ),
             "order_table": {
                 "catalog_asset_id": order_asset["id"],
                 "archive": order_asset["source"].get("hqr"),
@@ -800,6 +992,10 @@ class ViewerServer:
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "original Smacker container and metadata evidence; not codec decode or live playback proof",
+            ),
             "options": {
                 "format": "smacker_container_passthrough",
                 "codec_decode": False,
@@ -896,6 +1092,10 @@ class ViewerServer:
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "indexed screen image with paired palette evidence; not live UI flow proof",
+            ),
             "options": {
                 "format": "screen_indexed_rgba_png",
                 "palette_source": frame["palette_source"],
@@ -980,6 +1180,10 @@ class ViewerServer:
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "indexed RESS image rendered with explicit palette context; not live runtime proof",
+            ),
             "options": {
                 "format": "ress_indexed_rgba_png",
                 "semantic_layout": stats.get("semantic_layout"),
@@ -1061,6 +1265,10 @@ class ViewerServer:
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "holomap plan image rendered with explicit palette context; not live holomap behavior proof",
+            ),
             "options": {
                 "format": "holomap_plan_rgba_png",
                 "palette_source": frame["palette_source"],
@@ -1156,6 +1364,10 @@ class ViewerServer:
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "decoded background grid composition plus render-only preview; not live scene behavior proof",
+            ),
             "options": {
                 "format": "bkg_grid_column_composition",
                 "cell_order": composition["cell_order"],
@@ -1328,6 +1540,10 @@ class ViewerServer:
                 "decoded_sha256": asset.get("decoded_sha256"),
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
+            "evidence": self.export_evidence_context(
+                asset,
+                "decoded scene background composition variants with render-only previews; no live script state guessed",
+            ),
             "background": {
                 "runtime_cube": background.get("runtime_cube"),
                 "resolved_gri_entry": gri_entry,
@@ -1800,7 +2016,9 @@ class ViewerServer:
                     "/api/animation/sequence": self.handle_animation_sequence,
                     "/api/runtime/sprite-resolve": self.handle_runtime_sprite_resolve,
                     "/api/entity/asset": self.handle_entity_asset,
+                    "/api/entity/scene-object": self.handle_entity_scene_object,
                     "/api/entity/runtime-sprite": self.handle_entity_runtime_sprite,
+                    "/api/port/promotion-packets": self.handle_port_promotion_packets,
                 }
                 handler = routes.get(parsed.path)
                 if handler is None:
@@ -2074,7 +2292,7 @@ class ViewerServer:
                 output_dir = (
                     Path(output_dir_value).expanduser()
                     if isinstance(output_dir_value, str) and output_dir_value
-                    else pick_export_directory_dialog()
+                    else default_browser_export_directory(str(request["id"]))
                 )
                 return server_state.export_catalog_asset(
                     str(request["id"]),
@@ -2113,8 +2331,18 @@ class ViewerServer:
                 request = self.read_json_body()
                 return server_state.asset_entity_workflow(str(request["id"]))
 
+            def handle_entity_scene_object(self) -> dict[str, Any]:
+                request = self.read_json_body()
+                return server_state.scene_object_entity_workflow(
+                    str(request["scene_asset_id"]),
+                    int(request["object_index"]),
+                )
+
             def handle_entity_runtime_sprite(self) -> dict[str, Any]:
                 return server_state.runtime_sprite_entity_workflow(self.read_json_body())
+
+            def handle_port_promotion_packets(self) -> dict[str, Any]:
+                return read_port_promotion_packets()
 
             def handle_catalog_audio(self, parsed: urllib.parse.ParseResult) -> None:
                 try:

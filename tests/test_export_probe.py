@@ -3,6 +3,7 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from lba2_lm2_viewer import server
 from lba2_lm2_viewer import viewer
@@ -268,6 +269,9 @@ class ExportProbeTests(unittest.TestCase):
             self.assertEqual(manifest["schema_version"], "lm2_probe.v0")
             self.assertEqual(manifest["options"]["polygon_mode"], "original")
             self.assertEqual(manifest["source"]["catalog_asset_id"], "BODY.HQR:1")
+            self.assertEqual(manifest["evidence"]["stable_id"], "BODY.HQR:1")
+            self.assertEqual(manifest["evidence"]["evidence_status"], "decoded_only")
+            self.assertIn("not live runtime gameplay proof", manifest["evidence"]["proof_scope"])
             self.assertEqual(manifest["files"]["obj"], "BODY.HQR_1.obj")
             self.assertEqual(manifest["files"]["shared_atlas_png"], "BODY.HQR_1_atlas.png")
             self.assertEqual(
@@ -329,6 +333,8 @@ class ExportProbeTests(unittest.TestCase):
             self.assertEqual(manifest["source"]["archive"], "BODY.HQR")
             self.assertEqual(manifest["source"]["entry_index"], 1)
             self.assertEqual(manifest["source"]["classic_index"], 0)
+            self.assertEqual(manifest["evidence"]["stable_id"], "BODY.HQR:1")
+            self.assertEqual(manifest["evidence"]["runtime_contract_ids"], [])
             self.assertIn("missing LBA2 palette archive", manifest["warnings"][0])
             self.assertTrue((output_dir / "BODY.HQR_1.obj").exists())
 
@@ -349,7 +355,58 @@ class ExportProbeTests(unittest.TestCase):
             self.assertEqual(
                 response["manifest"]["source"]["catalog_asset_id"], "BODY.HQR:1"
             )
+            self.assertEqual(
+                response["manifest"]["evidence"]["proof_scope"],
+                "decoded model geometry and generated OBJ/texture evidence; not live runtime gameplay proof",
+            )
             self.assertTrue((output_dir / "manifest.json").exists())
+
+    def test_viewer_server_export_manifest_links_available_promotion_packets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "assets"
+            root.mkdir()
+            (root / "BODY.HQR").write_bytes(
+                classic_hqr([resource_entry(textured_triangle_lm2())])
+            )
+            viewer_server = server.ViewerServer(None, None)
+            viewer_server.set_asset_root(root)
+            asset = viewer_server.find_catalog_asset("BODY.HQR:1")
+            asset["scene_usages"] = [
+                {
+                    "scene_asset_id": "SCENE.HQR:3",
+                    "scene_entry_index": 3,
+                    "scene_index": 2,
+                    "object_index": 1,
+                }
+            ]
+            output_dir = Path(temp_dir) / "server-export"
+            packets = {
+                "manifest": "D:/port/docs/promotion_packets/manifest.json",
+                "packets": [
+                    {
+                        "id": "scene_packet",
+                        "runtime_contracts": ["scene_contract"],
+                        "fixture_source": {"scene": 2},
+                    },
+                    {
+                        "id": "other_scene_packet",
+                        "runtime_contracts": ["other_contract"],
+                        "fixture_source": {"scene": 9},
+                    },
+                ],
+            }
+
+            with patch("lba2_lm2_viewer.server.read_port_promotion_packets", return_value=packets):
+                response = viewer_server.export_catalog_asset("BODY.HQR:1", output_dir)
+
+            evidence = response["manifest"]["evidence"]
+            self.assertEqual(evidence["scene_usage_count"], 1)
+            self.assertEqual(evidence["promotion_packet_ids"], ["scene_packet"])
+            self.assertEqual(evidence["runtime_contract_ids"], ["scene_contract"])
+            self.assertEqual(
+                evidence["promotion_packet_source"],
+                "D:/port/docs/promotion_packets/manifest.json",
+            )
 
     def test_viewer_server_exports_sprite_frame_png_and_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -372,6 +429,8 @@ class ExportProbeTests(unittest.TestCase):
             manifest = response["manifest"]
             self.assertEqual(manifest["schema_version"], "sprite_frame_export_manifest.v0")
             self.assertEqual(manifest["source"]["catalog_asset_id"], "SPRITES.HQR:127")
+            self.assertEqual(manifest["evidence"]["stable_id"], "SPRITES.HQR:127")
+            self.assertIn("not live runtime gameplay proof", manifest["evidence"]["proof_scope"])
             self.assertEqual(manifest["options"]["range_policy"], "selected sprite frame")
             self.assertEqual(manifest["stats"]["frame_count"], 1)
             self.assertEqual(manifest["files"]["frames"][0]["runtime_sprite_index"], 127)
@@ -421,6 +480,8 @@ class ExportProbeTests(unittest.TestCase):
             manifest = response["manifest"]
             self.assertEqual(manifest["schema_version"], "sample_audio_export_manifest.v0")
             self.assertEqual(manifest["source"]["catalog_asset_id"], "SAMPLES.HQR:0")
+            self.assertEqual(manifest["evidence"]["stable_id"], "SAMPLES.HQR:0")
+            self.assertIn("not live audio playback", manifest["evidence"]["proof_scope"])
             self.assertEqual(manifest["source"]["hqr_table_index"], 1)
             self.assertEqual(manifest["audio"]["runtime_sample_id"], 0)
             self.assertEqual(manifest["audio"]["sample_rate"], 11025)

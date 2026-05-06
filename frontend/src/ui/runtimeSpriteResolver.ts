@@ -13,6 +13,7 @@ export interface RuntimeSpriteResolverOptions {
   result: HTMLElement;
   openAsset: (assetId: string) => void;
   openWorkflow?: (request: RuntimeSpriteRequest) => void;
+  onResolved?: (payload: RuntimeSpriteResolvePayload) => void;
   setError: (message: string) => void;
 }
 
@@ -55,6 +56,7 @@ export class RuntimeSpriteResolver {
       this.options.setError(message);
       return;
     }
+    this.options.onResolved?.(payload);
     this.renderResult(payload);
   }
 

@@ -43,6 +43,66 @@ def build_asset_entity_workflow(catalog: dict[str, Any], asset_id: str) -> dict[
     }
 
 
+def build_scene_object_entity_workflow(
+    catalog: dict[str, Any], scene_asset_id: str, object_index: int
+) -> dict[str, Any]:
+    scene_asset = find_asset(catalog, scene_asset_id)
+    if scene_asset is None:
+        return {
+            "schema": "lba2_entity_workflow.v0",
+            "entrypoint": {
+                "kind": "scene_object",
+                "scene_asset_id": scene_asset_id,
+                "object_index": object_index,
+            },
+            "resolved_asset": None,
+            "usage_groups": [],
+            "selected_entity": None,
+            "evidence_trail": [
+                {
+                    "step": "entrypoint",
+                    "label": f"Scene object {scene_asset_id}#{object_index}",
+                }
+            ],
+            "unknowns": unknowns_for(None, None, []),
+        }
+    source = scene_asset.get("source") or {}
+    scene_entry_index = source.get("entry_index")
+    scene_index = (
+        int(scene_entry_index) - 1
+        if isinstance(scene_entry_index, int)
+        else source.get("classic_index")
+    )
+    selected_usage = {
+        "kind": "scene_object",
+        "scene_asset_id": scene_asset_id,
+        "scene_entry_index": scene_entry_index,
+        "scene_index": scene_index,
+        "scene_label": scene_asset.get("label"),
+        "object_index": object_index,
+        "resolution_rule": "direct sampled scene object row",
+    }
+    entity = build_entity_contract(catalog, selected_usage)
+    return {
+        "schema": "lba2_entity_workflow.v0",
+        "entrypoint": {
+            "kind": "scene_object",
+            "scene_asset_id": scene_asset_id,
+            "object_index": object_index,
+        },
+        "resolved_asset": compact_asset(scene_asset),
+        "usage_groups": group_usages([selected_usage]),
+        "selected_entity": entity,
+        "evidence_trail": build_evidence_trail(
+            entrypoint=f"Scene object {scene_asset_id}#{object_index}",
+            resolved_asset=scene_asset,
+            selected_usage=selected_usage,
+            entity=entity,
+        ),
+        "unknowns": unknowns_for(scene_asset, entity, [selected_usage]),
+    }
+
+
 def build_runtime_sprite_entity_workflow(
     catalog: dict[str, Any], runtime_state: dict[str, Any]
 ) -> dict[str, Any]:
@@ -122,6 +182,7 @@ def build_entity_contract(
     runtime = (scene_object or {}).get("runtime") or {}
     scripts = script_summary(scene_object or {})
     links = (scene_object or {}).get("links") or {}
+    sprite_link = links.get("sprite") if isinstance(links.get("sprite"), dict) else {}
     render_pipeline = runtime.get("render_pipeline") or {}
     return {
         "schema": "lba2_entity_contract.v0",
@@ -145,6 +206,7 @@ def build_entity_contract(
             "gen_body": (scene_object or {}).get("gen_body", usage.get("gen_body")),
             "gen_anim": (scene_object or {}).get("gen_anim", usage.get("gen_anim")),
             "sprite": (scene_object or {}).get("sprite", usage.get("sprite")),
+            "anim3ds_range": sprite_link.get("anim3ds_range"),
             "movement": runtime.get("movement"),
             "collision": runtime.get("collision"),
             "combat": runtime.get("combat"),

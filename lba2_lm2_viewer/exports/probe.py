@@ -63,6 +63,12 @@ def export_catalog_asset_probe(
         "decoded_sha256": hashlib.sha256(payload).hexdigest(),
         "resource": resource,
         "source_mode": catalog.get("source_mode"),
+        "evidence_status": _evidence_status_for_asset(asset),
+        "proof_scope": "decoded model geometry and generated OBJ/texture evidence; not live runtime gameplay proof",
+        "scene_usage_count": len(asset.get("scene_usages") or []),
+        "runtime_contract_ids": [],
+        "promotion_packet_ids": [],
+        "promotion_packet_source": "not_scene_linked",
     }
     return export_model_probe(
         model=model,
@@ -298,6 +304,10 @@ def _manifest(
         "schema_version": "lm2_probe.v0",
         "tool": tool,
         "source": source,
+        "evidence": _evidence_context_from_source(
+            source,
+            default_scope="decoded model geometry and generated OBJ/texture evidence; not live runtime gameplay proof",
+        ),
         "options": {
             "polygon_mode": polygon_mode,
             "coordinate_space": "decoded_source",
@@ -380,6 +390,34 @@ def _manifest(
         ],
         "warnings": warnings,
     }
+
+
+def _evidence_context_from_source(source: dict[str, Any], *, default_scope: str) -> dict[str, Any]:
+    return {
+        "stable_id": source.get("catalog_asset_id"),
+        "evidence_status": source.get("evidence_status") or "decoded_only",
+        "proof_scope": source.get("proof_scope") or default_scope,
+        "scene_usage_count": source.get("scene_usage_count", 0),
+        "runtime_contract_ids": list(source.get("runtime_contract_ids") or []),
+        "promotion_packet_ids": list(source.get("promotion_packet_ids") or []),
+        "promotion_packet_source": source.get("promotion_packet_source") or "not_scene_linked",
+    }
+
+
+def _evidence_status_for_asset(asset: dict[str, Any]) -> str:
+    stats = asset.get("stats") or {}
+    if isinstance(stats, dict):
+        if stats.get("source_provenance"):
+            return "source_backed"
+        if stats.get("runtime_reference_status") == "source-backed":
+            return "source_backed"
+        if stats.get("parse_status") == "raw":
+            return "intentionally_deferred"
+        if stats.get("decode_status") in ("decoded", "partial"):
+            return "decoded_only"
+    if asset.get("kind") in ("model", "animation"):
+        return "decoded_only"
+    return "unknown"
 
 
 def _polygon_faces(poly: "Polygon", polygon_mode: PolygonMode) -> list[tuple[int, ...]]:

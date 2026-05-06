@@ -3,6 +3,18 @@ import type { AnimationSequenceFrame, AnimationSequencePayload, CatalogAsset, Lm
 import type { ViewerScene } from '../viewer/scene';
 
 type RunAction = (action: () => Promise<void>, progress?: { label: string; pollServer?: boolean }) => Promise<void>;
+type AnimationSampleSelected = (
+  body: CatalogAsset,
+  animation: CatalogAsset,
+  sequence: AnimationSequencePayload,
+  frame: AnimationSequenceFrame,
+  loopCycle: number,
+) => void;
+type AnimationPoseSelected = (
+  body: CatalogAsset,
+  animation: CatalogAsset,
+  model: Lm2Model,
+) => void;
 
 export interface AnimationControllerElements {
   selection: HTMLDivElement;
@@ -19,6 +31,7 @@ export interface AnimationControllerElements {
   mode: HTMLSelectElement;
   next: HTMLButtonElement;
   result: HTMLDivElement;
+  strip: HTMLElement;
 }
 
 export interface AnimationControllerOptions {
@@ -28,6 +41,8 @@ export interface AnimationControllerOptions {
   setError: (message: string) => void;
   setOverlay: (message: string) => void;
   runAction: RunAction;
+  onSampleSelected?: AnimationSampleSelected;
+  onPoseSelected?: AnimationPoseSelected;
 }
 
 interface AnimationStats {
@@ -177,6 +192,7 @@ export class AnimationController {
     this.currentSequenceIndex = null;
     this.currentLoopCycle = 0;
     this.options.elements.result.textContent = '';
+    this.options.elements.strip.textContent = 'No animation sequence strip.';
     this.updateTimelineReadout(0);
   }
 
@@ -202,6 +218,7 @@ export class AnimationController {
         ? `Frame ${sample.target_frame_index}, previous ${sample.previous_frame_index}, next ${sample.next_frame_index}, ${sample.duration_ms} ms duration`
         : 'Posed frame loaded';
       this.options.setOverlay(`${bodyAsset.label} posed with ${animationAsset.label}`);
+      this.options.onPoseSelected?.(bodyAsset, animationAsset, model);
       return model;
     } finally {
       this.busy = false;
@@ -255,6 +272,7 @@ export class AnimationController {
     ) {
       this.sequence = await loadAnimationSequence(bodyAsset, animationAsset, playbackStepMs);
       this.validateSequence(this.sequence);
+      this.renderSequenceStrip();
     }
     if (this.sequence.frames.length === 0) {
       throw new Error('Selected animation produced no playback frames.');
@@ -276,7 +294,7 @@ export class AnimationController {
   }
 
   private renderFrame(frame: AnimationSequenceFrame, loopCycle = this.currentLoopCycle): void {
-    if (!this.options.scene.model || !this.bodyAsset || !this.animationAsset) {
+    if (!this.options.scene.model || !this.bodyAsset || !this.animationAsset || !this.sequence) {
       throw new Error('Select a catalog model and decoded ANIM entry before playback.');
     }
     const rootMotion = this.rootMotionFor(frame, loopCycle);
@@ -284,6 +302,38 @@ export class AnimationController {
     this.currentFrame = frame;
     this.currentSequenceIndex = frame.sequence_index;
     this.currentLoopCycle = loopCycle;
+    this.renderSequenceStrip();
+    this.options.onSampleSelected?.(this.bodyAsset, this.animationAsset, this.sequence, frame, loopCycle);
+  }
+
+  private renderSequenceStrip(): void {
+    const { strip } = this.options.elements;
+    if (!this.sequence || !this.bodyAsset || !this.animationAsset) {
+      strip.textContent = 'No animation sequence strip.';
+      return;
+    }
+    strip.replaceChildren(...this.sequence.frames.map((frame) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'animation-sample-item';
+      button.setAttribute('aria-current', String(frame.sequence_index === this.currentSequenceIndex));
+      button.title = animationSampleTitle(frame, this.sequence!);
+      button.addEventListener('click', () => {
+        void this.seekToFrameIndex(frame.sequence_index).catch((error) => {
+          this.options.setError(error instanceof Error ? error.message : String(error));
+        });
+      });
+      const title = document.createElement('strong');
+      title.textContent = `Sample ${frame.sequence_index}`;
+      const frameLine = document.createElement('span');
+      frameLine.textContent = `frame ${frame.frame} ${frame.segment}`;
+      const timing = document.createElement('span');
+      timing.textContent = `${frame.timeline_ms} ms / ${frame.duration_ms} ms`;
+      const root = document.createElement('span');
+      root.textContent = frame.root_motion ? `root ${frame.root_motion.map(formatNumber).join(',')}` : 'root none';
+      button.append(title, frameLine, timing, root);
+      return button;
+    }));
   }
 
   private rootMotionFor(frame: AnimationSequenceFrame, loopCycle: number): [number, number, number] | undefined {
@@ -339,8 +389,8 @@ export class AnimationController {
       }
     }
     if (bestIndex >= 0) return bestIndex;
-    const fallback = sequence.frames.findIndex((item, index) => index < endIndex && item.frame === frame);
-    return fallback >= 0 ? fallback : 0;
+    const previousIndex = sequence.frames.findIndex((item, index) => index < endIndex && item.frame === frame);
+    return previousIndex >= 0 ? previousIndex : 0;
   }
 
   private loopIndex(sequence: AnimationSequencePayload): number {
@@ -360,9 +410,15 @@ export class AnimationController {
   private async seekTo(timelineMs: number): Promise<void> {
     const sequence = await this.getSequence();
     const index = this.sequenceIndexAtTimeline(sequence, timelineMs);
-    this.pendingSeekIndex = index;
+    await this.seekToFrameIndex(index);
+  }
+
+  private async seekToFrameIndex(index: number): Promise<void> {
+    const sequence = await this.getSequence();
+    const boundedIndex = Math.max(0, Math.min(sequence.frames.length - 1, Math.round(index)));
+    this.pendingSeekIndex = boundedIndex;
     this.currentLoopCycle = 0;
-    const frame = sequence.frames[index];
+    const frame = sequence.frames[boundedIndex];
     this.renderFrame(frame, 0);
     this.updateReadout(frame);
   }
@@ -531,4 +587,19 @@ function formatAnimationTime(milliseconds: number): string {
   const seconds = Math.floor((safeMs % 60000) / 1000);
   const millis = safeMs % 1000;
   return `${minutes}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+}
+
+function animationSampleTitle(frame: AnimationSequenceFrame, sequence: AnimationSequencePayload): string {
+  return [
+    `Sample ${frame.sequence_index}`,
+    `frame ${frame.frame}`,
+    frame.segment,
+    `${frame.timeline_ms} ms`,
+    `loop starts ${sequence.loop_index}`,
+    `playback ends ${sequence.playback_end_index}`,
+  ].join(' | ');
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }

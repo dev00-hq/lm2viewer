@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Lm2Model } from '../types';
 
-const fallbackPalette = [
+const diagnosticPreviewPalette = [
   0x1c1f23, 0x255f9e, 0x2d9f65, 0x35a7b8, 0xb33f4a, 0x8d62d9, 0xc98238, 0xc7cbd1,
   0x69727d, 0x61a8ff, 0x74d99f, 0x74e5e8, 0xff786f, 0xd6a1ff, 0xffd36f, 0xf7f7f2,
 ];
@@ -43,7 +43,7 @@ function colorFor(model: Lm2Model, paletteIndex: number): number {
   if (model.palette && paletteIndex >= 0 && paletteIndex < model.palette.length) {
     return model.palette[paletteIndex];
   }
-  return fallbackPalette[Math.floor(paletteIndex / 16) % fallbackPalette.length];
+  return diagnosticPreviewPalette[Math.floor(paletteIndex / 16) % diagnosticPreviewPalette.length];
 }
 
 export function buildModelRoot(model: Lm2Model): THREE.Group {

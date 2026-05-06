@@ -374,9 +374,9 @@ export class ViewerScene {
     );
   }
 
-  private rootMotionOffset(fallback: THREE.Vector3): THREE.Vector3 {
+  private rootMotionOffset(baseOffset: THREE.Vector3): THREE.Vector3 {
     const scale = this.currentModel?.pose?.transform?.translation_scale ?? 1;
-    if (!this.currentRootMotion) return fallback.clone();
+    if (!this.currentRootMotion) return baseOffset.clone();
     return new THREE.Vector3(
       this.currentRootMotion[0] * scale,
       this.currentRootMotion[1] * scale,

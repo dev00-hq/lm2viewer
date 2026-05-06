@@ -1,4 +1,4 @@
-import type { AnimationPayload, AnimationSequencePayload, Catalog, CatalogAsset, DecodeProgress, EntityWorkflowPayload, ErrorPayload, ExportPayload, Lm2Model, PolygonMode, ResourcePayload, RuntimeSpriteResolvePayload, ScenePayload, SpritePayload } from './types';
+import type { AnimationPayload, AnimationSequencePayload, Catalog, CatalogAsset, DecodeProgress, EntityWorkflowPayload, ErrorPayload, ExportPayload, Lm2Model, PolygonMode, PortPromotionPacketsPayload, ResourcePayload, RuntimeSpriteResolvePayload, ScenePayload, SpritePayload } from './types';
 
 async function readJson<T extends object>(response: Response): Promise<T> {
   const payload = await response.json() as T | ErrorPayload;
@@ -24,6 +24,10 @@ export async function fetchInitialModel(): Promise<Lm2Model | null> {
 
 export async function fetchDecodeProgress(): Promise<DecodeProgress> {
   return readJson<DecodeProgress>(await fetch('/api/decode/progress'));
+}
+
+export async function fetchPortPromotionPackets(): Promise<PortPromotionPacketsPayload> {
+  return readJson<PortPromotionPacketsPayload>(await fetch('/api/port/promotion-packets', { method: 'POST' }));
 }
 
 export async function uploadModel(file: File): Promise<Lm2Model> {
@@ -84,6 +88,14 @@ export async function loadAssetEntityWorkflow(asset: CatalogAsset | string): Pro
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id }),
+  }));
+}
+
+export async function loadSceneObjectEntityWorkflow(sceneAssetId: string, objectIndex: number): Promise<EntityWorkflowPayload> {
+  return readJson<EntityWorkflowPayload>(await fetch('/api/entity/scene-object', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ scene_asset_id: sceneAssetId, object_index: objectIndex }),
   }));
 }
 

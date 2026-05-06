@@ -1,6 +1,6 @@
 import type { Lm2Model } from '../types';
 
-type PolygonEvidence = {
+export type PolygonEvidence = {
   polygon_index: number;
   material: {
     kind: 'texture' | 'palette';
@@ -38,18 +38,26 @@ type UiElements = {
   result: HTMLDivElement;
 };
 
+export interface UvInspectorOptions {
+  onSurfaceSelected?: (model: Lm2Model, evidence: PolygonEvidence) => void;
+}
+
 export class UvInspector {
   private model: Lm2Model | null = null;
   private selectedIndex = 0;
   private optionsModel: Lm2Model | null = null;
 
-  constructor(private readonly elements: UiElements) {
+  constructor(
+    private readonly elements: UiElements,
+    private readonly options: UvInspectorOptions = {},
+  ) {
     elements.polygon.addEventListener('change', () => {
       this.selectedIndex = Number(elements.polygon.value) || 0;
       this.render();
+      this.emitSurfaceSelection();
     });
-    elements.previous.addEventListener('click', () => this.step(-1));
-    elements.next.addEventListener('click', () => this.step(1));
+    elements.previous.addEventListener('click', () => this.step(-1, true));
+    elements.next.addEventListener('click', () => this.step(1, true));
     elements.copy.addEventListener('click', () => void this.copyEvidence());
     elements.download.addEventListener('click', () => this.downloadEvidence());
     this.render();
@@ -63,10 +71,11 @@ export class UvInspector {
     this.render();
   }
 
-  private step(delta: number): void {
+  private step(delta: number, emitSelection = false): void {
     if (!this.model || this.model.polygons.length === 0) return;
     this.selectedIndex = (this.selectedIndex + delta + this.model.polygons.length) % this.model.polygons.length;
     this.render();
+    if (emitSelection) this.emitSurfaceSelection();
   }
 
   private render(): void {
@@ -175,6 +184,12 @@ export class UvInspector {
   private evidence(): PolygonEvidence | null {
     if (!this.model || this.model.polygons.length === 0) return null;
     return polygonEvidence(this.model, this.selectedIndex);
+  }
+
+  private emitSurfaceSelection(): void {
+    const evidence = this.evidence();
+    if (!this.model || !evidence) return;
+    this.options.onSurfaceSelected?.(this.model, evidence);
   }
 
   private async copyEvidence(): Promise<void> {

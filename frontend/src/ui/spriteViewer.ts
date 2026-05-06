@@ -1,5 +1,24 @@
 import type { CatalogAsset, SpritePayload } from '../types';
 
+export interface SpritePixelEvidence {
+  x: number;
+  y: number;
+  paletteIndex: number;
+  rgba: number[];
+}
+
+type SpriteStripState = 'decoded' | 'load_on_select' | 'missing';
+
+interface SpriteStripItem {
+  index: number;
+  title: string;
+  backend: string;
+  palette: string;
+  timing: string;
+  state: SpriteStripState;
+  frame?: NonNullable<SpritePayload['frame']>;
+}
+
 export interface SpriteViewerOptions {
   panel: HTMLElement;
   canvas: HTMLCanvasElement;
@@ -14,8 +33,10 @@ export interface SpriteViewerOptions {
   next: HTMLButtonElement;
   scrub: HTMLInputElement;
   frameLabel: HTMLElement;
+  strip: HTMLElement;
   loadFrame: (asset: CatalogAsset) => Promise<SpritePayload>;
   onFrameLoaded: (asset: CatalogAsset, payload: SpritePayload) => void;
+  onPixelPicked?: (asset: CatalogAsset, payload: SpritePayload, pixel: SpritePixelEvidence) => void;
 }
 
 export class SpriteViewer {
@@ -26,6 +47,8 @@ export class SpriteViewer {
   private zoom = 1;
   private loadingToken = 0;
   private playbackTimer: number | undefined;
+  private hoverPixel: SpritePixelEvidence | null = null;
+  private pickedPixel: SpritePixelEvidence | null = null;
 
   constructor(private readonly options: SpriteViewerOptions) {
     options.zoomIn.addEventListener('click', () => this.setZoom(this.zoom * 1.25));
@@ -36,7 +59,11 @@ export class SpriteViewer {
     options.play.addEventListener('click', () => this.togglePlayback());
     options.scrub.addEventListener('input', () => void this.loadSequenceIndex(Number(options.scrub.value)));
     options.canvas.addEventListener('pointermove', (event) => this.updateHover(event));
-    options.canvas.addEventListener('pointerleave', () => this.renderMeta());
+    options.canvas.addEventListener('pointerdown', (event) => this.pickPixel(event));
+    options.canvas.addEventListener('pointerleave', () => {
+      this.hoverPixel = null;
+      this.renderMeta();
+    });
   }
 
   setSprite(payload: SpritePayload, sequence: CatalogAsset[] = []): void {
@@ -49,8 +76,11 @@ export class SpriteViewer {
       : Math.max(0, this.sequence.findIndex((asset) => asset.id === payload.sprite.id));
     if (this.sequenceIndex < 0) this.sequenceIndex = 0;
     this.options.title.textContent = payload.sprite.label;
+    this.hoverPixel = null;
+    this.pickedPixel = null;
     this.updateControls();
     this.updateScrub();
+    this.renderStrip();
     if (payload.frame) {
       this.renderFrame(payload.frame);
       this.fit();
@@ -65,6 +95,13 @@ export class SpriteViewer {
 
   stop(): void {
     this.stopPlayback();
+    this.payload = null;
+    this.sequence = [];
+    this.frameVariants = [];
+    this.sequenceIndex = 0;
+    this.hoverPixel = null;
+    this.pickedPixel = null;
+    this.options.strip.textContent = 'No sprite frame strip.';
   }
 
   resize(): void {
@@ -77,6 +114,10 @@ export class SpriteViewer {
     canvas.height = frame.height;
     const context = canvas.getContext('2d');
     if (!context) return;
+    this.paintFrame(context, frame);
+  }
+
+  private paintFrame(context: CanvasRenderingContext2D, frame: NonNullable<SpritePayload['frame']>): void {
     const image = context.createImageData(frame.width, frame.height);
     if (frame.rgba && frame.rgba.length === image.data.length) {
       image.data.set(frame.rgba);
@@ -140,6 +181,92 @@ export class SpriteViewer {
       : '0 / 0';
   }
 
+  private renderStrip(): void {
+    const items = this.stripItems();
+    if (items.length === 0) {
+      this.options.strip.textContent = 'No sprite frame strip.';
+      return;
+    }
+    this.options.strip.replaceChildren(...items.map((item) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sprite-frame-item';
+      button.setAttribute('aria-current', String(item.index === this.sequenceIndex));
+      button.dataset.state = item.state;
+      button.title = `${item.title} | ${item.backend} | ${item.palette} | ${item.timing}`;
+      button.addEventListener('click', () => void this.loadSequenceIndex(item.index));
+      const thumbnail = this.renderStripThumbnail(item);
+      thumbnail.setAttribute('aria-hidden', 'true');
+      const details = document.createElement('span');
+      details.className = 'sprite-frame-details';
+      const title = document.createElement('strong');
+      title.textContent = item.title;
+      const backend = document.createElement('span');
+      backend.textContent = item.backend;
+      const palette = document.createElement('span');
+      palette.textContent = item.palette;
+      const timing = document.createElement('span');
+      timing.textContent = item.timing;
+      details.append(title, backend, palette, timing);
+      button.append(thumbnail, details);
+      return button;
+    }));
+  }
+
+  private renderStripThumbnail(item: SpriteStripItem): HTMLElement {
+    const thumbnail = document.createElement('span');
+    thumbnail.className = 'sprite-frame-thumb';
+    if (!item.frame) {
+      thumbnail.classList.add(`sprite-frame-thumb-${item.state}`);
+      thumbnail.textContent = item.state === 'missing' ? 'missing' : 'load';
+      return thumbnail;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = item.frame.width;
+    canvas.height = item.frame.height;
+    const context = canvas.getContext('2d');
+    if (context) this.paintFrame(context, item.frame);
+    thumbnail.append(canvas);
+    return thumbnail;
+  }
+
+  private stripItems(): SpriteStripItem[] {
+    if (!this.payload) return [];
+    if (this.frameVariants.length > 0) {
+      return this.frameVariants.map((frame, index) => ({
+        index,
+        title: frame.variant_label || frame.variant || `Variant ${index + 1}`,
+        backend: frame.format,
+        palette: frame.palette_source || (frame.palette_available ? 'palette source attached' : 'preview grayscale'),
+        timing: frameTimingLabel(this.payload!.sprite, frame),
+        state: 'decoded',
+        frame,
+      }));
+    }
+    if (this.sequence.length > 0) {
+      return this.sequence.map((asset, index) => ({
+        index,
+        title: stripFrameTitle(asset, index),
+        backend: stripBackendLabel(asset),
+        palette: stripPaletteLabel(asset),
+        timing: stripTimingLabel(asset),
+        state: index === this.sequenceIndex && this.payload?.frame ? 'decoded' : stripState(asset),
+        frame: index === this.sequenceIndex ? this.payload?.frame : undefined,
+      }));
+    }
+    const frame = this.payload.frame;
+    return frame ? [{
+      index: 0,
+      title: stripFrameTitle(this.payload.sprite, 0),
+      backend: stripBackendLabel(this.payload.sprite),
+      palette: frame.palette_source || stripPaletteLabel(this.payload.sprite),
+      timing: frameTimingLabel(this.payload.sprite, frame),
+      state: 'decoded',
+      frame,
+    }] : [];
+  }
+
   private async step(direction: -1 | 1): Promise<void> {
     const frameCount = this.frameVariants.length || this.sequence.length;
     if (frameCount < 2) return;
@@ -175,13 +302,17 @@ export class SpriteViewer {
       if (!frame || !this.payload) return;
       this.sequenceIndex = boundedIndex;
       this.payload = { ...this.payload, frame };
+      this.hoverPixel = null;
+      this.pickedPixel = null;
       this.options.title.textContent = `${this.payload.sprite.label} - ${frame.variant_label || frame.variant || `variant ${boundedIndex + 1}`}`;
       this.renderFrame(frame);
       this.applyCanvasScale();
       this.updateControls();
       this.updateScrub();
+      this.renderStrip();
       this.renderMeta();
       this.renderFacts();
+      this.options.onFrameLoaded(this.payload.sprite, this.payload);
       return;
     }
     if (this.sequence.length === 0) return;
@@ -204,6 +335,8 @@ export class SpriteViewer {
     }
     if (token !== this.loadingToken) return;
     this.payload = payload;
+    this.hoverPixel = null;
+    this.pickedPixel = null;
     this.options.title.textContent = payload.sprite.label;
     if (payload.frame) {
       this.renderFrame(payload.frame);
@@ -214,6 +347,7 @@ export class SpriteViewer {
     this.updateControls();
     this.renderMeta();
     this.renderFacts();
+    this.renderStrip();
     this.options.onFrameLoaded(asset, payload);
   }
 
@@ -226,20 +360,38 @@ export class SpriteViewer {
   }
 
   private updateHover(event: PointerEvent): void {
+    this.hoverPixel = this.pixelEvidenceFromEvent(event);
+    this.renderMeta();
+  }
+
+  private pickPixel(event: PointerEvent): void {
+    this.pickedPixel = this.pixelEvidenceFromEvent(event);
+    this.renderMeta();
+    this.renderFacts();
+    if (this.pickedPixel && this.payload) {
+      this.options.onPixelPicked?.(this.payload.sprite, this.payload, this.pickedPixel);
+    }
+  }
+
+  private pixelEvidenceFromEvent(event: PointerEvent): SpritePixelEvidence | null {
     const frame = this.payload?.frame;
-    if (!frame) return;
+    if (!frame) return null;
     const rect = this.options.canvas.getBoundingClientRect();
     const x = Math.floor(((event.clientX - rect.left) / rect.width) * frame.width);
     const y = Math.floor(((event.clientY - rect.top) / rect.height) * frame.height);
     if (x < 0 || y < 0 || x >= frame.width || y >= frame.height) {
-      this.renderMeta();
-      return;
+      return null;
     }
-    const paletteIndex = frame.pixels[y * frame.width + x];
-    this.renderMeta(`pixel ${x},${y} palette ${paletteIndex}`);
+    const pixelOffset = y * frame.width + x;
+    const paletteIndex = frame.pixels[pixelOffset];
+    const rgbaOffset = pixelOffset * 4;
+    const rgba = frame.rgba && rgbaOffset + 3 < frame.rgba.length
+      ? [frame.rgba[rgbaOffset], frame.rgba[rgbaOffset + 1], frame.rgba[rgbaOffset + 2], frame.rgba[rgbaOffset + 3]]
+      : [paletteIndex, paletteIndex, paletteIndex, paletteIndex === 0 ? 0 : 255];
+    return { x, y, paletteIndex, rgba };
   }
 
-  private renderMeta(hoverText = ''): void {
+  private renderMeta(): void {
     const frame = this.payload?.frame;
     if (!this.payload) {
       this.options.meta.textContent = 'Select a sprite asset from the catalog.';
@@ -252,17 +404,12 @@ export class SpriteViewer {
     const alpha = frame.palette_available ? 'palette RGBA' : 'palette-index grayscale';
     const range = spriteRangeLabel(this.payload.sprite);
     const runtime = spriteRuntimeLabel(this.payload.sprite);
-    const timing = frame.format === 'bkg_affgraph'
-      ? 'static BRK graph'
-      : frame.format === 'bkg_grid_preview'
-        ? frame.variant_label
-          ? `scene background ${frame.variant_label}`
-          : 'static background evidence render'
-        : 'timing unknown';
+    const timing = frameTimingLabel(this.payload.sprite, frame);
     const palette = frame.palette_source ? `, ${frame.palette_source}` : '';
-    const hover = hoverText ? ` - ${hoverText}` : '';
+    const hover = this.hoverPixel ? ` - hover ${pixelEvidenceText(this.hoverPixel)}` : '';
+    const picked = this.pickedPixel ? ` - picked ${pixelEvidenceText(this.pickedPixel)}` : '';
     this.options.meta.textContent =
-      `${range}${runtime}${frame.width}x${frame.height}, offset ${frame.offset_x},${frame.offset_y}, ${alpha}${palette}, ${this.zoom.toFixed(this.zoom % 1 === 0 ? 0 : 1)}x, ${timing}${hover}`;
+      `${range}${runtime}${frame.width}x${frame.height}, offset ${frame.offset_x},${frame.offset_y}, ${alpha}${palette}, ${this.zoom.toFixed(this.zoom % 1 === 0 ? 0 : 1)}x, ${timing}${hover}${picked}`;
   }
 
   private renderFacts(): void {
@@ -321,6 +468,7 @@ export class SpriteViewer {
       ['Opaque', String(stats.opaque_pixels)],
       ['Palette', `${stats.color_count} colors`],
     ];
+    if (this.pickedPixel) facts.push(['Picked pixel', pixelEvidenceText(this.pickedPixel)]);
     if (runtime?.hotspot) facts.push(['Hotspot', `${runtime.hotspot.x}, ${runtime.hotspot.y}`]);
     if (runtime?.bounds) {
       facts.push([
@@ -348,6 +496,81 @@ function spriteRuntimeLabel(asset: CatalogAsset): string {
   const stats = asset.stats;
   if (!('semantic_layout' in stats) || (stats.semantic_layout !== 'lsp_sprite_frame' && stats.semantic_layout !== 'raw_sprite_frame') || !stats.runtime) return '';
   return `${stats.runtime.backend} Sprite ${stats.runtime.runtime_sprite_index} - `;
+}
+
+function stripFrameTitle(asset: CatalogAsset, frameIndex: number): string {
+  const stats = asset.stats;
+  if ('semantic_layout' in stats && stats.semantic_layout === 'lsp_sprite_frame' && stats.anim3ds_info) {
+    return `${stats.anim3ds_info.name} frame ${stats.anim3ds_info.relative_frame}`;
+  }
+  return `${asset.id} frame ${frameIndex + 1}`;
+}
+
+function stripBackendLabel(asset: CatalogAsset): string {
+  const stats = asset.stats;
+  if (!('semantic_layout' in stats)) return asset.kind;
+  if (stats.semantic_layout === 'lsp_sprite_frame' || stats.semantic_layout === 'raw_sprite_frame') {
+    const runtime = stats.runtime;
+    if (!runtime) return stats.sprite_backend || 'decoded-only';
+    if (runtime.backend === 'anim3ds') return 'ANIM3DS';
+    if (runtime.backend === 'sprites') return 'SPRITES';
+    if (runtime.backend === 'spriraw') return 'SPRIRAW';
+    return runtime.backend || 'unresolved';
+  }
+  if (stats.semantic_layout === 'bkg_brick_graphic') return 'BRK AffGraph';
+  if (stats.semantic_layout === 'bkg_grid_map') return 'GRI/BLL/BRK preview';
+  if (stats.semantic_layout === 'scene_runtime_layout_partial') return 'SCENE background preview';
+  return stats.semantic_layout;
+}
+
+function stripPaletteLabel(asset: CatalogAsset): string {
+  const stats = asset.stats;
+  if (!('semantic_layout' in stats)) return 'palette unknown';
+  if (stats.semantic_layout === 'lsp_sprite_frame' || stats.semantic_layout === 'raw_sprite_frame') {
+    return 'normal RESS.HQR:0 preview palette';
+  }
+  if (stats.semantic_layout === 'bkg_brick_graphic' || stats.semantic_layout === 'bkg_grid_map') {
+    return 'preview palette';
+  }
+  if (stats.semantic_layout === 'scene_runtime_layout_partial') {
+    const palette = stats.reconnaissance.background?.palette;
+    return palette?.resolved_palette_entry === undefined
+      ? 'background palette unknown'
+      : `active runtime palette RESS.HQR:${palette.resolved_palette_entry}`;
+  }
+  return 'palette unknown';
+}
+
+function stripTimingLabel(asset: CatalogAsset): string {
+  const stats = asset.stats;
+  if ('semantic_layout' in stats && stats.semantic_layout === 'lsp_sprite_frame' && stats.anim3ds_info) {
+    return 'decoded ANIM3DS range order; FPS needs scene object evidence';
+  }
+  return 'timing unknown';
+}
+
+function stripState(asset: CatalogAsset): SpriteStripState {
+  const stats = asset.stats;
+  if (!('semantic_layout' in stats)) return 'missing';
+  if (stats.semantic_layout === 'lsp_sprite_frame' || stats.semantic_layout === 'raw_sprite_frame') return 'load_on_select';
+  if (
+    stats.semantic_layout === 'bkg_brick_graphic'
+    || stats.semantic_layout === 'bkg_grid_map'
+    || stats.semantic_layout === 'scene_runtime_layout_partial'
+  ) {
+    return 'load_on_select';
+  }
+  return 'missing';
+}
+
+function frameTimingLabel(asset: CatalogAsset, frame: NonNullable<SpritePayload['frame']>): string {
+  if (frame.format === 'bkg_affgraph') return 'static BRK graph';
+  if (frame.format === 'bkg_grid_preview') return frame.variant_label ? `scene background ${frame.variant_label}` : 'static background evidence render';
+  return stripTimingLabel(asset);
+}
+
+function pixelEvidenceText(pixel: SpritePixelEvidence): string {
+  return `${pixel.x},${pixel.y} palette ${pixel.paletteIndex} rgba ${pixel.rgba.join(',')}`;
 }
 
 function spriteFact(label: string, value: string): HTMLElement {
