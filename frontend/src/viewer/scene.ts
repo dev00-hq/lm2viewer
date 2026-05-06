@@ -268,7 +268,7 @@ export class ViewerScene {
   }
 
   resize(): void {
-    const rect = this.canvas.parentElement?.getBoundingClientRect();
+    const rect = this.canvas.getBoundingClientRect();
     if (!rect) return;
     this.renderer.setSize(rect.width, rect.height, false);
     this.camera.aspect = rect.width / Math.max(1, rect.height);

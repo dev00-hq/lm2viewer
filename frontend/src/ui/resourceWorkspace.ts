@@ -16,6 +16,7 @@ export interface ResourceWorkspaceOptions {
   facts: HTMLElement;
   records: HTMLElement;
   stage: HTMLElement;
+  emptyState: HTMLElement;
   canvas: HTMLCanvasElement;
   audioWrap: HTMLElement;
   audio: HTMLAudioElement;
@@ -43,10 +44,15 @@ export class ResourceWorkspace {
     if (this.frame) {
       this.renderFrame(this.frame);
       this.fit();
+      this.options.emptyState.hidden = true;
+      this.options.canvas.hidden = false;
       this.options.stage.hidden = false;
     } else {
       this.clearCanvas();
-      this.options.stage.hidden = true;
+      this.options.emptyState.textContent = resourceEmptyMessage(asset);
+      this.options.emptyState.hidden = false;
+      this.options.canvas.hidden = true;
+      this.options.stage.hidden = false;
     }
     this.setAudio(asset, audioUrl || null);
   }
@@ -60,6 +66,9 @@ export class ResourceWorkspace {
     this.options.facts.replaceChildren();
     this.options.records.textContent = 'No selectable resource records.';
     this.clearCanvas();
+    this.options.emptyState.textContent = 'No resource selected.';
+    this.options.emptyState.hidden = false;
+    this.options.canvas.hidden = true;
     this.options.stage.hidden = true;
     this.setAudio(null, null);
   }
@@ -182,6 +191,18 @@ function resourceMeta(asset: CatalogAsset, frame: SpriteFramePayload | null): st
     ? `${frame.width}x${frame.height} ${frame.format}, ${frame.palette_source || 'palette context unknown'}`
     : 'no visual frame payload';
   return `${asset.source.hqr}[${asset.source.entry_index}] | ${layout} | ${preview}`;
+}
+
+function resourceEmptyMessage(asset: CatalogAsset): string {
+  const stats = asset.stats as ResourceStats;
+  if (stats.semantic_layout === 'sample_wave_audio') return 'Audio resource. Use the sample player above.';
+  if (stats.semantic_layout === 'smacker_video') return 'Video descriptor resource. No decoded preview frame is attached.';
+  if (stats.semantic_layout === 'text_payload_bank' || stats.semantic_layout === 'text_order_table') return 'Text table resource. Select records above for evidence details.';
+  if (stats.semantic_layout === 'holomap_globe_uv_map' || stats.semantic_layout === 'holomap_arrow_table' || stats.semantic_layout === 'holomap_plan_view_params') {
+    return 'Structured holomap table. Select records above for decoded fields.';
+  }
+  if (stats.runtime_table_name) return `${stats.runtime_table_name} table. Select records above for sampled entries.`;
+  return 'No visual frame payload for this resource.';
 }
 
 function resourceFacts(asset: CatalogAsset, frame: SpriteFramePayload | null): Array<[string, string]> {

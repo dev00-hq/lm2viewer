@@ -17,6 +17,7 @@ type AnimationPoseSelected = (
 ) => void;
 
 export interface AnimationControllerElements {
+  root: HTMLDivElement;
   selection: HTMLDivElement;
   playbackState: HTMLDivElement;
   timeCurrent: HTMLSpanElement;
@@ -141,6 +142,7 @@ export class AnimationController {
     const totalDuration = stats?.total_duration ?? 0;
     const { elements } = this.options;
 
+    elements.root.classList.toggle('animation-panel-compact', !hasPair);
     elements.pose.disabled = disabled;
     elements.previous.disabled = disabled;
     elements.next.disabled = disabled;

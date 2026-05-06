@@ -27,11 +27,19 @@ const canvas = requireElement('canvas', HTMLCanvasElement);
 const scene = new ViewerScene({ canvas });
 
 type MainView = 'model' | 'sprite' | 'entity' | 'resource';
+type DockSide = 'explorer' | 'inspector';
+type InspectorTab = 'details' | 'uv';
 
+const app = requireElement('app', HTMLDivElement);
 const stats = requireElement('stats', HTMLDivElement);
 const errorBox = requireElement('error', HTMLDivElement);
 const overlay = requireElement('overlay', HTMLDivElement);
 const horizonIndicator = requireElement('horizonIndicator', HTMLDivElement);
+const horizonLockToggle = requireElement('horizonLockToggle', HTMLButtonElement);
+const viewControlsToggle = requireElement('viewControlsToggle', HTMLButtonElement);
+const viewControlsPopover = requireElement('viewControlsPopover', HTMLDivElement);
+const explorerDockToggle = requireElement('explorerDockToggle', HTMLButtonElement);
+const inspectorDockToggle = requireElement('inspectorDockToggle', HTMLButtonElement);
 const showFaces = requireElement('showFaces', HTMLInputElement);
 const showLines = requireElement('showLines', HTMLInputElement);
 const showSpheres = requireElement('showSpheres', HTMLInputElement);
@@ -80,6 +88,16 @@ const mainViews: Record<MainView, { tab: HTMLButtonElement; panel: HTMLElement }
   resource: {
     tab: requireElement('resourceViewTab', HTMLButtonElement),
     panel: requireElement('resourceViewPanel', HTMLElement),
+  },
+};
+const inspectorTabs: Record<InspectorTab, { tab: HTMLButtonElement; panel: HTMLElement }> = {
+  details: {
+    tab: requireElement('inspectorDetailsTab', HTMLButtonElement),
+    panel: requireElement('inspectorDetailsPanel', HTMLElement),
+  },
+  uv: {
+    tab: requireElement('inspectorUvTab', HTMLButtonElement),
+    panel: requireElement('inspectorUvPanel', HTMLElement),
   },
 };
 const uvInspector = new UvInspector({
@@ -184,6 +202,7 @@ const resourceWorkspace = new ResourceWorkspace({
   facts: requireElement('resourceFacts', HTMLDivElement),
   records: requireElement('resourceRecords', HTMLDivElement),
   stage: requireElement('resourceStage', HTMLElement),
+  emptyState: requireElement('resourceEmptyState', HTMLElement),
   canvas: requireElement('resourceCanvas', HTMLCanvasElement),
   audioWrap: requireElement('resourceAudio', HTMLElement),
   audio: requireElement('resourceAudioPlayer', HTMLAudioElement),
@@ -229,6 +248,7 @@ const runtimeSpriteResolver = new RuntimeSpriteResolver({
 });
 const animationController = new AnimationController({
   elements: {
+    root: animationPanel,
     selection: requireElement('animationSelection', HTMLDivElement),
     playbackState: requireElement('animationPlaybackState', HTMLDivElement),
     timeCurrent: requireElement('animationTimeCurrent', HTMLSpanElement),
@@ -298,18 +318,40 @@ canvasBackgroundShade.addEventListener('click', () => {
   }
 });
 document.addEventListener('pointerdown', (event) => {
-  if (canvasBackgroundShadePicker.hidden) return;
   const target = event.target;
   if (!(target instanceof Node)) return;
-  if (canvasBackgroundShade.contains(target) || canvasBackgroundShadePicker.contains(target)) return;
-  hideBackgroundShadePicker();
+  if (!canvasBackgroundShadePicker.hidden
+    && !canvasBackgroundShade.contains(target)
+    && !canvasBackgroundShadePicker.contains(target)) {
+    hideBackgroundShadePicker();
+  }
+  if (!viewControlsPopover.hidden
+    && !viewControlsToggle.contains(target)
+    && !viewControlsPopover.contains(target)) {
+    hideViewControlsPopover();
+  }
 });
 window.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') hideBackgroundShadePicker();
+  if (event.key === 'Escape') {
+    hideBackgroundShadePicker();
+    hideViewControlsPopover();
+  }
 });
 requireElement('resetView', HTMLButtonElement).addEventListener('click', () => scene.resetView());
 requireElement('zoomIn', HTMLButtonElement).addEventListener('click', () => scene.zoomBy(0.72));
 requireElement('zoomOut', HTMLButtonElement).addEventListener('click', () => scene.zoomBy(1.38));
+horizonLockToggle.addEventListener('click', () => {
+  lockHorizon.checked = !lockHorizon.checked;
+  refreshHorizonLock();
+});
+viewControlsToggle.addEventListener('click', () => {
+  viewControlsPopover.hidden = !viewControlsPopover.hidden;
+  viewControlsToggle.setAttribute('aria-expanded', String(!viewControlsPopover.hidden));
+});
+inspectorTabs.details.tab.addEventListener('click', () => setInspectorTab('details'));
+inspectorTabs.uv.tab.addEventListener('click', () => setInspectorTab('uv'));
+explorerDockToggle.addEventListener('click', () => setDockCollapsed('explorer', !app.classList.contains('explorer-collapsed')));
+inspectorDockToggle.addEventListener('click', () => setDockCollapsed('inspector', !app.classList.contains('inspector-collapsed')));
 requireElement('loadAssetRoot', HTMLButtonElement).addEventListener('click', () => runAction(
   async () => setCatalog(await buildCatalog(assetRootInput.value)),
   { label: 'Indexing HQR folder', pollServer: true },
@@ -1546,7 +1588,40 @@ function refreshVisibility(): void {
 function refreshHorizonLock(): void {
   scene.setLockHorizon(lockHorizon.checked);
   horizonIndicator.classList.toggle('locked', lockHorizon.checked);
-  horizonIndicator.textContent = lockHorizon.checked ? 'HORIZON LOCKED' : 'HORIZON FREE';
+  const label = lockHorizon.checked ? 'Horizon locked' : 'Horizon free';
+  const actionLabel = lockHorizon.checked ? 'Unlock horizon' : 'Lock horizon';
+  horizonIndicator.setAttribute('aria-label', label);
+  horizonIndicator.title = label;
+  horizonLockToggle.setAttribute('aria-pressed', String(lockHorizon.checked));
+  horizonLockToggle.setAttribute('aria-label', actionLabel);
+  horizonLockToggle.title = actionLabel;
+}
+
+function setDockCollapsed(side: DockSide, collapsed: boolean): void {
+  const className = `${side}-collapsed`;
+  const toggle = side === 'explorer' ? explorerDockToggle : inspectorDockToggle;
+  const label = collapsed
+    ? `Expand ${side} sidebar`
+    : `Collapse ${side} sidebar`;
+  app.classList.toggle(className, collapsed);
+  toggle.setAttribute('aria-expanded', String(!collapsed));
+  toggle.setAttribute('aria-label', label);
+  toggle.title = label;
+  requestAnimationFrame(() => {
+    scene.resize();
+    spriteViewer.resize();
+    resourceWorkspace.resize();
+  });
+}
+
+function setInspectorTab(tab: InspectorTab): void {
+  for (const [key, entry] of Object.entries(inspectorTabs) as Array<[InspectorTab, typeof inspectorTabs[InspectorTab]]>) {
+    const active = key === tab;
+    entry.panel.hidden = !active;
+    entry.panel.classList.toggle('active', active);
+    entry.tab.classList.toggle('active', active);
+    entry.tab.setAttribute('aria-selected', String(active));
+  }
 }
 
 function refreshCanvasBackground(): void {
@@ -1554,9 +1629,10 @@ function refreshCanvasBackground(): void {
   scene.setBackground(mode, selectedCanvasBackgroundShade);
   document.body.dataset.canvasBackground = mode;
   document.body.dataset.canvasBackgroundShade = String(selectedCanvasBackgroundShade);
-  canvasBackgroundToggle.textContent = mode === 'light' ? 'Light' : 'Dark';
+  canvasBackgroundToggle.textContent = '';
   canvasBackgroundToggle.setAttribute('aria-pressed', String(mode === 'light'));
   canvasBackgroundToggle.title = mode === 'light' ? 'Switch to dark canvas background' : 'Switch to light canvas background';
+  canvasBackgroundToggle.setAttribute('aria-label', canvasBackgroundToggle.title);
   const shadeColor = canvasBackgroundColor(mode, selectedCanvasBackgroundShade);
   canvasBackgroundShade.style.setProperty('--shade-color', shadeColor);
   canvasBackgroundShade.textContent = '';
@@ -1597,6 +1673,11 @@ function renderBackgroundShadePicker(): void {
 function hideBackgroundShadePicker(): void {
   canvasBackgroundShadePicker.hidden = true;
   canvasBackgroundShade.setAttribute('aria-expanded', 'false');
+}
+
+function hideViewControlsPopover(): void {
+  viewControlsPopover.hidden = true;
+  viewControlsToggle.setAttribute('aria-expanded', 'false');
 }
 
 function storedCanvasBackgroundShade(value: string | null): CanvasBackgroundShade {
