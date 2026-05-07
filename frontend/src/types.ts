@@ -8,6 +8,7 @@ export interface Catalog {
   source_mode?: 'folder' | 'files';
   selected_files?: string[];
   output_root?: string;
+  graph?: CatalogGraphProjection;
   metadata?: {
     file3d_animation_labels?: boolean;
     sprite_runtime_model?: {
@@ -137,6 +138,24 @@ export interface Catalog {
   hqr_files: HqrFileSummary[];
   coverage?: HqrCoverageMatrix;
   assets: CatalogAsset[];
+}
+
+export interface CatalogGraphProjection {
+  schema: 'catalog_graph.catalog_projection.v0' | string;
+  indexes: {
+    compatibleAnimationsByModelId?: Record<string, string[]>;
+  };
+  compatibilityByModelId?: Record<string, CatalogGraphCompatibility[]>;
+}
+
+export interface CatalogGraphCompatibility {
+  animationId: string;
+  compatibilityReason?: 'file3d_allowlist' | 'bone_count_only' | string;
+  proofScope?: string;
+  evidenceStatus?: string;
+  sourceRule?: string;
+  sourceField?: string;
+  indexRule?: string;
 }
 
 export interface PortPromotionPacketsPayload {

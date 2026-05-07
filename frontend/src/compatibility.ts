@@ -1,55 +1,53 @@
-import type { AnimationStats, CatalogAsset, ModelStats } from './types';
+import type { Catalog, CatalogAsset, CatalogGraphCompatibility } from './types';
 
-export function animationMatchesModel(animation: CatalogAsset, model: CatalogAsset): boolean {
-  const compatibility = animationCompatibility(animation, model);
-  return compatibility.status === 'compatible' || compatibility.status === 'bone-count-only';
-}
+export type AnimationCompatibilityStatus =
+  'compatible'
+  | 'bone-count-only'
+  | 'not-graph-compatible';
 
 export interface AnimationCompatibility {
-  status: 'compatible' | 'bone-count-only' | 'not-decoded-animation' | 'bone-count-mismatch' | 'file3d-body-mismatch';
+  status: AnimationCompatibilityStatus;
+  edge?: CatalogGraphCompatibility;
+}
+
+export function compatibleAnimationIds(catalog: Catalog | null, model: CatalogAsset): string[] {
+  return catalog?.graph?.indexes.compatibleAnimationsByModelId?.[model.id] || [];
 }
 
 export function animationCompatibility(
+  catalog: Catalog | null,
   animation: CatalogAsset,
   model: CatalogAsset,
 ): AnimationCompatibility {
-  if (animation.kind !== 'animation' || animation.entry_type !== 'animation' || !('keyframes' in animation.stats)) {
-    return { status: 'not-decoded-animation' };
-  }
+  const edge = catalog?.graph?.compatibilityByModelId?.[model.id]?.find(
+    (candidate) => candidate.animationId === animation.id,
+  );
+  if (!edge) return { status: 'not-graph-compatible' };
+  return {
+    status: edge.compatibilityReason === 'file3d_allowlist' ? 'compatible' : 'bone-count-only',
+    edge,
+  };
+}
 
-  const animationStats = animation.stats as AnimationStats;
-  const modelStats = model.stats as ModelStats;
-  if (animationStats.boneframes !== modelStats.bones) {
-    return { status: 'bone-count-mismatch' };
-  }
-
-  const compatibleBodyIds = animation.animation_metadata?.compatible_body_ids || [];
-  if (compatibleBodyIds.length > 0) {
-    if (model.source.hqr !== 'BODY.HQR') return { status: 'bone-count-only' };
-    return compatibleBodyIds.includes(model.source.entry_index)
-      ? { status: 'compatible' }
-      : { status: 'file3d-body-mismatch' };
-  }
-
-  return { status: 'bone-count-only' };
+export function animationMatchesModel(catalog: Catalog | null, animation: CatalogAsset, model: CatalogAsset): boolean {
+  return animationCompatibility(catalog, animation, model).status !== 'not-graph-compatible';
 }
 
 export function animationCompatibilityReason(
+  catalog: Catalog | null,
   animation: CatalogAsset,
   model: CatalogAsset,
-): AnimationCompatibility['status'] {
-  return animationCompatibility(animation, model).status;
+): AnimationCompatibilityStatus {
+  return animationCompatibility(catalog, animation, model).status;
 }
 
-export function animationCompatibilityPrefix(animation: CatalogAsset, model: CatalogAsset): string {
-  return animationCompatibility(animation, model).status === 'bone-count-only' ? '[bones] ' : '';
+export function animationCompatibilityPrefix(catalog: Catalog | null, animation: CatalogAsset, model: CatalogAsset): string {
+  return animationCompatibilityReason(catalog, animation, model) === 'bone-count-only' ? '[bones] ' : '';
 }
 
-export function animationCompatibilityLabel(animation: CatalogAsset, model: CatalogAsset): string {
-  const reason = animationCompatibilityReason(animation, model);
-  if (reason === 'compatible') return 'compatible with selected model';
-  if (reason === 'bone-count-only') return 'compatible by bone count only';
-  if (reason === 'bone-count-mismatch') return 'bone count does not match selected model';
-  if (reason === 'file3d-body-mismatch') return 'File3D body set does not include selected model';
-  return 'not a decoded animation';
+export function animationCompatibilityLabel(catalog: Catalog | null, animation: CatalogAsset, model: CatalogAsset): string {
+  const compatibility = animationCompatibility(catalog, animation, model);
+  if (compatibility.status === 'compatible') return 'compatible with selected model';
+  if (compatibility.status === 'bone-count-only') return 'compatible by bone count only';
+  return 'not graph-compatible with selected model';
 }

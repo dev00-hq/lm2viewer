@@ -10314,6 +10314,10 @@ def is_animation_subcommand(arguments: list[str]) -> bool:
     return arguments[:1] == ["animation"]
 
 
+def is_catalog_graph_subcommand(arguments: list[str]) -> bool:
+    return arguments[:1] == ["catalog-graph"]
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
     if is_export_subcommand(arguments):
@@ -10331,6 +10335,14 @@ def main(argv: list[str] | None = None) -> int:
     if is_animation_subcommand(arguments):
         try:
             return animation_command(arguments[1:])
+        except (Lm2Error, AnimationError, lba_hqr.HqrError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    if is_catalog_graph_subcommand(arguments):
+        try:
+            from .catalog_graph import catalog_graph_command
+
+            return catalog_graph_command(arguments[1:])
         except (Lm2Error, AnimationError, lba_hqr.HqrError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

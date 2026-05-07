@@ -51,7 +51,7 @@ export class CatalogUi {
     let assets = this.catalog.assets || [];
     assets = assets.filter((asset) => {
       if (kind !== 'all' && asset.kind !== kind) return false;
-      if (kind === 'animation' && this.selectedModel && !animationMatchesModel(asset, this.selectedModel)) return false;
+      if (kind === 'animation' && this.selectedModel && !animationMatchesModel(this.catalog, asset, this.selectedModel)) return false;
       if (!query) return true;
       return searchableText(asset).includes(query);
     });

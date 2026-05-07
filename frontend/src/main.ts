@@ -1,6 +1,6 @@
 import './styles.css';
 import { buildCatalog, catalogAudioUrl, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, fetchPortPromotionPackets, loadAssetEntityWorkflow, loadCatalogAsset, loadPath, loadRuntimeSpriteEntityWorkflow, loadSceneObjectEntityWorkflow, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
-import { animationCompatibilityPrefix, animationMatchesModel } from './compatibility';
+import { animationCompatibilityPrefix, compatibleAnimationIds } from './compatibility';
 import { requireElement } from './dom';
 import { InspectorRenderer, anim3dsRangeInspectorSections, animationInspectorSections, animationSampleInspectorSections, backgroundInspectorSections, entityFacetInspectorSections, evidenceArtifactInspectorSections, holomapInspectorSections, modelInspectorSections, modelSurfaceInspectorSections, paletteImageInspectorSections, rawAnimationInspectorSections, resourceRecordInspectorSections, runtimeTableInspectorSections, sampleAudioInspectorSections, sceneInspectorSections, sceneObjectInspectorSections, sceneUsageInspectorSections, smackerVideoInspectorSections, spriteFrameInspectorSections, textOrderInspectorSections, textPayloadInspectorSections, unclassifiedResourceInspectorSections } from './inspector';
 import { AppSelectionStore, sceneUsageStableId, selectionFromAnimationPose, selectionFromAnimationSample, selectionFromCatalogAsset, selectionFromEntityFacet, selectionFromEntityWorkflow, selectionFromModelSurface, selectionFromResourcePaletteContext, selectionFromResourceRecord, selectionFromRuntimeResolution, selectionFromSceneUsage, selectionFromSceneUsageFacet, selectionFromSpriteFrame, type AppSelection, type EntityFacetSelectionKind } from './selection';
@@ -465,7 +465,7 @@ async function selectCatalogAsset(
         selectionStore.set(selectionFromCatalogAsset(payload.animation, {
           workspaceSuggestion: 'model',
           compatibilityStatus: !rawAnimation && animationController.selectedBodyAsset
-            ? animationCompatibilityPrefix(payload.animation, animationController.selectedBodyAsset).trim() || undefined
+            ? animationCompatibilityPrefix(currentCatalog, payload.animation, animationController.selectedBodyAsset).trim() || undefined
             : undefined,
         }));
       }
@@ -661,7 +661,7 @@ function selectCanvasAnimation(): void {
   selectionStore.set(selectionFromCatalogAsset(asset, {
     workspaceSuggestion: 'model',
     compatibilityStatus: animationController.selectedBodyAsset
-      ? animationCompatibilityPrefix(asset, animationController.selectedBodyAsset).trim() || undefined
+      ? animationCompatibilityPrefix(currentCatalog, asset, animationController.selectedBodyAsset).trim() || undefined
       : undefined,
   }));
   overlay.textContent = `${asset.label} selected`;
@@ -685,7 +685,7 @@ function updateCanvasAnimationSelect(modelAsset: CatalogAsset | null): void {
 
   canvasAnimationSelect.append(new Option(`${animations.length} compatible animations`, ''));
   for (const animation of animations) {
-    canvasAnimationSelect.append(new Option(`${animationCompatibilityPrefix(animation, modelAsset)}${animation.label}`, animation.id));
+    canvasAnimationSelect.append(new Option(`${animationCompatibilityPrefix(currentCatalog, animation, modelAsset)}${animation.label}`, animation.id));
   }
   canvasAnimationSelect.disabled = false;
   const selectedAnimation = animationController.selectedAnimationAsset;
@@ -695,8 +695,9 @@ function updateCanvasAnimationSelect(modelAsset: CatalogAsset | null): void {
 }
 
 function compatibleAnimations(modelAsset: CatalogAsset): CatalogAsset[] {
+  const ids = new Set(compatibleAnimationIds(currentCatalog, modelAsset));
   return (currentCatalog?.assets || [])
-    .filter((asset) => animationMatchesModel(asset, modelAsset))
+    .filter((asset) => ids.has(asset.id))
     .sort((a, b) => a.source.entry_index - b.source.entry_index || a.label.localeCompare(b.label));
 }
 

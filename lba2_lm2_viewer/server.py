@@ -17,6 +17,7 @@ from typing import Any
 
 from . import lba_hqr
 from .animation import parse_lba2_animation_records, playback_frame_indices
+from .catalog_graph import build_catalog_graph, query_compatible
 from .entities import (
     build_asset_entity_workflow,
     build_runtime_sprite_entity_workflow,
@@ -210,6 +211,7 @@ class ViewerServer:
         self.last_model: dict[str, Any] | None = None
         self.asset_root: Path | None = None
         self.catalog: dict[str, Any] | None = None
+        self.catalog_graph = None
         self.palette: list[int] | None = None
         self.texture_atlas: dict[str, Any] | None = None
         self.decode_progress = DecodeProgress()
@@ -223,6 +225,7 @@ class ViewerServer:
     def clear_loaded_assets(self) -> None:
         self.last_model = None
         self.catalog = None
+        self.catalog_graph = None
         self.palette = None
         self.texture_atlas = None
 
@@ -234,6 +237,7 @@ class ViewerServer:
             self.asset_root = resolved
             try:
                 self.catalog = build_catalog(resolved, self.decode_progress)
+                self.attach_catalog_graph_projection()
                 self.decode_progress.update(
                     label="Loading palette and texture atlas", phase="finalizing"
                 )
@@ -255,6 +259,7 @@ class ViewerServer:
             self.asset_root = resolved_root
             try:
                 self.catalog = build_catalog(resolved_root, self.decode_progress, files)
+                self.attach_catalog_graph_projection()
                 self.decode_progress.update(
                     label="Loading palette and texture atlas", phase="finalizing"
                 )
@@ -274,6 +279,38 @@ class ViewerServer:
         except Lm2Error:
             self.palette = None
             self.texture_atlas = None
+
+    def attach_catalog_graph_projection(self) -> None:
+        if self.catalog is None:
+            self.catalog_graph = None
+            return
+        self.catalog_graph = build_catalog_graph(self.catalog)
+        compatibility_by_model: dict[str, list[dict[str, Any]]] = {}
+        for model_id, animation_ids in self.catalog_graph.indexes.get("compatibleAnimationsByModelId", {}).items():
+            compatible = query_compatible(self.catalog_graph, str(model_id))
+            edges_by_animation = {
+                edge.get("from", "").removeprefix("asset:"): edge
+                for edge in compatible.get("edges") or []
+            }
+            compatibility_by_model[str(model_id)] = [
+                {
+                    "animationId": animation_id,
+                    "compatibilityReason": (edges_by_animation.get(animation_id) or {}).get("compatibilityReason"),
+                    "proofScope": (edges_by_animation.get(animation_id) or {}).get("proofScope"),
+                    "evidenceStatus": (edges_by_animation.get(animation_id) or {}).get("evidenceStatus"),
+                    "sourceRule": (edges_by_animation.get(animation_id) or {}).get("sourceRule"),
+                    "sourceField": (edges_by_animation.get(animation_id) or {}).get("sourceField"),
+                    "indexRule": (edges_by_animation.get(animation_id) or {}).get("indexRule"),
+                }
+                for animation_id in animation_ids
+            ]
+        self.catalog["graph"] = {
+            "schema": "catalog_graph.catalog_projection.v0",
+            "indexes": {
+                "compatibleAnimationsByModelId": self.catalog_graph.indexes.get("compatibleAnimationsByModelId", {}),
+            },
+            "compatibilityByModelId": compatibility_by_model,
+        }
 
     def load_catalog_palette(self) -> list[int] | None:
         if self.catalog is None:
@@ -371,6 +408,13 @@ class ViewerServer:
             raise Lm2Error("no catalog loaded")
         state = self.resolve_runtime_sprite_object(request)
         return build_runtime_sprite_entity_workflow(self.catalog, state)
+
+    def catalog_graph_compatible(self, model_id: str) -> dict[str, Any]:
+        if self.catalog is None:
+            raise Lm2Error("no catalog loaded")
+        if self.catalog_graph is None:
+            self.attach_catalog_graph_projection()
+        return query_compatible(self.catalog_graph, model_id)
 
     def export_evidence_context(
         self, asset: dict[str, Any], proof_scope: str
@@ -2012,6 +2056,7 @@ class ViewerServer:
                     "/api/catalog/pick-files": self.handle_catalog_pick_files,
                     "/api/catalog/load": self.handle_catalog_load,
                     "/api/catalog/export": self.handle_catalog_export,
+                    "/api/catalog-graph/compatible": self.handle_catalog_graph_compatible,
                     "/api/animation/pose": self.handle_animation_pose,
                     "/api/animation/sequence": self.handle_animation_sequence,
                     "/api/runtime/sprite-resolve": self.handle_runtime_sprite_resolve,
@@ -2299,6 +2344,10 @@ class ViewerServer:
                     output_dir,
                     str(request.get("polygon_mode") or "original"),
                 )
+
+            def handle_catalog_graph_compatible(self) -> dict[str, Any]:
+                request = self.read_json_body()
+                return server_state.catalog_graph_compatible(str(request["model_id"]))
 
             def handle_animation_pose(self) -> dict[str, Any]:
                 request = self.read_json_body()
