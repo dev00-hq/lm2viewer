@@ -18,6 +18,13 @@ port contracts.
 Future remake review is out of product scope until real candidate assets and
 review workflows exist.
 
+The catalog graph is the shared evidence substrate behind app decisions. The UI,
+backend APIs, CLI queries, exports, and future port joins must consume
+graph-backed relationships and operation projections instead of re-deriving the
+same facts from local catalog fields. The deeper graph vocabulary lives in
+`docs/catalog-graph-model.md`; this document defines how the workbench uses
+that graph.
+
 ## Current Boundary
 
 The active boundary is original-runtime evidence and port behavioral
@@ -41,6 +48,44 @@ The viewer must make these tasks direct:
 A successful preview cannot upgrade evidence status by itself. Unknown,
 decoded-only, render-only, source-backed, live-confirmed, and port-implied
 states must remain visible and distinct.
+
+## Catalog Graph Authority
+
+The graph builder in `lba2_lm2_viewer/catalog_graph.py` is the canonical owner
+for relationship semantics. Frontend TypeScript may render graph projections,
+hold local UI state, and choose presentation details; it must not become a
+second place that decides selection identity, relationship meaning,
+compatibility, export provenance, scene/resource ownership, or port evidence
+strength.
+
+Graph-backed app decisions must use operation-specific projections rather than
+vague relationship labels. A relationship can prove that two nodes are linked
+without proving that a viewer operation is allowed. For example, model-animation
+compatibility evidence may support a compatibility list, but pose/playback
+eligibility must either use the same graph-backed operation contract or expose a
+distinct `poseEligible`/`playbackEligible` style projection with tests.
+
+The design contract depends on these graph concepts:
+
+- `catalog graph`: the typed in-memory property graph built from the current
+  catalog payload.
+- `graph projection`: a narrow backend/query response shaped for one consumer,
+  such as selection, compatibility, inspector sections, workspace suggestion,
+  export provenance, search, or port filtering.
+- `proofScope` and `evidenceStatus`: required evidence filters for deciding how
+  strongly a relationship can be used.
+- `MissingTarget`: explicit negative evidence for unresolved asset/resource
+  references.
+- `ScriptReference`: a script-level reference that must not be collapsed into
+  direct runtime usage.
+- `File3DRecord`: runtime resolver evidence for generic body/animation slots.
+- `export provenance`: graph edge and node evidence that explains why an export
+  belongs to a selected target and how it should be interpreted later.
+
+Negative evidence is first-class. Missing targets, unknown evidence, deferred
+raw payloads, direct usage versus script reference, File3D resolver records, and
+operation-specific eligibility must be visible to users and query consumers
+when they affect a decision.
 
 ## Port Integration
 
@@ -104,9 +149,10 @@ The canonical layout must be:
 
 `Explorer Dock -> Workspace -> Inspector Dock -> Evidence/Timeline Panel`
 
-The viewer must be driven by one global selection. All workspaces, inspector
-sections, export state, timeline strips, and evidence panels must update from
-that selection.
+The viewer must be driven by one graph-backed global selection. All workspaces,
+inspector sections, workspace suggestions, export state, timeline strips, and
+evidence panels must update from that selection through backend graph
+projections or query responses.
 
 ### Selection Union
 
@@ -136,10 +182,19 @@ Each selection must expose:
 - preview actions
 - export actions, when supported
 - compatibility or confidence status
+- relevant edge evidence, including `proofScope`, `evidenceStatus`,
+  `sourceRule`, `sourceField`, and `indexRule` where the selection depends on a
+  relationship
 
 Selection can show a non-destructive workspace suggestion. It must not
 auto-switch workspaces without user action unless the current workspace cannot
 display the selected target.
+
+Selection identity and workspace suggestion are graph projection decisions, not
+frontend stable-id string parsing decisions. Stable ids remain visible and
+copyable, but the UI must not split ids to infer ownership, route the
+workspace, decide exportability, or invent relationship evidence for migrated
+selection types.
 
 ### Canonical Ids
 
@@ -154,6 +209,12 @@ selection, frame, usage, export, or evidence row.
 
 The explorer is a semantic HQR catalog, not a raw filesystem tree.
 
+Explorer is one projection of the catalog graph. It is not the graph schema
+owner, and its grouping must not collapse distinct graph meanings such as
+archive containment, runtime usage, script reference, compatibility,
+range/frame containment, and missing target evidence into one implied
+parent/child ownership model.
+
 Minimum facets:
 
 - asset kind
@@ -167,6 +228,11 @@ Minimum facets:
 Text search remains available for labels, ids, source paths, direct code
 references, unknown descriptors, scene usage text, script references, and
 semantic metadata.
+
+Search results should prefer graph-backed node and edge evidence over embedded
+catalog stats when a migrated projection exists. Result explanations should say
+why a match exists, especially for `ScriptReference`, `MissingTarget`,
+direct scene usage, File3D resolver evidence, and export provenance matches.
 
 The catalog list must avoid decorative thumbnails unless the thumbnail carries
 falsification data such as frame id, palette source, dimensions, offset,
@@ -194,13 +260,22 @@ resource inspection instead of preserving both paths.
 
 Workspace switching must preserve selection and inspector state.
 
+Workspace availability and workspace suggestion are graph-backed projection
+fields. A workspace may still choose presentation controls locally, but it must
+not maintain a parallel rule that reinterprets `asset.kind`,
+`semantic_layout`, or stable-id fragments after that selection type has been
+migrated.
+
 ## Inspector Dock
 
 The inspector is shared across workspaces. It adapts to the current selection
 instead of each workspace inventing a separate detail model.
 
-Inspector rows should come from a structured section model, not branchy HTML
-string blobs. Section ids are stable API/UI concepts.
+Inspector rows should come from a graph-aware structured section model, not
+branchy HTML string blobs. Section ids are stable API/UI concepts, and section
+membership for migrated types should be driven by node/edge metadata or backend
+graph projections rather than parallel frontend `asset.kind +
+semantic_layout` inference.
 
 Default section order:
 
@@ -233,6 +308,13 @@ Defaults:
 First migration target: move existing catalog detail branches and Entity View
 sections into this section model. Do not keep the old detail blob as a hidden
 fallback once the canonical inspector section is implemented.
+
+Inspector relationship sections must preserve graph distinctions. Scene usage,
+script links, visual links, File3D resolver records, resource records, and
+missing targets are different evidence claims even when they point toward the
+same stable id. Rows that depend on relationships must expose the relevant
+`proofScope`, `evidenceStatus`, `sourceRule`, `sourceField`, and `indexRule`
+when available.
 
 ## Evidence And Timeline Panel
 
@@ -338,6 +420,18 @@ Runtime usage is often a higher-value selection than a raw asset. A selected
 usage such as `SCENE.HQR:44 object 7` must be able to drive the model, sprite,
 resource, and inspector workspaces through linked visuals.
 
+Scene/entity relationship views must consume graph edges for migrated types.
+They must distinguish direct scene object state from script references and must
+show unresolved visual/resource links as `MissingTarget` evidence instead of
+hiding them behind absent rows. File3D resolver evidence must remain explicit:
+generic runtime slots, `File3DRecord` rows, resolved BODY/ANIM assets, and
+unresolved targets are separate evidence concepts.
+
+The current migrated scene relationship surface is the scene object table's
+File3D/Visuals relationship cells. Those cells consume
+`graph.sceneObjectRelationshipsByStableId`; sampled object payload fields may
+still provide non-relationship facts such as flags, position, and render type.
+
 ## Resource Workspace
 
 Resources must be inspected by semantic layout, not by generic byte payload.
@@ -358,6 +452,12 @@ Each resource inspector must expose preview, source identity, semantic layout,
 scene usage, direct references, export support, unknowns, and raw evidence
 without making nonvisual resources compete with model/sprite controls.
 
+Resource ownership, resource record identity, direct references, and export
+eligibility should be graph-backed as those projections become available.
+Embedded resource stats may feed graph construction, but migrated UI decisions
+must not keep a second authority path over `sampled_records`, text links, or
+scene usage arrays.
+
 ## Export Rules
 
 Export is an explicit evidence action on the current selection.
@@ -370,12 +470,16 @@ The manifest is authoritative and must preserve:
 
 - selected asset id
 - source archive/index
+- selected graph node id and stable id where available
 - raw and decoded hashes where available
 - options used
 - coordinate or palette context
 - warnings
 - generated files
 - provenance relevant to the port
+- graph edge evidence relevant to the export, especially `proofScope`,
+  `evidenceStatus`, `sourceRule`, `sourceField`, `indexRule`, and
+  `MissingTarget` context where applicable
 
 Current exportable surfaces:
 
@@ -391,9 +495,15 @@ Current exportable surfaces:
 
 Do not silently export, auto-migrate, or create alternate compatibility paths.
 
+Export routing and export provenance are graph-backed decisions for migrated
+types. Frontend and backend export code must not independently infer
+exportability from `asset.kind`, `semantic_layout`, or stale scene usage arrays
+once a graph projection owns that decision.
+
 ## Contract Vocabulary
 
-The active contract vocabulary is `Compatibility Contract`.
+The active contract vocabulary is `Compatibility Contract`. It is interpreted
+through graph evidence, operation projections, and port-facing proof filters.
 
 It maps onto current model/entity contracts and evidence manifests. It is not a
 new visible UI feature by itself.
@@ -409,6 +519,12 @@ It preserves original gameplay-facing behavior:
 - runtime render role
 - script/entity implications
 - source provenance and confidence
+
+Graph compatibility is relationship evidence. Operation contracts must name
+what the viewer is allowed to do with that evidence: display as compatible,
+pose one frame, play a sequence, export an evidence bundle, or promote a
+port-facing implication. These operation names must remain testable and cannot
+silently diverge across CLI, backend API, frontend UI, and export paths.
 
 The reserved future vocabulary is `Remake Intent Contract`.
 
@@ -434,22 +550,38 @@ unless explicitly deferred in a tracked issue. Do not keep hidden alternate UI,
 old routing, compatibility adapters, fallback detail renderers, or temporary
 second paths.
 
+Graph migration follows the same rule. When a decision moves to a graph
+projection or graph query, remove the superseded local authority in the same
+milestone unless a tracked risk explicitly defers removal. The catalog payload
+may still provide raw facts that build the graph, but app decisions should have
+one canonical authority path.
+
 Implementation order:
 
-1. Define global selection state and stable ids.
-2. Split catalog browsing from inspector state.
-3. Move existing asset detail and Entity View detail into structured inspector
+1. Define graph-backed global selection state and stable ids.
+2. Split catalog browsing from graph-backed inspector and workspace state.
+3. Make model-animation playback/pose eligibility use the graph-backed
+   compatibility operation contract end to end.
+4. Add the smallest selection/workspace graph projection needed to stop
+   frontend stable-id splitting for migrated selection types.
+5. Move existing asset detail and Entity View detail into structured inspector
    sections.
-4. Promote `Model`, `Sprite`, `Scene/Entity`, and `Resource` to peer
+6. Promote `Model`, `Sprite`, `Scene/Entity`, and `Resource` to peer
    workspaces.
-5. Move playback and visual controls beside their visuals.
-6. Replace dense blobs with named inspector sections.
-7. Add frame strips and usage strips only where they shorten a listed
+7. Move playback and visual controls beside their visuals.
+8. Replace dense blobs with named inspector sections.
+9. Add frame strips and usage strips only where they shorten a listed
    falsification check.
-8. Delete superseded sidebar/tab code.
+10. Delete superseded sidebar/tab/local-authority code.
 
 Each step must preserve one canonical current-state implementation. Do not add
 compatibility bridges for old UI shapes or local states.
+
+Keep `docs/catalog-graph-model.md`, `docs/catalog-graph-probes.md`, and
+`docs/catalog-graph-queries.md` synchronized when graph vocabulary, projection
+contracts, or UI authority changes. `docs/design.md` should name the authority
+boundary; the graph docs should carry the detailed node, edge, query, and probe
+vocabulary.
 
 ## Validation
 

@@ -1,6 +1,6 @@
 import type { PolygonEvidence } from './ui/uvInspector';
 import type { ResourceRecordEvidence } from './ui/resourceWorkspace';
-import type { AnimationSequenceFrame, AnimationSequencePayload, CatalogAsset, EntityContract, EntityWorkflowPayload, Lm2Model, ResourceStats, RuntimeSpriteResolvePayload, SceneAssetUsage, SpritePayload } from './types';
+import type { AnimationSequenceFrame, AnimationSequencePayload, CatalogAsset, CatalogGraphSelectionProjection, EntityContract, EntityWorkflowPayload, Lm2Model, ResourceStats, RuntimeSpriteResolvePayload, SceneAssetUsage, SpritePayload } from './types';
 
 export type SelectionKind =
   | 'asset'
@@ -71,6 +71,11 @@ export interface AppSelection {
   exportActions: SelectionAction[];
   compatibilityStatus?: string;
   workspaceSuggestion?: 'model' | 'sprite' | 'entity' | 'resource';
+  inspectorRoute?: string;
+  exportCapability?: {
+    exportable: boolean;
+    source?: string;
+  };
   facets?: Record<string, string | number | boolean | null | undefined>;
   evidence?: {
     entityContract?: EntityContract;
@@ -121,8 +126,15 @@ export function selectionFromCatalogAsset(
     exportable?: boolean;
     workspaceSuggestion?: AppSelection['workspaceSuggestion'];
     compatibilityStatus?: string;
+    graphSelection?: CatalogGraphSelectionProjection;
   } = {},
 ): AppSelection {
+  if (asset.kind === 'model' || asset.kind === 'resource') {
+    if (!options.graphSelection) {
+      throw new Error(`Missing graph selection projection for migrated ${asset.kind} asset ${asset.id}`);
+    }
+    return selectionFromGraphProjection(options.graphSelection, options);
+  }
   return {
     kind: 'asset',
     stableId: asset.id,
@@ -137,6 +149,36 @@ export function selectionFromCatalogAsset(
     compatibilityStatus: options.compatibilityStatus,
     workspaceSuggestion: options.workspaceSuggestion ?? workspaceForAsset(asset),
     facets: facetsForAsset(asset),
+  };
+}
+
+function selectionFromGraphProjection(
+  projection: CatalogGraphSelectionProjection,
+  options: {
+    workspaceSuggestion?: AppSelection['workspaceSuggestion'];
+    compatibilityStatus?: string;
+  },
+): AppSelection {
+  return {
+    kind: projection.kind as SelectionKind,
+    stableId: projection.stableId,
+    label: projection.label,
+    source: projection.source,
+    provenance: projection.provenance,
+    evidenceStatus: projection.evidenceStatus as EvidenceStatus,
+    links: projection.links.map((link) => ({
+      kind: link.kind as SelectionKind | 'asset',
+      stableId: link.stableId,
+      label: link.label,
+    })),
+    unknowns: projection.unknowns,
+    previewActions: projection.previewActions,
+    exportActions: projection.exportActions,
+    exportCapability: projection.exportCapability,
+    inspectorRoute: projection.inspectorRoute,
+    compatibilityStatus: options.compatibilityStatus || projection.compatibilityStatus,
+    workspaceSuggestion: options.workspaceSuggestion || projection.workspaceSuggestion,
+    facets: projection.facets,
   };
 }
 

@@ -26,7 +26,7 @@ python scripts/catalog_graph_probe.py --graph-json temp/catalog-graph.json scene
 | Direct usage vs script reference | `SCENE.HQR:2`, assets with `script_*` usages | Initial-state usage edges use `scene_object_state`; script links use `SCRIPT_REFERENCES` and `script_reference`. Same endpoint evidence remains two edges. | Unit-covered with focused synthetic endpoint duplicate. |
 | Runtime sprite backend | `SPRITE_3D`, `SPRIRAW.HQR:0`, `SPRITES.HQR:*`, `ANIM3DS.HQR:*` | Backend comes from runtime flags/index rule, not asset kind guessing. Low direct `SPRITES.HQR` slots are not resolved by calling projected sprite rules. | Unit-covered for `SPRIRAW`, `SPRITES`, and `ANIM3DS` backend selection. |
 | ANIM3DS range/frame | `ANIM3DS.HQR:127`, `ANIM3DS.HQR:0` | `SpriteRange -> RANGE_CONTAINS_FRAME -> frame asset`, with range table separate from scene FPS/timing. | Implemented; graph range/frame/table identity unit-covered. |
-| Compatibility | `BODY.HQR:2`, `ANIM.HQR:2` | `COMPATIBLE_WITH` is `classic_source_rule`, `source_backed`, `file3d_allowlist`. Bone-count-only remains weaker and separate. | Automated CLI and unit coverage. |
+| Compatibility | `BODY.HQR:2`, `ANIM.HQR:2` | `COMPATIBLE_WITH` is `classic_source_rule`, `source_backed`, `file3d_allowlist`. Bone-count-only remains weaker and separate. Pose/playback validation consumes the graph operation projection and rejects missing graph edges, including allow-list mismatch, bone-count mismatch, and non-`BODY.HQR` allow-list cases. | Automated CLI and unit coverage. |
 | Empty relationships | `BODY.HQR:2`, `BODY.HQR:29` | `BODY.HQR:2` has no known scene usage but compatibility edges; `BODY.HQR:29` has many incoming scene usage edges. | CLI validated. |
 | Resource records | `RESS.HQR:48`, `SAMPLES.HQR:0`, `SCREEN.HQR:0` | Resource subrecords are payload-local nodes with `RESOURCE_RECORD_OF`; sample/screen index rules are preserved. | Unit coverage for `RESS.HQR:48`; broader manual. |
 | Proof-scope filtering | `BODY.HQR:2`, `BODY.HQR:29` | `--proof-scope` and `--evidence-status` return only matching edges. | CLI validated. |
@@ -34,6 +34,9 @@ python scripts/catalog_graph_probe.py --graph-json temp/catalog-graph.json scene
 | Negative evidence | missing samples/text/video, runtime sprite, raw/deferred entries | Missing targets should be explicit `MissingTarget` or unknown/deferred evidence, not absent relationships. | Unit-covered for missing script sample/text/video targets and unresolved runtime sprite graph targets; broader real-catalog raw/deferred coverage remains unresolved. |
 | Export/import reuse | `temp/catalog-graph.json` | Build once with `build --output`; query with `--graph-json` without rebuilding the catalog. Export carries metadata and stale-cache warning. | Unit-covered for deterministic synthetic export/import; real CLI gate required per slice. |
 | App consumer | Model workspace animation compatibility | Frontend compatibility filtering and labels consume backend graph projection, not local `compatible_body_ids`/bone-count rules. | Frontend build-covered and browser-validated in `docs/validation-catalog-graph-compatibility-2026-05-07.md`. |
+| App consumer | Model asset selection | Model asset active selection consumes `graph.selectionByAssetId`, including selected node id, workspace suggestion, inspector route, export capability/action, direct scene usage count, total relationship link count, and usage/script edge evidence. | Unit-covered and browser-validated in `docs/validation-m3-model-selection-2026-05-07.md`. |
+| App consumer | Resource asset selection | Resource asset active selection consumes `graph.selectionByAssetId`, including workspace suggestion, inspector route, source provenance, export capability/action based on semantic layout, and usage/script edge evidence. | Unit-covered and browser-validated in `docs/validation-m4-resource-selection-2026-05-07.md` and `docs/validation-m5-inspector-routing-2026-05-07.md`. |
+| App consumer | Scene object relationship rows | Scene object table File3D/Visuals cells consume `graph.sceneObjectRelationshipsByStableId`, including File3D/body/animation/sprite roles, missing sprite targets, and edge evidence fields. | Unit-covered and browser-validated in `docs/validation-m6-scene-object-relationships-2026-05-07.md`. |
 
 ## Representative Assertions
 
@@ -125,3 +128,16 @@ Keep a probe manual or exploratory when:
   `ANIM3DS.HQR:0`/`:1` as frame assets.
 - The server catalog projection exposes graph-backed compatibility data for
   frontend consumers.
+- Backend pose/sequence validation uses the graph-backed
+  `catalog_graph.animation_operation_compatibility.v0` projection instead of a
+  separate `server.py` compatibility helper.
+- Model and resource asset selection use
+  `catalog_graph.selection_projection.v0` from the backend catalog graph
+  projection. The frontend requires this projection for migrated assets and no
+  longer derives their workspace/export/inspector-route selection fields from
+  local frontend rules.
+- Scene object relationship rows use
+  `catalog_graph.scene_object_relationship_projection.v0` from the backend
+  catalog graph projection. The frontend no longer derives the scene object
+  table's File3D/body/animation/sprite relationship cells from compact
+  `sampled_objects[].links`.

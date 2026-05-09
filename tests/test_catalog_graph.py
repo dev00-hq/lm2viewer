@@ -3,6 +3,8 @@ import unittest
 from lba2_lm2_viewer.catalog_graph import (
     asset_node_id_for,
     build_catalog_graph,
+    catalog_scene_object_relationship_projection,
+    catalog_selection_projection,
     export_graph_document,
     file3d_record_node_id_for,
     graph_from_export_document,
@@ -24,6 +26,7 @@ def synthetic_catalog() -> dict[str, object]:
             {"path": "ANIM.HQR", "entry_count": 221},
             {"path": "ANIM3DS.HQR", "entry_count": 128},
             {"path": "RESS.HQR", "entry_count": 49},
+            {"path": "SAMPLES.HQR", "entry_count": 2},
         ],
         "assets": [
             {
@@ -183,6 +186,19 @@ def synthetic_catalog() -> dict[str, object]:
                     "semantic_layout": "acf_name_list",
                     "decode_status": "decoded",
                     "sampled_records": [{"index": 0, "preview": "INTRO"}],
+                },
+            },
+            {
+                "id": "SAMPLES.HQR:0",
+                "kind": "resource",
+                "label": "Magic ball sample",
+                "entry_type": "sample",
+                "source": {"hqr": "SAMPLES.HQR", "entry_index": 0},
+                "decoded_bytes": 12,
+                "stats": {
+                    "semantic_layout": "sample_wave_audio",
+                    "decode_status": "decoded",
+                    "source_provenance": "HQF_Init sample runtime id uses zero-based sample index.",
                 },
             },
             {
@@ -416,6 +432,84 @@ class CatalogGraphTests(unittest.TestCase):
         self.assertIn("ANIM.HQR:2", server.catalog["graph"]["indexes"]["compatibleAnimationsByModelId"]["BODY.HQR:2"])  # type: ignore[index]
         self.assertEqual(projected["compatibilityReason"], "file3d_allowlist")
         self.assertEqual(compatible["edges"][0]["proofScope"], "classic_source_rule")
+
+    def test_model_asset_selection_projection_uses_graph_usage_edges(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog_without_reverse_usages())
+
+        selection = catalog_selection_projection(graph)["BODY.HQR:29"]
+
+        self.assertEqual(selection["stableId"], "BODY.HQR:29")
+        self.assertEqual(selection["workspaceSuggestion"], "model")
+        self.assertEqual(selection["inspectorRoute"], "model")
+        self.assertTrue(selection["exportCapability"]["exportable"])
+        self.assertEqual(selection["exportActions"][0]["targetAssetId"], "BODY.HQR:29")
+        self.assertEqual(selection["links"][0]["stableId"], "SCENE.HQR:2#object:2")
+        self.assertEqual(selection["links"][0]["proofScope"], "scene_object_state")
+        self.assertEqual(selection["links"][1]["proofScope"], "script_reference")
+
+    def test_server_catalog_projection_exposes_model_selection_projection(self) -> None:
+        server = ViewerServer(None, None)
+        server.catalog = synthetic_catalog_without_reverse_usages()
+        server.attach_catalog_graph_projection()
+
+        selection = server.catalog["graph"]["selectionByAssetId"]["BODY.HQR:29"]  # type: ignore[index]
+
+        self.assertEqual(selection["nodeId"], asset_node_id_for("BODY.HQR:29"))
+        self.assertEqual(selection["facets"]["sceneUsageCount"], 1)
+        self.assertEqual(selection["facets"]["relationshipLinkCount"], 2)
+
+    def test_resource_asset_selection_projection_drives_workspace_and_export(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog())
+
+        sample_selection = catalog_selection_projection(graph)["SAMPLES.HQR:0"]
+        table_selection = catalog_selection_projection(graph)["RESS.HQR:48"]
+
+        self.assertEqual(sample_selection["workspaceSuggestion"], "resource")
+        self.assertEqual(sample_selection["inspectorRoute"], "sample_audio")
+        self.assertEqual(sample_selection["provenance"], "HQF_Init sample runtime id uses zero-based sample index.")
+        self.assertEqual(sample_selection["evidenceStatus"], "source_backed")
+        self.assertTrue(sample_selection["exportCapability"]["exportable"])
+        self.assertEqual(sample_selection["exportActions"][0]["targetAssetId"], "SAMPLES.HQR:0")
+        self.assertEqual(sample_selection["facets"]["semanticLayout"], "sample_wave_audio")
+        self.assertEqual(sample_selection["facets"]["decodedBytes"], 12)
+        self.assertEqual(table_selection["workspaceSuggestion"], "resource")
+        self.assertEqual(table_selection["inspectorRoute"], "runtime_table")
+        self.assertFalse(table_selection["exportCapability"]["exportable"])
+        self.assertEqual(table_selection["exportActions"], [])
+
+    def test_scene_object_relationship_projection_preserves_graph_edges_and_missing_targets(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog_without_reverse_usages())
+
+        projection = catalog_scene_object_relationship_projection(graph)["SCENE.HQR:2#object:2"]
+        edge_types = {edge["type"] for edge in projection["edges"]}
+        visual_links = {link["role"]: link for link in projection["visualLinks"]}
+        sprite_edge = next(edge for edge in projection["edges"] if edge["type"] == "USES_AS_SPRITE")
+
+        self.assertIn("HAS_FILE3D_RECORD", edge_types)
+        self.assertIn("USES_AS_BODY", edge_types)
+        self.assertIn("USES_AS_ANIMATION", edge_types)
+        self.assertIn("USES_AS_SPRITE", edge_types)
+        self.assertEqual(visual_links["file3d"]["stableId"], "RESS.HQR:44#file3d:7")
+        self.assertEqual(visual_links["body"]["stableId"], "BODY.HQR:29")
+        self.assertEqual(visual_links["animation"]["stableId"], "ANIM.HQR:220")
+        self.assertEqual(visual_links["sprite"]["stableId"], "SPRITES.HQR:999")
+        self.assertFalse(visual_links["sprite"]["targetAvailable"])
+        self.assertEqual(sprite_edge["to"]["type"], "MissingTarget")
+        self.assertEqual(sprite_edge["proofScope"], "scene_object_state")
+        self.assertEqual(sprite_edge["evidenceStatus"], "unknown")
+        self.assertEqual(sprite_edge["sourceField"], "SceneObject.links.sprite.asset_id / SceneAssetUsage.target_asset_id")
+        self.assertEqual(sprite_edge["indexRule"], "InitSprite selects SPRITES.HQR when SPRITE_3D is set, ANIM_3DS is clear, and Sprite >= 100.")
+
+    def test_server_catalog_projection_exposes_scene_object_relationship_projection(self) -> None:
+        server = ViewerServer(None, None)
+        server.catalog = synthetic_catalog_without_reverse_usages()
+        server.attach_catalog_graph_projection()
+
+        projection = server.catalog["graph"]["sceneObjectRelationshipsByStableId"]["SCENE.HQR:2#object:2"]  # type: ignore[index]
+
+        self.assertEqual(projection["nodeId"], "scene-object:SCENE.HQR:2:2")
+        self.assertEqual(projection["visualLinks"][1]["role"], "body")
+        self.assertEqual(projection["visualLinks"][3]["stableId"], "SPRITES.HQR:999")
 
 
 if __name__ == "__main__":

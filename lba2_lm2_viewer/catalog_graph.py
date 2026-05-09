@@ -259,6 +259,8 @@ def add_archives_and_assets(graph: CatalogGraph, catalog: dict[str, Any], assets
                 "label": f"{archive}:{entry_index}",
                 "stableId": f"{archive}:{entry_index}",
                 "source": source,
+                "decodedSha256": asset.get("decoded_sha256"),
+                "relativePath": asset.get("relative_path"),
                 "evidenceStatus": evidence_status_for_asset(asset),
             }
         )
@@ -273,6 +275,28 @@ def add_archives_and_assets(graph: CatalogGraph, catalog: dict[str, Any], assets
                 "assetKind": asset.get("kind"),
                 "entryType": asset.get("entry_type"),
                 "semanticLayout": (asset.get("stats") or {}).get("semantic_layout")
+                if isinstance(asset.get("stats"), dict)
+                else None,
+                "decodedBytes": asset.get("decoded_bytes"),
+                "modelBoneCount": (asset.get("stats") or {}).get("bones")
+                if asset.get("kind") == "model" and isinstance(asset.get("stats"), dict)
+                else None,
+                "animationBoneframes": (asset.get("stats") or {}).get("boneframes")
+                if asset.get("kind") == "animation" and isinstance(asset.get("stats"), dict)
+                else None,
+                "sourceProvenance": (asset.get("stats") or {}).get("source_provenance")
+                if isinstance(asset.get("stats"), dict)
+                else None,
+                "runtimeReferenceStatus": (asset.get("stats") or {}).get("runtime_reference_status")
+                if isinstance(asset.get("stats"), dict)
+                else None,
+                "decodeStatus": (asset.get("stats") or {}).get("decode_status")
+                if isinstance(asset.get("stats"), dict)
+                else None,
+                "decodeNote": (asset.get("stats") or {}).get("decode_note")
+                if isinstance(asset.get("stats"), dict)
+                else None,
+                "unknownDescriptors": (asset.get("stats") or {}).get("unknown_descriptors")
                 if isinstance(asset.get("stats"), dict)
                 else None,
             }
@@ -798,6 +822,8 @@ def add_compatibility_edges(graph: CatalogGraph, assets_by_id: dict[str, dict[st
                 model = assets_by_id.get(f"BODY.HQR:{body_index}")
                 if model is None:
                     continue
+                if (model.get("stats") or {}).get("bones") != boneframes:
+                    continue
                 add_compatibility_edge(graph, animation, model, "file3d_allowlist")
             continue
         for model in sorted(models_by_bones.get(boneframes, []), key=lambda item: str(item.get("id"))):
@@ -966,6 +992,387 @@ def query_prove(graph: CatalogGraph, model_id: str, animation_id: str) -> dict[s
         "proofs": sorted(edges, key=lambda edge: edge["id"]),
         "negativeEvidence": [] if edges else ["No compatible edge exists in the current graph projection."],
     }
+
+
+def query_animation_operation_compatibility(
+    graph: CatalogGraph,
+    model_id: str,
+    animation_id: str,
+    operation: str = "pose_playback",
+) -> dict[str, Any]:
+    model_node_id = asset_node_id_for(model_id)
+    animation_node_id = asset_node_id_for(animation_id)
+    model_node = graph.nodes_by_id.get(model_node_id)
+    animation_node = graph.nodes_by_id.get(animation_node_id)
+    proof = query_prove(graph, model_id, animation_id)
+
+    error: str | None = None
+    negative_evidence: list[str] = []
+    if model_node is None:
+        error = f"catalog asset is not in the graph: {model_id}"
+    elif model_node.get("assetKind") != "model":
+        error = f"catalog asset is not a model: {model_id}"
+    elif animation_node is None:
+        error = f"catalog asset is not in the graph: {animation_id}"
+    elif animation_node.get("assetKind") != "animation" or animation_node.get("entryType") != "animation":
+        error = f"catalog asset is not a decoded animation: {animation_id}"
+    elif proof["compatible"]:
+        error = None
+    else:
+        error = animation_operation_negative_reason(graph, model_node, animation_node)
+        negative_evidence.append(error)
+
+    eligible = error is None and bool(proof["compatible"])
+    return {
+        "schema": "catalog_graph.animation_operation_compatibility.v0",
+        "operation": operation,
+        "modelId": model_id,
+        "animationId": animation_id,
+        "eligible": eligible,
+        "compatible": bool(proof["compatible"]),
+        "relationship": "COMPATIBLE_WITH",
+        "proofs": proof["proofs"],
+        "negativeEvidence": negative_evidence if negative_evidence else proof["negativeEvidence"],
+        "error": None if eligible else error,
+    }
+
+
+def animation_operation_negative_reason(
+    graph: CatalogGraph,
+    model_node: dict[str, Any],
+    animation_node: dict[str, Any],
+) -> str:
+    model_bones = model_node.get("modelBoneCount")
+    animation_boneframes = animation_node.get("animationBoneframes")
+    if model_bones != animation_boneframes:
+        return (
+            f"animation bone count {animation_boneframes} does not match "
+            f"model bone count {model_bones}"
+        )
+
+    allow_list = file3d_allow_list_for_animation(graph, str(animation_node["id"]))
+    model_id = str(model_node.get("stableId") or stable_id_from_node_id(str(model_node["id"])))
+    if allow_list:
+        return (
+            f"animation {animation_node.get('stableId')} is linked to BODY.HQR entries "
+            f"{allow_list}, not {model_id}"
+        )
+    return "No compatible edge exists in the current graph projection."
+
+
+def file3d_allow_list_for_animation(graph: CatalogGraph, animation_node_id: str) -> list[int]:
+    body_ids: list[int] = []
+    for edge_id in graph.outgoing_by_node_id.get(animation_node_id, []):
+        edge = graph.edges_by_id[edge_id]
+        if (
+            edge.get("type") != "COMPATIBLE_WITH"
+            or edge.get("compatibilityReason") != "file3d_allowlist"
+        ):
+            continue
+        stable_id = stable_id_from_node_id(str(edge.get("to")))
+        if not stable_id.startswith("BODY.HQR:"):
+            continue
+        try:
+            body_ids.append(int(stable_id.split(":", 1)[1]))
+        except ValueError:
+            continue
+    return sorted(set(body_ids))
+
+
+def catalog_selection_projection(graph: CatalogGraph) -> dict[str, dict[str, Any]]:
+    selections: dict[str, dict[str, Any]] = {}
+    for node in graph.sorted_nodes():
+        if node.get("type") != "Asset" or node.get("assetKind") not in {"model", "resource"}:
+            continue
+        stable_id = str(node.get("stableId"))
+        selections[stable_id] = asset_selection_projection(graph, node)
+    return selections
+
+
+def catalog_scene_object_relationship_projection(graph: CatalogGraph) -> dict[str, dict[str, Any]]:
+    relationships: dict[str, dict[str, Any]] = {}
+    for node in graph.sorted_nodes():
+        if node.get("type") != "SceneObject":
+            continue
+        stable_id = str(node.get("stableId"))
+        relationships[stable_id] = scene_object_relationship_projection(graph, node)
+    return relationships
+
+
+def scene_object_relationship_projection(graph: CatalogGraph, node: dict[str, Any]) -> dict[str, Any]:
+    node_id = str(node.get("id"))
+    edges = [scene_object_relationship_edge_projection(graph, node_id, edge) for edge in graph.node_edges(node_id, "both")]
+    return {
+        "schema": "catalog_graph.scene_object_relationship_projection.v0",
+        "kind": "scene_object_relationships",
+        "nodeId": node_id,
+        "stableId": node.get("stableId") or stable_id_from_node_id(node_id),
+        "label": node.get("label") or node_id,
+        "source": node.get("source") or {},
+        "evidenceStatus": node.get("evidenceStatus") or "unknown",
+        "edges": edges,
+        "visualLinks": scene_object_visual_links_from_edges(edges),
+    }
+
+
+def scene_object_relationship_edge_projection(
+    graph: CatalogGraph, owner_node_id: str, edge: dict[str, Any]
+) -> dict[str, Any]:
+    from_node_id = str(edge.get("from"))
+    to_node_id = str(edge.get("to"))
+    direction = "out" if from_node_id == owner_node_id else "in" if to_node_id == owner_node_id else "incident"
+    return {
+        "id": edge.get("id"),
+        "type": edge.get("type"),
+        "relationship": edge.get("relationship"),
+        "direction": direction,
+        "from": relationship_endpoint_projection(graph, from_node_id),
+        "to": relationship_endpoint_projection(graph, to_node_id),
+        "proofScope": edge.get("proofScope"),
+        "evidenceStatus": edge.get("evidenceStatus"),
+        "sourceRule": edge.get("sourceRule"),
+        "sourceField": edge.get("sourceField"),
+        "indexRule": edge.get("indexRule"),
+        "usageKind": edge.get("usageKind"),
+    }
+
+
+def relationship_endpoint_projection(graph: CatalogGraph, node_id: str) -> dict[str, Any]:
+    node = graph.nodes_by_id.get(node_id, {})
+    return {
+        "nodeId": node_id,
+        "type": node.get("type") or "Unknown",
+        "stableId": node.get("stableId") or stable_id_from_node_id(node_id),
+        "label": node.get("label") or stable_id_from_node_id(node_id),
+        "evidenceStatus": node.get("evidenceStatus") or "unknown",
+    }
+
+
+def scene_object_visual_links_from_edges(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    roles = {
+        "HAS_FILE3D_RECORD": "file3d",
+        "USES_AS_BODY": "body",
+        "USES_AS_ANIMATION": "animation",
+        "USES_AS_SPRITE": "sprite",
+    }
+    links: list[dict[str, Any]] = []
+    for edge in edges:
+        role = roles.get(str(edge.get("type")))
+        if not role or edge.get("direction") != "out":
+            continue
+        target = edge.get("to") if isinstance(edge.get("to"), dict) else {}
+        links.append(
+            {
+                "role": role,
+                "stableId": target.get("stableId"),
+                "label": target.get("label") or target.get("stableId"),
+                "targetType": target.get("type"),
+                "targetAvailable": target.get("type") != "MissingTarget",
+                "proofScope": edge.get("proofScope"),
+                "evidenceStatus": edge.get("evidenceStatus"),
+                "sourceRule": edge.get("sourceRule"),
+                "sourceField": edge.get("sourceField"),
+                "indexRule": edge.get("indexRule"),
+            }
+        )
+    role_order = {"file3d": 0, "body": 1, "animation": 2, "sprite": 3}
+    return sorted(links, key=lambda link: (role_order.get(str(link.get("role")), 99), str(link.get("stableId"))))
+
+
+def asset_selection_projection(graph: CatalogGraph, node: dict[str, Any]) -> dict[str, Any]:
+    stable_id = str(node.get("stableId"))
+    source = node.get("source") if isinstance(node.get("source"), dict) else {}
+    workspace = workspace_for_node(node)
+    usage_edge_ids = graph.indexes.get("sceneUsagesByAssetId", {}).get(stable_id, [])
+    usage_links = selection_links_for_usage_edges(graph, usage_edge_ids)
+    direct_scene_usage_count = sum(
+        1
+        for edge_id in usage_edge_ids
+        if graph.edges_by_id.get(edge_id, {}).get("proofScope") == "scene_object_state"
+    )
+    export_actions = []
+    exportable = is_exportable_asset_node(node)
+    if exportable:
+        export_actions.append(
+            {
+                "id": "export_catalog_asset",
+                "label": "Export evidence bundle",
+                "targetAssetId": stable_id,
+            }
+        )
+    return {
+        "schema": "catalog_graph.selection_projection.v0",
+        "kind": "asset",
+        "nodeId": node.get("id"),
+        "stableId": stable_id,
+        "label": node.get("label") or stable_id,
+        "source": {
+            "archive": source.get("hqr"),
+            "entryIndex": source.get("entry_index"),
+            "classicIndex": source.get("classic_index"),
+            "rawSha256": source.get("raw_sha256"),
+            "decodedSha256": node.get("decodedSha256"),
+            "relativePath": node.get("relativePath"),
+        },
+        "provenance": provenance_for_asset_node(node),
+        "evidenceStatus": node.get("evidenceStatus") or "unknown",
+        "links": usage_links[:12],
+        "unknowns": unknowns_for_asset_node(node),
+        "previewActions": [
+            {
+                "id": "open_workspace",
+                "label": f"Open {workspace or node.get('assetKind') or 'asset'} workspace",
+                "targetAssetId": stable_id,
+            }
+        ] if workspace else [],
+        "exportActions": export_actions,
+        "exportCapability": {
+            "exportable": exportable,
+            "source": "catalog_graph.selection_projection.v0",
+        },
+        "inspectorRoute": inspector_route_for_asset_node(node),
+        "workspaceSuggestion": workspace,
+        "facets": {
+            "archive": source.get("hqr"),
+            "entryIndex": source.get("entry_index"),
+            "kind": node.get("assetKind"),
+            "entryType": node.get("entryType"),
+            "semanticLayout": node.get("semanticLayout"),
+            "decodedBytes": node.get("decodedBytes"),
+            "sceneUsageCount": direct_scene_usage_count,
+            "relationshipLinkCount": len(usage_edge_ids),
+            "graphNodeId": node.get("id"),
+        },
+    }
+
+
+def provenance_for_asset_node(node: dict[str, Any]) -> str:
+    source = node.get("source") if isinstance(node.get("source"), dict) else {}
+    for key in ("sourceProvenance", "runtimeReferenceStatus", "decodeNote"):
+        value = node.get(key)
+        if value:
+            return str(value)
+    if source.get("hqr") is not None:
+        return f"{source.get('hqr')}[{source.get('entry_index')}]"
+    return str(node.get("stableId") or node.get("id"))
+
+
+def unknowns_for_asset_node(node: dict[str, Any]) -> list[str]:
+    descriptors = node.get("unknownDescriptors")
+    if isinstance(descriptors, list) and descriptors:
+        unknowns: list[str] = []
+        for descriptor in descriptors[:8]:
+            if not isinstance(descriptor, dict):
+                continue
+            unknowns.append(f"{descriptor.get('section')}: {descriptor.get('note')}")
+        return unknowns
+    decode_status = node.get("decodeStatus")
+    if decode_status and decode_status != "decoded":
+        return [f"{decode_status}: {node.get('decodeNote')}"]
+    return []
+
+
+def is_exportable_asset_node(node: dict[str, Any]) -> bool:
+    if node.get("assetKind") == "model":
+        return True
+    if node.get("assetKind") != "resource":
+        return False
+    return node.get("semanticLayout") in {
+        "sample_wave_audio",
+        "lba2_texture_atlas_indexed",
+        "lba2_indexed_image_256",
+        "screen_indexed_image_640x480",
+        "bkg_grid_map",
+        "bkg_brick_graphic",
+        "holomap_plan_image_640x480",
+        "text_payload_bank",
+        "smacker_video",
+    }
+
+
+def inspector_route_for_asset_node(node: dict[str, Any]) -> str | None:
+    if node.get("assetKind") == "model":
+        return "model"
+    if node.get("assetKind") != "resource":
+        return None
+    layout = node.get("semanticLayout")
+    if layout == "sample_wave_audio":
+        return "sample_audio"
+    if layout == "smacker_video":
+        return "smacker_video"
+    if layout == "text_order_table":
+        return "text_order"
+    if layout == "text_payload_bank":
+        return "text_payload"
+    if layout in {
+        "lba2_palette",
+        "screen_palette",
+        "xpl_palette_bundle",
+        "lba2_texture_atlas_indexed",
+        "lba2_indexed_image_256",
+        "screen_indexed_image_640x480",
+    }:
+        return "palette_image"
+    if layout in {
+        "file3d_table",
+        "sprite_zv_table",
+        "ress_offset_record_table",
+        "ress_fixed_s16x8_table",
+        "ress_ext_size_info",
+        "acf_name_list",
+    }:
+        return "runtime_table"
+    if layout in {
+        "holomap_globe_uv_map",
+        "holomap_globe_altitude_map",
+        "holomap_globe_texture_map",
+        "holomap_arrow_table",
+        "holomap_plan_image_640x480",
+        "holomap_plan_view_params",
+    }:
+        return "holomap"
+    if layout in {
+        "bkg_header",
+        "bkg_grid_map",
+        "bkg_grm_fragment",
+        "bkg_block_table",
+        "bkg_brick_graphic",
+        "bkg_cube_map",
+    }:
+        return "background"
+    if layout == "ress_unclassified_payload":
+        return "unclassified_resource"
+    return None
+
+
+def selection_links_for_usage_edges(graph: CatalogGraph, edge_ids: list[str]) -> list[dict[str, Any]]:
+    links: list[dict[str, Any]] = []
+    def edge_sort_key(edge_id: str) -> tuple[int, str]:
+        edge = graph.edges_by_id.get(edge_id, {})
+        priority = 0 if edge.get("proofScope") == "scene_object_state" else 1
+        return (priority, edge_id)
+
+    for edge_id in sorted(edge_ids, key=edge_sort_key):
+        edge = graph.edges_by_id.get(edge_id)
+        if not edge:
+            continue
+        source_node_id = str(edge.get("from"))
+        source_node = graph.nodes_by_id.get(source_node_id, {})
+        stable_id = str(source_node.get("stableId") or stable_id_from_node_id(source_node_id))
+        node_type = source_node.get("type")
+        links.append(
+            {
+                "kind": "scene_object" if node_type == "SceneObject" else "scene_usage",
+                "stableId": stable_id,
+                "label": source_node.get("label") or stable_id,
+                "proofScope": edge.get("proofScope"),
+                "evidenceStatus": edge.get("evidenceStatus"),
+                "sourceRule": edge.get("sourceRule"),
+                "sourceField": edge.get("sourceField"),
+                "indexRule": edge.get("indexRule"),
+            }
+        )
+    return links
 
 
 def query_export(graph: CatalogGraph, stable_id: str | None) -> dict[str, Any]:

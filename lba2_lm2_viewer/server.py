@@ -17,7 +17,13 @@ from typing import Any
 
 from . import lba_hqr
 from .animation import parse_lba2_animation_records, playback_frame_indices
-from .catalog_graph import build_catalog_graph, query_compatible
+from .catalog_graph import (
+    build_catalog_graph,
+    catalog_scene_object_relationship_projection,
+    catalog_selection_projection,
+    query_animation_operation_compatibility,
+    query_compatible,
+)
 from .entities import (
     build_asset_entity_workflow,
     build_runtime_sprite_entity_workflow,
@@ -170,40 +176,6 @@ def png_chunk(kind: bytes, data: bytes) -> bytes:
     )
 
 
-def animation_compatibility_error(
-    body_asset: dict[str, Any], animation_asset: dict[str, Any]
-) -> str | None:
-    if animation_asset.get("kind") != "animation" or animation_asset.get("entry_type") != "animation":
-        return "catalog asset is not a decoded animation"
-    animation_stats = animation_asset.get("stats") or {}
-    body_stats = body_asset.get("stats") or {}
-    if animation_stats.get("boneframes") != body_stats.get("bones"):
-        return (
-            f"animation bone count {animation_stats.get('boneframes')} does not match "
-            f"model bone count {body_stats.get('bones')}"
-        )
-    metadata = animation_asset.get("animation_metadata") or {}
-    compatible_body_ids = metadata.get("compatible_body_ids") or []
-    if (
-        body_asset.get("source", {}).get("hqr") == "BODY.HQR"
-        and compatible_body_ids
-        and body_asset.get("source", {}).get("entry_index") not in compatible_body_ids
-    ):
-        return (
-            f"animation {animation_asset.get('id')} is linked to BODY.HQR entries "
-            f"{compatible_body_ids}, not {body_asset.get('id')}"
-        )
-    return None
-
-
-def ensure_animation_compatible(
-    body_asset: dict[str, Any], animation_asset: dict[str, Any]
-) -> None:
-    error = animation_compatibility_error(body_asset, animation_asset)
-    if error is not None:
-        raise Lm2Error(error)
-
-
 class ViewerServer:
     def __init__(self, initial_path: Path | None, asset_root: Path | None) -> None:
         self.initial_path = initial_path
@@ -310,6 +282,8 @@ class ViewerServer:
                 "compatibleAnimationsByModelId": self.catalog_graph.indexes.get("compatibleAnimationsByModelId", {}),
             },
             "compatibilityByModelId": compatibility_by_model,
+            "selectionByAssetId": catalog_selection_projection(self.catalog_graph),
+            "sceneObjectRelationshipsByStableId": catalog_scene_object_relationship_projection(self.catalog_graph),
         }
 
     def load_catalog_palette(self) -> list[int] | None:
@@ -415,6 +389,27 @@ class ViewerServer:
         if self.catalog_graph is None:
             self.attach_catalog_graph_projection()
         return query_compatible(self.catalog_graph, model_id)
+
+    def ensure_animation_operation_compatible(
+        self,
+        body_asset: dict[str, Any],
+        animation_asset: dict[str, Any],
+        operation: str = "pose_playback",
+    ) -> None:
+        if self.catalog is None:
+            raise Lm2Error("no catalog loaded")
+        if self.catalog_graph is None:
+            self.attach_catalog_graph_projection()
+        result = query_animation_operation_compatibility(
+            self.catalog_graph,
+            str(body_asset.get("id")),
+            str(animation_asset.get("id")),
+            operation=operation,
+        )
+        if not result["eligible"]:
+            raise Lm2Error(
+                str(result.get("error") or "animation is not graph-compatible with the selected model")
+            )
 
     def export_evidence_context(
         self, asset: dict[str, Any], proof_scope: str
@@ -1899,7 +1894,7 @@ class ViewerServer:
                 or animation_asset.get("entry_type") != "animation"
             ):
                 raise Lm2Error(f"catalog asset is not a decoded animation: {animation_id}")
-            ensure_animation_compatible(body_asset, animation_asset)
+            self.ensure_animation_operation_compatible(body_asset, animation_asset)
 
             body_payload, _ = read_hqr_payload(self.asset_root, body_asset["source"])
             animation_payload, _ = read_hqr_payload(
@@ -1941,7 +1936,7 @@ class ViewerServer:
                 or animation_asset.get("entry_type") != "animation"
             ):
                 raise Lm2Error(f"catalog asset is not a decoded animation: {animation_id}")
-            ensure_animation_compatible(body_asset, animation_asset)
+            self.ensure_animation_operation_compatible(body_asset, animation_asset)
 
             body_payload, _ = read_hqr_payload(self.asset_root, body_asset["source"])
             animation_payload, _ = read_hqr_payload(

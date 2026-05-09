@@ -146,11 +146,108 @@ export interface CatalogGraphProjection {
     compatibleAnimationsByModelId?: Record<string, string[]>;
   };
   compatibilityByModelId?: Record<string, CatalogGraphCompatibility[]>;
+  selectionByAssetId?: Record<string, CatalogGraphSelectionProjection>;
+  sceneObjectRelationshipsByStableId?: Record<string, CatalogGraphSceneObjectRelationshipProjection>;
 }
 
 export interface CatalogGraphCompatibility {
   animationId: string;
   compatibilityReason?: 'file3d_allowlist' | 'bone_count_only' | string;
+  proofScope?: string;
+  evidenceStatus?: string;
+  sourceRule?: string;
+  sourceField?: string;
+  indexRule?: string;
+}
+
+export interface CatalogGraphSelectionProjection {
+  schema: 'catalog_graph.selection_projection.v0' | string;
+  kind: 'asset' | string;
+  nodeId: string;
+  stableId: string;
+  label: string;
+  source?: {
+    archive?: string;
+    entryIndex?: number;
+    classicIndex?: number;
+    rawSha256?: string;
+    decodedSha256?: string;
+    relativePath?: string;
+  };
+  provenance: string;
+  evidenceStatus: string;
+  links: Array<{
+    kind: string;
+    stableId: string;
+    label: string;
+    proofScope?: string;
+    evidenceStatus?: string;
+    sourceRule?: string;
+    sourceField?: string;
+    indexRule?: string;
+  }>;
+  unknowns: string[];
+  previewActions: Array<{
+    id: string;
+    label: string;
+    targetAssetId?: string;
+  }>;
+  exportActions: Array<{
+    id: string;
+    label: string;
+    targetAssetId?: string;
+  }>;
+  exportCapability?: {
+    exportable: boolean;
+    source?: string;
+  };
+  inspectorRoute?: string;
+  workspaceSuggestion?: 'model' | 'sprite' | 'entity' | 'resource';
+  compatibilityStatus?: string;
+  facets?: Record<string, string | number | boolean | null | undefined>;
+}
+
+export interface CatalogGraphSceneObjectRelationshipProjection {
+  schema: 'catalog_graph.scene_object_relationship_projection.v0' | string;
+  kind: 'scene_object_relationships' | string;
+  nodeId: string;
+  stableId: string;
+  label: string;
+  source?: Record<string, unknown>;
+  evidenceStatus: string;
+  edges: CatalogGraphRelationshipEdgeProjection[];
+  visualLinks: CatalogGraphSceneObjectVisualLink[];
+}
+
+export interface CatalogGraphRelationshipEndpoint {
+  nodeId: string;
+  type: string;
+  stableId: string;
+  label: string;
+  evidenceStatus: string;
+}
+
+export interface CatalogGraphRelationshipEdgeProjection {
+  id: string;
+  type: string;
+  relationship?: string;
+  direction: 'in' | 'out' | 'incident' | string;
+  from: CatalogGraphRelationshipEndpoint;
+  to: CatalogGraphRelationshipEndpoint;
+  proofScope?: string;
+  evidenceStatus?: string;
+  sourceRule?: string;
+  sourceField?: string;
+  indexRule?: string;
+  usageKind?: string;
+}
+
+export interface CatalogGraphSceneObjectVisualLink {
+  role: 'file3d' | 'body' | 'animation' | 'sprite' | string;
+  stableId: string;
+  label?: string;
+  targetType?: string;
+  targetAvailable: boolean;
   proofScope?: string;
   evidenceStatus?: string;
   sourceRule?: string;

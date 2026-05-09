@@ -102,6 +102,89 @@ participate in search unless noted.
 | ANIM3DS ranges | One range contains `1..n` frame entries; one frame can belong to `0..n` ranges. |
 | Resource records | One resource asset has `0..n` payload-local records; one record belongs to `1` resource asset. |
 
+## Operation Contracts
+
+`COMPATIBLE_WITH` is currently sufficient for the viewer's model-animation
+pose/playback operation. Backend pose and sequence validation must call the
+graph operation query instead of re-reading `animation_metadata` or comparing
+bone counts independently.
+
+The operation contract is:
+
+- File3D allow-list compatibility creates a `COMPATIBLE_WITH` edge only when
+  the listed `BODY.HQR` model exists and its decoded bone count matches the
+  animation boneframe count.
+- Bone-count-only compatibility creates a weaker `COMPATIBLE_WITH` edge only
+  when no File3D allow-list metadata exists for that animation.
+- A missing edge means pose/playback is not eligible. The graph operation query
+  returns negative evidence such as bone-count mismatch, File3D allow-list
+  mismatch, or no compatible edge.
+- Non-`BODY.HQR` models follow the same graph contract as every other model:
+  they are eligible only when a `COMPATIBLE_WITH` edge exists.
+
+If a future viewer operation needs looser or stricter semantics than
+`COMPATIBLE_WITH`, add a distinct operation projection and tests instead of
+adding another local validator.
+
+## Selection Projections
+
+The HTTP catalog projection now includes
+`catalog_graph.selection_projection.v0` records under `selectionByAssetId` for
+migrated model and resource assets.
+
+Current migrated asset selection projection fields include:
+
+- selected graph node id and stable id;
+- source archive/index/hash fields;
+- evidence status;
+- workspace suggestion;
+- inspector route;
+- export capability and export actions;
+- preview and export actions;
+- graph-backed usage/script relationship links with edge evidence fields;
+- direct scene usage count separated from total relationship link count.
+
+Frontend model-asset and resource-asset selection must consume this projection.
+It may render or copy the fields locally, but it must not re-derive migrated
+selection identity, workspace suggestion, exportability, or relationship links
+from `asset.kind`, `semantic_layout`, `scene_usages`, or stable-id string
+parsing.
+
+Resource exportability is a graph projection decision for migrated resource
+assets. The current exportable resource semantic layouts are
+`sample_wave_audio`, `lba2_texture_atlas_indexed`, `lba2_indexed_image_256`,
+`screen_indexed_image_640x480`, `bkg_grid_map`, `bkg_brick_graphic`,
+`holomap_plan_image_640x480`, `text_payload_bank`, and `smacker_video`.
+
+Inspector routing is also graph-projected for migrated model/resource assets.
+Current routes are `model`, `sample_audio`, `smacker_video`, `text_order`,
+`text_payload`, `palette_image`, `runtime_table`, `holomap`, `background`, and
+`unclassified_resource`. Frontend code may call the existing renderer for that
+route, but it must not rediscover the route from `asset.kind +
+semantic_layout` for migrated selections.
+
+## Scene Object Relationship Projections
+
+The HTTP catalog projection includes
+`catalog_graph.scene_object_relationship_projection.v0` records under
+`sceneObjectRelationshipsByStableId` for scene objects materialized by the
+graph.
+
+Current migrated scene object relationship projection fields include:
+
+- selected scene object graph node id and stable id;
+- decoded object source fields;
+- incident edge projections with endpoint node type, stable id, and label;
+- edge `proofScope`, `evidenceStatus`, `sourceRule`, `sourceField`, and
+  `indexRule`;
+- `visualLinks` for `file3d`, `body`, `animation`, and `sprite` roles,
+  including `MissingTarget` targets.
+
+The scene object table's File3D and Visuals columns consume this projection.
+They must not re-derive body, animation, sprite, or missing visual target ids
+from `SceneStats.reconnaissance.sampled_objects[].links` once the projection is
+present.
+
 ## Proof Scopes
 
 | Scope | Meaning |

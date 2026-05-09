@@ -45,6 +45,25 @@ python -m lba2_lm2_viewer catalog-graph --asset-root <root> build --output temp/
 | `build` | Versioned full graph JSON written to disk. | Reusable offline graph snapshot for repeated agent/port queries. |
 | `export` | Full graph or root subgraph JSON on stdout. | Machine-readable graph snapshot for agents, scripts, or port tooling. |
 
+Backend pose/playback uses the same graph contract through the internal
+`catalog_graph.animation_operation_compatibility.v0` projection. That projection
+wraps the `COMPATIBLE_WITH` proof and returns `eligible`, operation name,
+proofs, and negative evidence. It is intentionally internal until a CLI or HTTP
+consumer needs it.
+
+The HTTP catalog payload also exposes internal
+`catalog_graph.selection_projection.v0` records for migrated model/resource
+asset selection under `graph.selectionByAssetId`. These records are the UI
+authority for migrated selection identity, workspace suggestion, export action,
+export capability, inspector route, and graph-backed relationship links.
+
+For migrated scene object relationship rows, the HTTP catalog payload exposes
+`catalog_graph.scene_object_relationship_projection.v0` records under
+`graph.sceneObjectRelationshipsByStableId`. These records are the UI authority
+for scene object File3D/body/animation/sprite relationship display and preserve
+edge endpoints, `MissingTarget`, `proofScope`, `evidenceStatus`, `sourceRule`,
+`sourceField`, and `indexRule`.
+
 ## JSON Rules
 
 - Responses include `schema`; full graph exports use `catalog_graph.export.v1`.
@@ -112,6 +131,42 @@ python -m lba2_lm2_viewer catalog-graph --asset-root <root> build --output temp/
 }
 ```
 
+## Example: Scene Object Relationship Projection
+
+```json
+{
+  "schema": "catalog_graph.scene_object_relationship_projection.v0",
+  "stableId": "SCENE.HQR:2#object:2",
+  "visualLinks": [
+    {
+      "role": "file3d",
+      "stableId": "RESS.HQR:44#file3d:7",
+      "targetType": "File3DRecord",
+      "proofScope": "scene_object_state"
+    },
+    {
+      "role": "sprite",
+      "stableId": "SPRITES.HQR:999",
+      "targetType": "MissingTarget",
+      "targetAvailable": false,
+      "proofScope": "scene_object_state",
+      "evidenceStatus": "unknown"
+    }
+  ],
+  "edges": [
+    {
+      "type": "USES_AS_SPRITE",
+      "to": {
+        "type": "MissingTarget",
+        "stableId": "SPRITES.HQR:999"
+      },
+      "sourceField": "SceneObject.links.sprite.asset_id / SceneAssetUsage.target_asset_id",
+      "indexRule": "Runtime sprite index resolves through SPRITE_3D/ANIM_3DS flags."
+    }
+  ]
+}
+```
+
 ## Example: Prove Compatibility
 
 ```json
@@ -133,10 +188,39 @@ python -m lba2_lm2_viewer catalog-graph --asset-root <root> build --output temp/
 }
 ```
 
+## Example: Pose/Playback Operation
+
+```json
+{
+  "schema": "catalog_graph.animation_operation_compatibility.v0",
+  "operation": "pose_playback",
+  "modelId": "BODY.HQR:2",
+  "animationId": "ANIM.HQR:2",
+  "eligible": true,
+  "compatible": true,
+  "relationship": "COMPATIBLE_WITH",
+  "proofs": [
+    {
+      "type": "COMPATIBLE_WITH",
+      "proofScope": "classic_source_rule",
+      "evidenceStatus": "source_backed",
+      "compatibilityReason": "file3d_allowlist"
+    }
+  ],
+  "negativeEvidence": []
+}
+```
+
 ## Agent And Port Usage Notes
 
 - Agents should prefer `explain`, `edges`, `scene-object`, and `prove` before
   inspecting raw catalog payloads.
+- UI agents validating migrated model or resource selection should confirm
+  `graph.selectionByAssetId[assetId]` exists before relying on frontend
+  selection state.
+- UI agents validating migrated scene relationship rows should confirm
+  `graph.sceneObjectRelationshipsByStableId[sceneObjectStableId]` exists before
+  relying on the File3D or Visuals table cells.
 - Port checks should filter by `proofScope` and `evidenceStatus`; decoded-only
   evidence must not be treated as live proof.
 - Promotion packet joins should use scene usage edges and explicit
