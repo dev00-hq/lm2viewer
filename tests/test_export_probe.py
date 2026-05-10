@@ -865,6 +865,43 @@ class ExportProbeTests(unittest.TestCase):
             with self.assertRaisesRegex(server.Lm2Error, "catalog asset is not exportable"):
                 viewer_server.export_catalog_asset("LBA_BKG.HQR:4", Path(temp_dir) / "brick-export")
 
+    def test_viewer_server_rejects_non_exact_int_scene_background_links(self) -> None:
+        invalid_backgrounds = {
+            "missing_gri": {"resolved_bll_entry": 3},
+            "missing_bll": {"resolved_gri_entry": 1},
+            "string_gri": {"resolved_gri_entry": "1", "resolved_bll_entry": 3},
+            "string_bll": {"resolved_gri_entry": 1, "resolved_bll_entry": "3"},
+            "bool_gri": {"resolved_gri_entry": True, "resolved_bll_entry": 3},
+            "bool_bll": {"resolved_gri_entry": 1, "resolved_bll_entry": True},
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "assets"
+            root.mkdir()
+            scene_asset = {
+                "id": "SCENE.HQR:1",
+                "kind": "scene",
+                "label": "Scene 0",
+                "entry_type": "scene",
+                "source": {"hqr": "SCENE.HQR", "entry_index": 1},
+                "stats": {
+                    "semantic_layout": "scene_runtime_layout_partial",
+                    "reconnaissance": {"background": {}},
+                },
+            }
+            viewer_server = server.ViewerServer(None, None)
+            viewer_server.asset_root = root
+            viewer_server.catalog = {"assets": [scene_asset]}
+
+            for name, background in invalid_backgrounds.items():
+                with self.subTest(name=name):
+                    scene_asset["stats"]["reconnaissance"]["background"] = background
+                    with self.assertRaisesRegex(server.Lm2Error, "missing resolved background GRI/BLL"):
+                        viewer_server.export_catalog_asset("SCENE.HQR:1", Path(temp_dir) / f"{name}-export")
+                    with self.assertRaisesRegex(server.Lm2Error, "missing resolved background GRI/BLL"):
+                        viewer_server.scene_background_variant_compositions(scene_asset)
+                    with self.assertRaisesRegex(server.Lm2Error, "missing resolved background"):
+                        viewer_server.render_scene_background_preview_frames(scene_asset)
+
     def test_viewer_server_exports_scene_background_grm_variants(self) -> None:
         header = struct.pack(
             "<HHHHHHIIII",

@@ -1478,7 +1478,7 @@ class ViewerServer:
         background = reconnaissance.get("background") or {}
         gri_entry = background.get("resolved_gri_entry")
         bll_entry = background.get("resolved_bll_entry")
-        if not isinstance(gri_entry, int) or not isinstance(bll_entry, int):
+        if type(gri_entry) is not int or type(bll_entry) is not int:
             raise Lm2Error("scene is missing resolved background GRI/BLL links")
 
         output_dir = output_dir.expanduser().resolve()
@@ -1654,7 +1654,7 @@ class ViewerServer:
         background = reconnaissance.get("background") or {}
         gri_entry = background.get("resolved_gri_entry")
         bll_entry = background.get("resolved_bll_entry")
-        if not isinstance(gri_entry, int) or not isinstance(bll_entry, int):
+        if type(gri_entry) is not int or type(bll_entry) is not int:
             raise Lm2Error("scene is missing resolved background GRI/BLL links")
 
         read_bkg_entry = self.lba_bkg_entry_reader()
@@ -1673,7 +1673,7 @@ class ViewerServer:
             }
         ]
         for link in reconnaissance.get("grm_fragment_links") or []:
-            if not link.get("asset_available") or not isinstance(link.get("resolved_grm_entry"), int):
+            if not link.get("asset_available") or type(link.get("resolved_grm_entry")) is not int:
                 continue
             fragment_payload = read_bkg_entry(int(link["resolved_grm_entry"]))
             fragment = decode_bkg_grm_fragment(fragment_payload, include_cells=True)
@@ -1715,7 +1715,7 @@ class ViewerServer:
         reconnaissance = stats.get("reconnaissance") or {}
         background = reconnaissance.get("background") or {}
         bll_entry = background.get("resolved_bll_entry")
-        if not isinstance(bll_entry, int):
+        if type(bll_entry) is not int:
             raise Lm2Error("scene is missing resolved background BLL link")
         _base_composition, variants = self.scene_background_variant_compositions(asset)
         frames: list[dict[str, Any]] = []
@@ -1893,7 +1893,7 @@ class ViewerServer:
         stats = asset.get("stats") or {}
         fields = stats.get("fields") or {}
         bll_entry = fields.get("resolved_bll_entry")
-        if not isinstance(bll_entry, int):
+        if type(bll_entry) is not int:
             raise Lm2Error("BKG grid asset is missing resolved BLL entry")
 
         grid_payload, _ = read_hqr_payload(self.asset_root, asset["source"])
@@ -2221,7 +2221,10 @@ class ViewerServer:
                 stats = asset.get("stats") or {}
                 reconnaissance = stats.get("reconnaissance") or {}
                 background = reconnaissance.get("background") or {}
-                if not isinstance(background.get("resolved_gri_entry"), int):
+                if not (
+                    type(background.get("resolved_gri_entry")) is int
+                    and type(background.get("resolved_bll_entry")) is int
+                ):
                     return {"scene": asset}
                 frames = server_state.render_scene_background_preview_frames(asset)
                 enriched_asset = {

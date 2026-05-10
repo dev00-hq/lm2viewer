@@ -277,10 +277,18 @@ def add_archives_and_assets(graph: CatalogGraph, catalog: dict[str, Any], assets
                 if isinstance(asset.get("stats"), dict)
                 else None,
                 "sceneBackgroundResolved": (
-                    ((asset.get("stats") or {}).get("reconnaissance") or {})
-                    .get("background", {})
-                    .get("resolved_gri_entry")
-                    is not None
+                    type(
+                        ((asset.get("stats") or {}).get("reconnaissance") or {})
+                        .get("background", {})
+                        .get("resolved_gri_entry"),
+                    )
+                    is int
+                    and type(
+                        ((asset.get("stats") or {}).get("reconnaissance") or {})
+                        .get("background", {})
+                        .get("resolved_bll_entry"),
+                    )
+                    is int
                 )
                 if asset.get("kind") == "scene" and isinstance(asset.get("stats"), dict)
                 else None,

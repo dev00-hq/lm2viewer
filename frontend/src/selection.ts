@@ -267,7 +267,10 @@ export function selectionFromSpriteFrame(
     label: frame?.variant_label ? `${asset.label} ${frame.variant_label}` : asset.label,
     provenance: frame?.render_source || frame?.palette_source || provenanceForAsset(asset),
     evidenceStatus: frame?.format === 'bkg_grid_preview' || frame?.format === 'bkg_affgraph' ? 'render_only' : evidenceStatusForAsset(asset),
-    links: runtime?.asset_id && runtime.asset_id !== asset.id ? [{ kind: 'asset', stableId: runtime.asset_id, label: runtime.asset_id }] : linksForAsset(asset),
+    links: [
+      ...parentGraphLinks(asset, options.graphSelection),
+      ...(runtime?.asset_id && runtime.asset_id !== asset.id ? [{ kind: 'asset' as const, stableId: runtime.asset_id, label: runtime.asset_id }] : []),
+    ],
     facets: {
       frameVariant: frame?.variant,
       frameVariantLabel: frame?.variant_label,
@@ -279,7 +282,7 @@ export function selectionFromSpriteFrame(
       paletteSource: frame?.palette_source,
       backend: runtime?.backend,
       runtimeSpriteIndex: runtime?.runtime_sprite_index,
-      graphNodeId: baseSelection.facets?.graphNodeId,
+      graphNodeId: baseSelection.facets?.graphNodeId || options.graphSelection?.nodeId,
       relationshipLinkCount: baseSelection.facets?.relationshipLinkCount,
     },
     evidence: {

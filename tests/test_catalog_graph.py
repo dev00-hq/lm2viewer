@@ -1,4 +1,8 @@
+import json
+import threading
 import unittest
+import urllib.request
+from http.server import ThreadingHTTPServer
 
 from lba2_lm2_viewer.catalog_graph import (
     asset_node_id_for,
@@ -525,6 +529,78 @@ class CatalogGraphTests(unittest.TestCase):
         self.assertEqual(brick_selection["facets"]["semanticLayout"], "bkg_brick_graphic")
         self.assertFalse(brick_selection["exportCapability"]["exportable"])
         self.assertEqual(brick_selection["exportActions"], [])
+
+    def test_scene_selection_requires_exact_int_gri_and_bll_for_exportability(self) -> None:
+        invalid_backgrounds = {
+            "missing_gri": {"resolved_bll_entry": 3},
+            "missing_bll": {"resolved_gri_entry": 1},
+            "string_gri": {"resolved_gri_entry": "1", "resolved_bll_entry": 3},
+            "string_bll": {"resolved_gri_entry": 1, "resolved_bll_entry": "3"},
+            "bool_gri": {"resolved_gri_entry": True, "resolved_bll_entry": 3},
+            "bool_bll": {"resolved_gri_entry": 1, "resolved_bll_entry": True},
+        }
+        for name, background in invalid_backgrounds.items():
+            with self.subTest(name=name):
+                catalog = synthetic_catalog()
+                scene = next(asset for asset in catalog["assets"] if asset["id"] == "SCENE.HQR:2")  # type: ignore[index]
+                scene["stats"]["reconnaissance"]["background"] = background  # type: ignore[index]
+                graph = build_catalog_graph(catalog)
+
+                selection = catalog_selection_projection(graph)["SCENE.HQR:2"]
+
+                self.assertEqual(selection["inspectorRoute"], "scene")
+                self.assertFalse(selection["exportCapability"]["exportable"])
+                self.assertEqual(selection["exportActions"], [])
+
+        catalog = synthetic_catalog()
+        scene = next(asset for asset in catalog["assets"] if asset["id"] == "SCENE.HQR:2")  # type: ignore[index]
+        scene["stats"]["reconnaissance"]["background"] = {  # type: ignore[index]
+            "resolved_gri_entry": 1,
+            "resolved_bll_entry": 3,
+        }
+        graph = build_catalog_graph(catalog)
+
+        selection = catalog_selection_projection(graph)["SCENE.HQR:2"]
+
+        self.assertTrue(selection["exportCapability"]["exportable"])
+        self.assertEqual(selection["exportActions"][0]["targetAssetId"], "SCENE.HQR:2")
+
+    def test_scene_load_does_not_preview_without_exact_int_gri_and_bll(self) -> None:
+        invalid_backgrounds = {
+            "missing_gri": {"resolved_bll_entry": 3},
+            "missing_bll": {"resolved_gri_entry": 1},
+            "string_gri": {"resolved_gri_entry": "1", "resolved_bll_entry": 3},
+            "string_bll": {"resolved_gri_entry": 1, "resolved_bll_entry": "3"},
+            "bool_gri": {"resolved_gri_entry": True, "resolved_bll_entry": 3},
+            "bool_bll": {"resolved_gri_entry": 1, "resolved_bll_entry": True},
+        }
+        for name, background in invalid_backgrounds.items():
+            with self.subTest(name=name):
+                catalog = synthetic_catalog()
+                scene = next(asset for asset in catalog["assets"] if asset["id"] == "SCENE.HQR:2")  # type: ignore[index]
+                scene["stats"]["reconnaissance"]["background"] = background  # type: ignore[index]
+                server = ViewerServer(None, None)
+                server.catalog = catalog
+                httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.handler_class())
+                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    request = urllib.request.Request(
+                        f"http://127.0.0.1:{httpd.server_port}/api/catalog/load",
+                        data=json.dumps({"id": "SCENE.HQR:2"}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(request, timeout=2) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                finally:
+                    httpd.shutdown()
+                    httpd.server_close()
+                    thread.join(2)
+
+                self.assertEqual(payload["scene"]["id"], "SCENE.HQR:2")
+                self.assertNotIn("sprite", payload)
+                self.assertNotIn("error", payload)
 
     def test_scene_object_relationship_projection_preserves_graph_edges_and_missing_targets(self) -> None:
         graph = build_catalog_graph(synthetic_catalog_without_reverse_usages())

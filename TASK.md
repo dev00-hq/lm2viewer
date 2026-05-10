@@ -52,8 +52,8 @@ relationship summaries, graph export actions, derived selection export
 inheritance, and removal of reverse `asset.scene_usages` as app-facing
 authority.
 
-This task remains open for completion hardening: tests, stale-state guards,
-durable browser evidence, and final cleanup.
+The completion-hardening slice is now closed: tests, stale-state guards,
+durable browser evidence, and final cleanup have been applied and validated.
 
 ## 3. Hard Constraints
 
@@ -261,7 +261,7 @@ Actions:
 Evidence:
 
 - `docs/validation-task-final-agent-browser-2026-05-10.md`
-- `docs/validation-task-final-agent-browser-2026-05-10.png`
+- `docs/validation-task-final-agent-browser-2026-05-10.jpg`
 
 Validation note should include URL, asset root, selected ids, expected state,
 observed state, screenshot path, and validation commands.
@@ -332,8 +332,8 @@ uv run python -m lba2_lm2_viewer --host 127.0.0.1 --port <port> --no-browser
 Recent validation reported:
 
 - `uv run python -m unittest tests.test_catalog_graph tests.test_export_probe tests.test_entities`
-  passed with 38 tests.
-- `uv run python -m unittest discover -s tests` passed with 152 tests.
+  passed with 42 tests.
+- `uv run python -m unittest discover -s tests` passed with 156 tests.
 - `fnm use 24.15.0; npm run build` passed, with the existing Vite large chunk
   warning.
 - `git diff --check` passed, with only CRLF normalization warnings.
@@ -341,21 +341,20 @@ Recent validation reported:
   graph usage strip, resource-record export action, `bkg_brick_graphic`
   non-exportability, and derived model-surface export inheritance.
 
-Known evidence weakness:
+Evidence note:
 
-- `docs/validation-task-gpt-final-fixes-2026-05-10.md` records that the saved
-  screenshot for the stale UV/details case predates the final clear fix. The
-  post-fix state was DOM-asserted, but a clean post-fix screenshot is still
-  needed.
+- Older `validation-task-gpt-*` files are historical. The current post-fix
+  browser evidence is `docs/validation-task-final-agent-browser-2026-05-10.md`
+  plus `docs/validation-task-final-agent-browser-2026-05-10.jpg`.
 
 ## 9. Risk Register
 
 | Risk | Likelihood | Impact | Mitigation | Status |
 | --- | ---: | ---: | --- | --- |
-| Graph exportability drifts from server export routes. | Medium | High | Add server negative test and parity coverage. | Open |
-| Inspector still shows stale details after a failed or zero-section selection. | Medium | Medium | Clear on unresolved assets and add final fallback. | Open |
-| Derived selections inherit export action but not relationship evidence. | Medium | Medium | Decide and document inheritance semantics. | Open |
-| Browser validation hits stale server or stale bundle. | Medium | Medium | Verify listener/process, rebuild, and record URL/asset root. | Open |
+| Graph exportability drifts from server export routes. | Low | High | Server negative test plus scene GRI/BLL parity coverage. | Closed |
+| Inspector still shows stale details after a failed or zero-section selection. | Low | Medium | Clear on unresolved assets and add final fallback. | Closed |
+| Derived selections inherit export action but not relationship evidence. | Low | Medium | Derived selections inherit graph relationship links, including sprite frames. | Closed |
+| Browser validation hits stale server or stale bundle. | Low | Medium | Verify listener/process, rebuild, and record URL/asset root. | Closed |
 | Graph projection size grows too quickly. | Medium | Medium | Prefer narrow operation projections and measure before broadening. | Monitoring |
 | Future agents treat all `semantic_layout` reads as migration bugs. | Medium | Medium | Keep decoder/render boundary documented here and in graph docs. | Monitoring |
 | Script evidence expectations exceed graph vocabulary. | Medium | Medium | Keep opcode-level rows local until graph explicitly models instructions. | Monitoring |
