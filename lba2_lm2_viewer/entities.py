@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from .catalog_graph import (
+    CatalogGraph,
+    build_catalog_graph,
+    catalog_scene_object_relationship_projection,
+    query_asset_usage_records,
+)
+
 
 SCENE_ARCHIVE_NAME = "SCENE.HQR"
 
 
-def build_asset_entity_workflow(catalog: dict[str, Any], asset_id: str) -> dict[str, Any]:
+def build_asset_entity_workflow(
+    catalog: dict[str, Any], asset_id: str, graph: CatalogGraph | None = None
+) -> dict[str, Any]:
+    graph = graph or build_catalog_graph(catalog)
     asset = find_asset(catalog, asset_id)
     if asset is None:
         return {
@@ -20,9 +30,9 @@ def build_asset_entity_workflow(catalog: dict[str, Any], asset_id: str) -> dict[
             "evidence_trail": [{"step": "entrypoint", "label": f"Selected asset {asset_id}"}],
             "unknowns": unknowns_for(None, None, []),
         }
-    usages = list(asset.get("scene_usages") or [])
+    usages = query_asset_usage_records(graph, asset_id)["usageRecords"]
     selected_usage = first_object_usage(usages)
-    entity = build_entity_contract(catalog, selected_usage) if selected_usage else None
+    entity = build_entity_contract(catalog, selected_usage, graph) if selected_usage else None
     return {
         "schema": "lba2_entity_workflow.v0",
         "entrypoint": {
@@ -44,8 +54,12 @@ def build_asset_entity_workflow(catalog: dict[str, Any], asset_id: str) -> dict[
 
 
 def build_scene_object_entity_workflow(
-    catalog: dict[str, Any], scene_asset_id: str, object_index: int
+    catalog: dict[str, Any],
+    scene_asset_id: str,
+    object_index: int,
+    graph: CatalogGraph | None = None,
 ) -> dict[str, Any]:
+    graph = graph or build_catalog_graph(catalog)
     scene_asset = find_asset(catalog, scene_asset_id)
     if scene_asset is None:
         return {
@@ -82,7 +96,7 @@ def build_scene_object_entity_workflow(
         "object_index": object_index,
         "resolution_rule": "direct sampled scene object row",
     }
-    entity = build_entity_contract(catalog, selected_usage)
+    entity = build_entity_contract(catalog, selected_usage, graph)
     return {
         "schema": "lba2_entity_workflow.v0",
         "entrypoint": {
@@ -104,15 +118,18 @@ def build_scene_object_entity_workflow(
 
 
 def build_runtime_sprite_entity_workflow(
-    catalog: dict[str, Any], runtime_state: dict[str, Any]
+    catalog: dict[str, Any],
+    runtime_state: dict[str, Any],
+    graph: CatalogGraph | None = None,
 ) -> dict[str, Any]:
+    graph = graph or build_catalog_graph(catalog)
     resolution = runtime_state.get("resolution") or {}
     asset_id = resolution.get("asset_id")
     asset = find_asset(catalog, asset_id) if isinstance(asset_id, str) else None
-    usages = list(asset.get("scene_usages") or []) if asset else []
+    usages = query_asset_usage_records(graph, asset_id)["usageRecords"] if asset and isinstance(asset_id, str) else []
     object_index = runtime_state.get("object_index")
     selected_usage = matching_runtime_usage(usages, object_index) or first_object_usage(usages)
-    entity = build_entity_contract(catalog, selected_usage) if selected_usage else None
+    entity = build_entity_contract(catalog, selected_usage, graph) if selected_usage else None
     return {
         "schema": "lba2_entity_workflow.v0",
         "entrypoint": {
@@ -167,7 +184,9 @@ def matching_runtime_usage(
 
 
 def build_entity_contract(
-    catalog: dict[str, Any], usage: dict[str, Any] | None
+    catalog: dict[str, Any],
+    usage: dict[str, Any] | None,
+    graph: CatalogGraph | None = None,
 ) -> dict[str, Any] | None:
     if not usage:
         return None
@@ -182,6 +201,7 @@ def build_entity_contract(
     runtime = (scene_object or {}).get("runtime") or {}
     scripts = script_summary(scene_object or {})
     links = (scene_object or {}).get("links") or {}
+    visual_links = graph_visual_links(graph, entity_id)
     sprite_link = links.get("sprite") if isinstance(links.get("sprite"), dict) else {}
     render_pipeline = runtime.get("render_pipeline") or {}
     return {
@@ -199,7 +219,7 @@ def build_entity_contract(
         ),
         "position": (scene_object or usage).get("position"),
         "render_backend": runtime.get("render_type") or render_backend_from_usage(usage),
-        "linked_visual_assets": linked_visual_assets(links),
+        "linked_visual_assets": visual_links if graph is not None else linked_visual_assets(links),
         "initial_state": {
             "flags": (scene_object or {}).get("flags", usage.get("flags")),
             "file3d_index": (scene_object or {}).get("file3d_index", usage.get("file3d_index")),
@@ -334,6 +354,35 @@ def linked_visual_assets(links: dict[str, Any]) -> list[dict[str, Any]]:
     return visuals
 
 
+def graph_visual_links(graph: CatalogGraph | None, entity_id: str) -> list[dict[str, Any]]:
+    if graph is None:
+        return []
+    relationships = catalog_scene_object_relationship_projection(graph).get(entity_id) or {}
+    visuals: list[dict[str, Any]] = []
+    for link in relationships.get("visualLinks") or []:
+        if not isinstance(link, dict):
+            continue
+        if link.get("role") == "file3d":
+            continue
+        stable_id = link.get("stableId")
+        if not stable_id:
+            continue
+        visuals.append(
+            {
+                "role": link.get("role"),
+                "asset_id": stable_id,
+                "asset_available": link.get("targetAvailable"),
+                "resolution_rule": link.get("sourceRule") or link.get("indexRule"),
+                "proofScope": link.get("proofScope"),
+                "evidenceStatus": link.get("evidenceStatus"),
+                "sourceRule": link.get("sourceRule"),
+                "sourceField": link.get("sourceField"),
+                "indexRule": link.get("indexRule"),
+            }
+        )
+    return visuals
+
+
 def script_summary(scene_object: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     result = {"asset_links": [], "local_links": [], "cross_script_links": []}
     for script_key in ("track_script_analysis", "life_script_analysis"):
@@ -454,7 +503,7 @@ def unknowns_for(
     if asset is None:
         unknowns.append({"field": "resolved_asset", "status": "unknown", "note": "No catalog asset resolved."})
     if not usages:
-        unknowns.append({"field": "scene_usages", "status": "unknown", "note": "No reverse scene usage is currently known for this asset."})
+        unknowns.append({"field": "graph_usage_records", "status": "unknown", "note": "No graph usage evidence is currently known for this asset."})
     if entity is None:
         unknowns.append({"field": "selected_entity", "status": "unknown", "note": "No scene entity could be selected from the available evidence."})
     elif entity.get("unknowns"):

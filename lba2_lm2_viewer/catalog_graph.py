@@ -147,7 +147,6 @@ def build_catalog_graph(catalog: dict[str, Any]) -> CatalogGraph:
 
     add_archives_and_assets(graph, catalog, assets)
     add_scene_projection(graph, assets_by_id)
-    add_reverse_usage_edges(graph, assets_by_id)
     add_anim3ds_ranges(graph, assets_by_id)
     add_resource_records(graph, assets_by_id)
     add_compatibility_edges(graph, assets_by_id)
@@ -277,6 +276,14 @@ def add_archives_and_assets(graph: CatalogGraph, catalog: dict[str, Any], assets
                 "semanticLayout": (asset.get("stats") or {}).get("semantic_layout")
                 if isinstance(asset.get("stats"), dict)
                 else None,
+                "sceneBackgroundResolved": (
+                    ((asset.get("stats") or {}).get("reconnaissance") or {})
+                    .get("background", {})
+                    .get("resolved_gri_entry")
+                    is not None
+                )
+                if asset.get("kind") == "scene" and isinstance(asset.get("stats"), dict)
+                else None,
                 "decodedBytes": asset.get("decoded_bytes"),
                 "modelBoneCount": (asset.get("stats") or {}).get("bones")
                 if asset.get("kind") == "model" and isinstance(asset.get("stats"), dict)
@@ -396,53 +403,6 @@ def add_scene_projection(graph: CatalogGraph, assets_by_id: dict[str, dict[str, 
                 if isinstance(link, dict):
                     add_scene_usage_edge(graph, asset, scene_object, link_kind, link, "scene_object_state")
             add_scene_script_reference_edges(graph, asset, scene_object)
-
-
-def add_reverse_usage_edges(graph: CatalogGraph, assets_by_id: dict[str, dict[str, Any]]) -> None:
-    for target_asset in sorted(assets_by_id.values(), key=lambda item: str(item.get("id"))):
-        target_asset_id = str(target_asset.get("id"))
-        for usage in target_asset.get("scene_usages") or []:
-            if not isinstance(usage, dict):
-                continue
-            scene_id = str(usage.get("scene_asset_id") or "")
-            if not scene_id:
-                continue
-            scene_asset = assets_by_id.get(scene_id) or {
-                "id": scene_id,
-                "label": usage.get("scene_label") or scene_id,
-                "source": {"hqr": "SCENE.HQR", "entry_index": usage.get("scene_entry_index")},
-            }
-            object_index = usage.get("object_index")
-            scene_object = {
-                "index": object_index if object_index is not None else "scene",
-                "position": usage.get("position"),
-                "file3d_index": usage.get("file3d_index"),
-                "gen_body": usage.get("gen_body"),
-                "gen_anim": usage.get("gen_anim"),
-                "sprite": usage.get("sprite"),
-                "flags": usage.get("flags"),
-            }
-            object_node_id = scene_object_node_id_for(scene_id, scene_object.get("index"))
-            graph.add_node(scene_object_node(scene_asset, scene_object))
-            if graph.nodes_by_id.get(scene_node_id_for(scene_id)) is None:
-                graph.add_node(
-                    {
-                        "id": scene_node_id_for(scene_id),
-                        "type": "Scene",
-                        "label": scene_asset.get("label") or scene_id,
-                        "stableId": scene_id,
-                        "source": scene_asset.get("source"),
-                        "evidenceStatus": evidence_status_for_asset(scene_asset),
-                    }
-                )
-            add_scene_usage_edge(
-                graph,
-                scene_asset,
-                scene_object,
-                str(usage.get("kind") or "unknown"),
-                {**usage, "asset_id": target_asset_id, "asset_available": target_asset_id in assets_by_id},
-                proof_scope_for_usage(usage),
-            )
 
 
 def add_scene_usage_edge(
@@ -949,6 +909,137 @@ def query_usages(
     }
 
 
+def query_asset_usage_records(graph: CatalogGraph, stable_id: str) -> dict[str, Any]:
+    edge_ids = graph.indexes.get("sceneUsagesByAssetId", {}).get(stable_id, [])
+    records = [
+        usage_record_from_edge(graph, graph.edges_by_id[edge_id])
+        for edge_id in edge_ids
+        if edge_id in graph.edges_by_id
+    ]
+    return {
+        "schema": "catalog_graph.asset_usage_records.v0",
+        "id": stable_id,
+        "usageRecords": sorted(
+            [record for record in records if record is not None],
+            key=lambda record: (
+                record.get("scene_index") is None,
+                record.get("scene_index") or 0,
+                record.get("object_index") is None,
+                record.get("object_index") or 0,
+                record.get("kind") or "",
+                record.get("target_asset_id") or "",
+            ),
+        ),
+    }
+
+
+def query_export_context(graph: CatalogGraph, stable_id: str, proof_scope: str) -> dict[str, Any]:
+    usage_records = query_asset_usage_records(graph, stable_id)["usageRecords"]
+    direct_records = [record for record in usage_records if record.get("proofScope") == "scene_object_state"]
+    script_records = [record for record in usage_records if record.get("proofScope") == "script_reference"]
+    scene_indices = sorted(
+        {
+            record["scene_index"]
+            for record in usage_records
+            if isinstance(record.get("scene_index"), int)
+        }
+    )
+    evidence_statuses = sorted(
+        {
+            str(record.get("evidenceStatus"))
+            for record in usage_records
+            if record.get("evidenceStatus")
+        }
+    )
+    source_rules = sorted(
+        {
+            str(record.get("sourceRule"))
+            for record in usage_records
+            if record.get("sourceRule")
+        }
+    )
+    source_fields = sorted(
+        {
+            str(record.get("sourceField"))
+            for record in usage_records
+            if record.get("sourceField")
+        }
+    )
+    index_rules = sorted(
+        {
+            str(record.get("indexRule"))
+            for record in usage_records
+            if record.get("indexRule")
+        }
+    )
+    return {
+        "schema": "catalog_graph.export_context.v0",
+        "stable_id": stable_id,
+        "proof_scope": proof_scope,
+        "scene_usage_count": len(direct_records),
+        "relationship_link_count": len(usage_records),
+        "direct_scene_object_usage_count": len(direct_records),
+        "script_reference_count": len(script_records),
+        "scene_indices": scene_indices,
+        "proof_scopes": sorted({str(record.get("proofScope")) for record in usage_records if record.get("proofScope")}),
+        "evidence_statuses": evidence_statuses,
+        "source_rules": source_rules,
+        "source_fields": source_fields,
+        "index_rules": index_rules,
+        "usage_records": usage_records,
+    }
+
+
+def usage_record_from_edge(graph: CatalogGraph, edge: dict[str, Any]) -> dict[str, Any] | None:
+    proof_scope = edge.get("proofScope")
+    if proof_scope == "script_reference":
+        reference_node = graph.nodes_by_id.get(str(edge.get("from")), {})
+        source = reference_node.get("source") if isinstance(reference_node.get("source"), dict) else {}
+        scene_id = source.get("scene_asset_id")
+        object_index = source.get("object_index")
+        scene_object = graph.nodes_by_id.get(scene_object_node_id_for(str(scene_id), object_index), {})
+        usage_kind = edge.get("usageKind") or edge.get("type")
+        kind = f"script_{usage_kind}" if usage_kind else "script_reference"
+    else:
+        scene_object = graph.nodes_by_id.get(str(edge.get("from")), {})
+        source = scene_object.get("source") if isinstance(scene_object.get("source"), dict) else {}
+        scene_id = source.get("scene_asset_id")
+        object_index = source.get("object_index")
+        kind = edge.get("usageKind") or edge.get("type")
+    if not scene_id:
+        return None
+    scene_node = graph.nodes_by_id.get(scene_node_id_for(str(scene_id)), {})
+    scene_source = scene_node.get("source") if isinstance(scene_node.get("source"), dict) else {}
+    scene_entry_index = source.get("scene_entry_index") or scene_source.get("entry_index")
+    scene_index = scene_entry_index - 1 if isinstance(scene_entry_index, int) else None
+    target = relationship_endpoint_projection(graph, str(edge.get("to")))
+    object_source = scene_object.get("source") if isinstance(scene_object.get("source"), dict) else {}
+    return {
+        "kind": kind,
+        "scene_asset_id": scene_id,
+        "scene_label": scene_node.get("label") or scene_id,
+        "scene_entry_index": scene_entry_index,
+        "scene_index": scene_index,
+        "object_index": object_index,
+        "position": object_source.get("position"),
+        "file3d_index": object_source.get("file3d_index"),
+        "gen_body": object_source.get("gen_body"),
+        "gen_anim": object_source.get("gen_anim"),
+        "sprite": object_source.get("sprite"),
+        "flags": object_source.get("flags"),
+        "target_asset_id": target.get("stableId"),
+        "target_label": target.get("label"),
+        "target_type": target.get("type"),
+        "target_available": target.get("type") != "MissingTarget",
+        "resolution_rule": edge.get("sourceRule"),
+        "proofScope": edge.get("proofScope"),
+        "evidenceStatus": edge.get("evidenceStatus"),
+        "sourceRule": edge.get("sourceRule"),
+        "sourceField": edge.get("sourceField"),
+        "indexRule": edge.get("indexRule"),
+    }
+
+
 def query_scene_object(graph: CatalogGraph, scene_id: str, object_index: str) -> dict[str, Any]:
     node_id = scene_object_node_id_for(scene_id, parse_object_index(object_index))
     return {
@@ -1082,7 +1173,7 @@ def file3d_allow_list_for_animation(graph: CatalogGraph, animation_node_id: str)
 def catalog_selection_projection(graph: CatalogGraph) -> dict[str, dict[str, Any]]:
     selections: dict[str, dict[str, Any]] = {}
     for node in graph.sorted_nodes():
-        if node.get("type") != "Asset" or node.get("assetKind") not in {"model", "resource"}:
+        if node.get("type") != "Asset":
             continue
         stable_id = str(node.get("stableId"))
         selections[stable_id] = asset_selection_projection(graph, node)
@@ -1275,6 +1366,10 @@ def unknowns_for_asset_node(node: dict[str, Any]) -> list[str]:
 def is_exportable_asset_node(node: dict[str, Any]) -> bool:
     if node.get("assetKind") == "model":
         return True
+    if node.get("assetKind") == "sprite":
+        return node.get("semanticLayout") in {"lsp_sprite_frame", "raw_sprite_frame"}
+    if node.get("assetKind") == "scene":
+        return node.get("semanticLayout") == "scene_runtime_layout_partial" and bool(node.get("sceneBackgroundResolved"))
     if node.get("assetKind") != "resource":
         return False
     return node.get("semanticLayout") in {
@@ -1283,7 +1378,6 @@ def is_exportable_asset_node(node: dict[str, Any]) -> bool:
         "lba2_indexed_image_256",
         "screen_indexed_image_640x480",
         "bkg_grid_map",
-        "bkg_brick_graphic",
         "holomap_plan_image_640x480",
         "text_payload_bank",
         "smacker_video",
@@ -1293,9 +1387,21 @@ def is_exportable_asset_node(node: dict[str, Any]) -> bool:
 def inspector_route_for_asset_node(node: dict[str, Any]) -> str | None:
     if node.get("assetKind") == "model":
         return "model"
+    if node.get("assetKind") == "animation" and node.get("entryType") == "animation":
+        return "animation"
+    layout = node.get("semanticLayout")
+    if node.get("assetKind") in {"animation", "sprite"} and layout == "unknown":
+        return "raw_animation"
+    if node.get("assetKind") == "scene":
+        return "scene"
+    if node.get("assetKind") == "sprite":
+        if layout == "anim3ds_frame_ranges":
+            return "anim3ds_range"
+        if layout in {"lsp_sprite_frame", "raw_sprite_frame"}:
+            return "sprite_frame"
+        return None
     if node.get("assetKind") != "resource":
         return None
-    layout = node.get("semanticLayout")
     if layout == "sample_wave_audio":
         return "sample_audio"
     if layout == "smacker_video":

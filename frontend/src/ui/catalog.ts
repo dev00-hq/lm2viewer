@@ -1,5 +1,5 @@
 import { animationMatchesModel } from '../compatibility';
-import type { AnimationStats, Anim3dsInfoStats, Catalog, CatalogAsset, KindFilter, ModelStats, RawAnimationStats, ResourceStats, SceneAssetUsage, SceneStats, SpriteFrameStats } from '../types';
+import type { AnimationStats, Anim3dsInfoStats, Catalog, CatalogAsset, CatalogGraphSelectionProjection, KindFilter, ModelStats, RawAnimationStats, ResourceStats, SceneStats, SpriteFrameStats } from '../types';
 
 export interface CatalogUiOptions {
   summary: HTMLElement;
@@ -53,9 +53,11 @@ export class CatalogUi {
       if (kind !== 'all' && asset.kind !== kind) return false;
       if (kind === 'animation' && this.selectedModel && !animationMatchesModel(this.catalog, asset, this.selectedModel)) return false;
       if (!query) return true;
-      return searchableText(asset).includes(query);
+      return searchableText(asset, this.graphSelection(asset)).includes(query);
     });
-    assets.sort((a, b) => scoreAsset(b, query) - scoreAsset(a, query) || assetSortKey(a).localeCompare(assetSortKey(b)));
+    assets.sort((a, b) => (
+      scoreAsset(b, query, this.graphSelection(b)) - scoreAsset(a, query, this.graphSelection(a))
+    ) || assetSortKey(a).localeCompare(assetSortKey(b)));
     const visible = assets.slice(0, 260);
     this.options.summary.textContent =
       `${summary.models || 0} models, ${summary.decoded_animations || 0} decoded animations, ${summary.raw_animations || 0} raw animation entries, ${summary.sprite_assets || 0} sprite assets, ${summary.scene_assets || 0} scenes, ${summary.resource_assets || 0} resources across ${summary.hqr_files || 0} HQR files. ` +
@@ -67,7 +69,7 @@ export class CatalogUi {
       `Scene video links: ${summary.scene_script_linked_video_refs || 0} script. ` +
       `${this.sampleAuditSummary()}` +
       `Scene background links: ${summary.scene_background_cube_links || 0} cube, ${summary.scene_grm_fragment_links || 0} GRM fragments. ` +
-      `Reverse usage: ${summary.scene_usage_refs || 0} refs across ${summary.scene_used_assets || 0} assets. ` +
+      `Catalog relationship refs: ${summary.scene_usage_refs || 0} refs across ${summary.scene_used_assets || 0} assets. ` +
       `${this.filterContext(kind)}Showing ${visible.length} of ${assets.length} matching entries.`;
     this.options.list.replaceChildren(...visible.map((asset) => this.assetButton(asset)));
   }
@@ -88,6 +90,7 @@ export class CatalogUi {
   }
 
   private assetButton(asset: CatalogAsset): HTMLButtonElement {
+    const graphSelection = this.graphSelection(asset);
     const button = document.createElement('button');
     button.className = 'asset-button' + (asset.id === this.highlightedAssetId ? ' active' : '');
     button.type = 'button';
@@ -103,15 +106,19 @@ export class CatalogUi {
 
     const meta = document.createElement('div');
     meta.className = 'asset-meta';
-    meta.textContent = assetMeta(asset);
+    meta.textContent = assetMeta(asset, graphSelection);
 
     button.append(title, meta);
     button.addEventListener('click', () => this.options.onSelect(asset));
     return button;
   }
+
+  private graphSelection(asset: CatalogAsset): CatalogGraphSelectionProjection | undefined {
+    return this.catalog?.graph?.selectionByAssetId?.[asset.id];
+  }
 }
 
-function searchableText(asset: CatalogAsset): string {
+function searchableText(asset: CatalogAsset, graphSelection?: CatalogGraphSelectionProjection): string {
   return [
     asset.id,
     asset.kind,
@@ -121,7 +128,7 @@ function searchableText(asset: CatalogAsset): string {
     animationMetadataText(asset),
     asset.source?.hqr,
     asset.source?.entry_index,
-    sceneUsageSearchText(asset.scene_usages || []),
+    graphSelectionSearchText(graphSelection),
     statsSearchText(asset.stats),
   ].join(' ').toLowerCase();
 }
@@ -384,16 +391,18 @@ function searchValue(value: unknown): string {
   return String(value);
 }
 
-function scoreAsset(asset: CatalogAsset, query: string): number {
+function scoreAsset(asset: CatalogAsset, query: string, graphSelection?: CatalogGraphSelectionProjection): number {
   let score = 0;
   if (asset.kind === 'model') score += 1000;
   if (asset.kind === 'scene') score += 140;
   if (asset.kind === 'resource') score += 130;
   if (asset.kind === 'sprite') score += 100;
+  score += Math.min(Number(graphSelection?.facets?.relationshipLinkCount || 0), 12) * 20;
   if (asset.source?.hqr === 'BODY.HQR') score += 300;
   if (asset.label && !asset.label.endsWith(`entry ${asset.source?.entry_index}`)) score += 120;
   if (query && asset.label?.toLowerCase().includes(query)) score += 500;
   if (query && asset.id?.toLowerCase().includes(query)) score += 260;
+  if (query && graphSelectionSearchText(graphSelection).toLowerCase().includes(query)) score += 180;
   return score;
 }
 
@@ -401,9 +410,9 @@ function assetSortKey(asset: CatalogAsset): string {
   return `${asset.kind === 'model' ? '0' : '1'}:${asset.source?.hqr || ''}:${String(asset.source?.entry_index || 0).padStart(5, '0')}`;
 }
 
-function assetMeta(asset: CatalogAsset): string {
+function assetMeta(asset: CatalogAsset, graphSelection?: CatalogGraphSelectionProjection): string {
   const source = `${asset.source?.hqr}[${asset.source?.entry_index}]`;
-  const usage = sceneUsageMeta(asset.scene_usages || []);
+  const usage = graphUsageMeta(graphSelection);
   if (asset.kind === 'model') {
     const stats = asset.stats as ModelStats;
     const direct = stats.direct_reference_count ? `, ${stats.direct_reference_count} direct refs` : '';
@@ -416,35 +425,7 @@ function assetMeta(asset: CatalogAsset): string {
   }
   if (asset.kind === 'resource') {
     const resource = asset.stats as ResourceStats;
-    if (resource.semantic_layout === 'lba2_palette') return `${source} - ${resource.color_count ?? '-'} palette colors`;
-    if (resource.semantic_layout === 'screen_palette') return `${source} - ${resource.screen_name ?? 'screen'} palette`;
-    if (resource.semantic_layout === 'lba2_texture_atlas_indexed') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} indexed atlas`;
-    if (resource.semantic_layout === 'lba2_indexed_image_256') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} indexed image`;
-    if (resource.semantic_layout === 'screen_indexed_image_640x480') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} screen image`;
-    if (resource.semantic_layout === 'holomap_globe_uv_map') return `${source} - ${resource.record_count ?? '-'} globe UV pairs`;
-    if (resource.semantic_layout === 'holomap_globe_altitude_map') return `${source} - ${resource.holomap_name ?? 'globe'} altitude map`;
-    if (resource.semantic_layout === 'holomap_globe_texture_map') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} globe texture`;
-    if (resource.semantic_layout === 'holomap_arrow_table') return `${source} - ${resource.record_count ?? '-'} holomap arrows`;
-    if (resource.semantic_layout === 'holomap_plan_image_640x480') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} plan image`;
-    if (resource.semantic_layout === 'holomap_plan_view_params') return `${source} - plan view parameters`;
-    if (resource.semantic_layout === 'bkg_header') return `${source} - background archive ranges`;
-    if (resource.semantic_layout === 'bkg_grid_map') return `${source} - grid map ${resource.bkg_relative_index ?? '-'}, ${resource.fields?.used_block_count ?? '-'} used blocks`;
-    if (resource.semantic_layout === 'bkg_grm_fragment') return `${source} - GRM ${resource.bkg_relative_index ?? '-'} ${resource.width ?? '-'}x${resource.height ?? '-'}x${resource.depth ?? '-'}`;
-    if (resource.semantic_layout === 'bkg_block_table') return `${source} - block table ${resource.bkg_relative_index ?? '-'}, ${resource.record_count ?? '-'} blocks`;
-    if (resource.semantic_layout === 'bkg_brick_graphic') return `${source} - brick graph ${resource.bkg_relative_index ?? '-'} ${resource.width ?? '-'}x${resource.height ?? '-'}`;
-    if (resource.semantic_layout === 'bkg_cube_map') return `${source} - ${resource.record_count ?? '-'} cube indirection records`;
-    if (resource.semantic_layout === 'text_order_table') return `${source} - ${resource.language ?? 'language'} ${resource.text_file_name ?? '-'} order, ${resource.record_count ?? '-'} message ids`;
-    if (resource.semantic_layout === 'text_payload_bank') return `${source} - ${resource.language ?? 'language'} ${resource.text_file_name ?? '-'} text, ${resource.record_count ?? '-'} records`;
-    if (resource.semantic_layout === 'sample_wave_audio') return `${source} - sample ${resource.sample_runtime_index ?? '-'} ${resource.audio_format ?? 'audio'} ${resource.fields?.channels ?? '-'}ch ${resource.fields?.bits_per_sample ?? '-'}-bit ${resource.fields?.sample_rate ?? '-'}Hz`;
-    if (resource.semantic_layout === 'smacker_video') return `${source} - movie ${resource.acf_name ?? '-'} ${resource.width ?? '-'}x${resource.height ?? '-'} ${resource.frame_count ?? '-'} frames`;
-    if (resource.semantic_layout === 'file3d_table') return `${source} - ${resource.object_count ?? '-'} File3D objects`;
-    if (resource.semantic_layout === 'sprite_zv_table') return `${source} - ${resource.record_count ?? '-'} ${resource.backend ?? 'sprite'} bounds`;
-    if (resource.semantic_layout === 'ress_offset_record_table') return `${source} - ${resource.runtime_table_name ?? 'RESS'} ${resource.record_count ?? '-'} offset records`;
-    if (resource.semantic_layout === 'ress_fixed_s16x8_table') return `${source} - ${resource.runtime_table_name ?? 'RESS'} ${resource.record_count ?? '-'} signed-word records`;
-    if (resource.semantic_layout === 'ress_ext_size_info') return `${source} - exterior memory sizing`;
-    if (resource.semantic_layout === 'xpl_palette_bundle') return `${source} - ${resource.xpl_name ?? 'XPL'} palette bundle`;
-    if (resource.semantic_layout === 'acf_name_list') return `${source} - ${resource.entry_count ?? '-'} SMK names`;
-    return `${source} - ${asset.decoded_bytes} resource bytes`;
+    return `${resourceMeta(asset, resource, source)}${usage}`;
   }
   if ('parse_status' in asset.stats && asset.stats.parse_status === 'raw') {
     const raw = asset.stats as RawAnimationStats;
@@ -468,6 +449,38 @@ function assetMeta(asset: CatalogAsset): string {
   const metadata = animationMetadataText(asset);
   const prefix = metadata ? `${metadata} - ` : '';
   return `${source} - ${prefix}${animation.keyframes || 0} keyframes, ${animation.boneframes || 0} bones, loop ${animation.loop_frame ?? '-'}${usage}`;
+}
+
+function resourceMeta(asset: CatalogAsset, resource: ResourceStats, source: string): string {
+  if (resource.semantic_layout === 'lba2_palette') return `${source} - ${resource.color_count ?? '-'} palette colors`;
+  if (resource.semantic_layout === 'screen_palette') return `${source} - ${resource.screen_name ?? 'screen'} palette`;
+  if (resource.semantic_layout === 'lba2_texture_atlas_indexed') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} indexed atlas`;
+  if (resource.semantic_layout === 'lba2_indexed_image_256') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} indexed image`;
+  if (resource.semantic_layout === 'screen_indexed_image_640x480') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} screen image`;
+  if (resource.semantic_layout === 'holomap_globe_uv_map') return `${source} - ${resource.record_count ?? '-'} globe UV pairs`;
+  if (resource.semantic_layout === 'holomap_globe_altitude_map') return `${source} - ${resource.holomap_name ?? 'globe'} altitude map`;
+  if (resource.semantic_layout === 'holomap_globe_texture_map') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} globe texture`;
+  if (resource.semantic_layout === 'holomap_arrow_table') return `${source} - ${resource.record_count ?? '-'} holomap arrows`;
+  if (resource.semantic_layout === 'holomap_plan_image_640x480') return `${source} - ${resource.width ?? '-'}x${resource.height ?? '-'} plan image`;
+  if (resource.semantic_layout === 'holomap_plan_view_params') return `${source} - plan view parameters`;
+  if (resource.semantic_layout === 'bkg_header') return `${source} - background archive ranges`;
+  if (resource.semantic_layout === 'bkg_grid_map') return `${source} - grid map ${resource.bkg_relative_index ?? '-'}, ${resource.fields?.used_block_count ?? '-'} used blocks`;
+  if (resource.semantic_layout === 'bkg_grm_fragment') return `${source} - GRM ${resource.bkg_relative_index ?? '-'} ${resource.width ?? '-'}x${resource.height ?? '-'}x${resource.depth ?? '-'}`;
+  if (resource.semantic_layout === 'bkg_block_table') return `${source} - block table ${resource.bkg_relative_index ?? '-'}, ${resource.record_count ?? '-'} blocks`;
+  if (resource.semantic_layout === 'bkg_brick_graphic') return `${source} - brick graph ${resource.bkg_relative_index ?? '-'} ${resource.width ?? '-'}x${resource.height ?? '-'}`;
+  if (resource.semantic_layout === 'bkg_cube_map') return `${source} - ${resource.record_count ?? '-'} cube indirection records`;
+  if (resource.semantic_layout === 'text_order_table') return `${source} - ${resource.language ?? 'language'} ${resource.text_file_name ?? '-'} order, ${resource.record_count ?? '-'} message ids`;
+  if (resource.semantic_layout === 'text_payload_bank') return `${source} - ${resource.language ?? 'language'} ${resource.text_file_name ?? '-'} text, ${resource.record_count ?? '-'} records`;
+  if (resource.semantic_layout === 'sample_wave_audio') return `${source} - sample ${resource.sample_runtime_index ?? '-'} ${resource.audio_format ?? 'audio'} ${resource.fields?.channels ?? '-'}ch ${resource.fields?.bits_per_sample ?? '-'}-bit ${resource.fields?.sample_rate ?? '-'}Hz`;
+  if (resource.semantic_layout === 'smacker_video') return `${source} - movie ${resource.acf_name ?? '-'} ${resource.width ?? '-'}x${resource.height ?? '-'} ${resource.frame_count ?? '-'} frames`;
+  if (resource.semantic_layout === 'file3d_table') return `${source} - ${resource.object_count ?? '-'} File3D objects`;
+  if (resource.semantic_layout === 'sprite_zv_table') return `${source} - ${resource.record_count ?? '-'} ${resource.backend ?? 'sprite'} bounds`;
+  if (resource.semantic_layout === 'ress_offset_record_table') return `${source} - ${resource.runtime_table_name ?? 'RESS'} ${resource.record_count ?? '-'} offset records`;
+  if (resource.semantic_layout === 'ress_fixed_s16x8_table') return `${source} - ${resource.runtime_table_name ?? 'RESS'} ${resource.record_count ?? '-'} signed-word records`;
+  if (resource.semantic_layout === 'ress_ext_size_info') return `${source} - exterior memory sizing`;
+  if (resource.semantic_layout === 'xpl_palette_bundle') return `${source} - ${resource.xpl_name ?? 'XPL'} palette bundle`;
+  if (resource.semantic_layout === 'acf_name_list') return `${source} - ${resource.entry_count ?? '-'} SMK names`;
+  return `${source} - ${asset.decoded_bytes} resource bytes`;
 }
 
 function assetPillText(asset: CatalogAsset): string {
@@ -497,56 +510,34 @@ function animationMetadataText(asset: CatalogAsset): string {
   return parts.join(' | ');
 }
 
-function sceneUsageMeta(usages: SceneAssetUsage[]): string {
-  if (usages.length === 0) return '';
-  const sceneCount = new Set(usages.map((usage) => usage.scene_asset_id)).size;
-  return `, used by ${usages.length} scene object${usages.length === 1 ? '' : 's'} in ${sceneCount} scene${sceneCount === 1 ? '' : 's'}`;
+function graphUsageMeta(graphSelection?: CatalogGraphSelectionProjection): string {
+  const relationshipCount = Number(graphSelection?.facets?.relationshipLinkCount || 0);
+  if (relationshipCount === 0) return '';
+  const directCount = Number(graphSelection?.facets?.sceneUsageCount || 0);
+  const directText = directCount > 0 ? `${directCount} scene object${directCount === 1 ? '' : 's'}` : 'script/local evidence';
+  return `, graph-linked by ${relationshipCount} relationship${relationshipCount === 1 ? '' : 's'} (${directText})`;
 }
 
-function sceneUsageSearchText(usages: SceneAssetUsage[]): string {
-  return usages
-    .map((usage) => [
-      usage.kind,
-      usage.scene_asset_id,
-      usage.scene_label,
-      usage.scene_index,
-      usage.object_index,
-      usage.file3d_index,
-      usage.gen_body,
-      usage.gen_anim,
-      usage.sprite,
-      usage.generic_id,
-      usage.generic_name,
-      usage.label,
-      usage.backend,
-      usage.runtime_sprite_index,
-      usage.script_kind,
-      usage.reference_key,
-      usage.reference_value,
-      usage.zone_index,
-      usage.text_id,
-      usage.text_file_index,
-      usage.text_file_name,
-      usage.language,
-      usage.record_index,
-      usage.preview,
-      usage.sample_id,
-      usage.slot_index,
-      usage.audio_format,
-      usage.sample_rate,
-      usage.bits_per_sample,
-      usage.channels,
-      usage.duration_ms,
-      usage.acf_name,
-      usage.acf_index,
-      usage.frame_count,
-      usage.anim3ds_range?.animation_number,
-      usage.anim3ds_range?.name,
-      usage.anim3ds_range?.start_frame,
-      usage.anim3ds_range?.end_frame,
-      usage.resolution_rule,
-    ].join(' '))
-    .join(' ');
+function graphSelectionSearchText(graphSelection?: CatalogGraphSelectionProjection): string {
+  if (!graphSelection) return '';
+  return [
+    graphSelection.provenance,
+    graphSelection.evidenceStatus,
+    graphSelection.inspectorRoute,
+    graphSelection.workspaceSuggestion,
+    graphSelection.exportCapability?.source,
+    Object.entries(graphSelection.facets || {}).map(([key, value]) => `${key} ${value}`).join(' '),
+    graphSelection.links.map((link) => [
+      link.kind,
+      link.stableId,
+      link.label,
+      link.proofScope,
+      link.evidenceStatus,
+      link.sourceRule,
+      link.sourceField,
+      link.indexRule,
+    ].join(' ')).join(' '),
+  ].join(' ');
 }
 
 function formatCounts(counts?: Record<string, number>): string {

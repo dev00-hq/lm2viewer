@@ -1,5 +1,5 @@
 import type { AppSelection } from './selection';
-import type { AnimationStats, Anim3dsInfoStats, CatalogAsset, DirectCodeReference, EntityContract, EntityWorkflowPayload, ModelStats, RawAnimationStats, ResourceStats, SceneAssetUsage, SceneScriptAnalysis, SceneStats, SpriteFrameStats } from './types';
+import type { AnimationStats, Anim3dsInfoStats, CatalogAsset, CatalogGraphSceneObjectRelationshipProjection, DirectCodeReference, EntityContract, EntityWorkflowPayload, ModelStats, RawAnimationStats, ResourceStats, SceneScriptAnalysis, SceneStats, SpriteFrameStats } from './types';
 
 export interface InspectorRow {
   label: string;
@@ -27,7 +27,7 @@ export interface InspectorSection {
 export function modelInspectorSections(asset: CatalogAsset, selection: AppSelection): InspectorSection[] {
   if (asset.kind !== 'model') return [];
   const stats = asset.stats as ModelStats;
-  const sceneUsageCount = asset.scene_usages?.length || 0;
+  const sceneUsageCount = graphRelationshipCount(selection);
   const directReferences = stats.direct_code_references || [];
   const sections: InspectorSection[] = [
     {
@@ -87,15 +87,15 @@ export function modelInspectorSections(asset: CatalogAsset, selection: AppSelect
       title: 'Runtime',
       rows: [
         { label: 'Reference status', value: stats.runtime_reference_status || 'No direct runtime reference attached to this catalog model.' },
-        { label: 'Scene usages', value: String(sceneUsageCount) },
+        { label: 'Graph relationships', value: String(sceneUsageCount) },
       ],
       defaultOpen: sceneUsageCount > 0 || Boolean(stats.runtime_reference_status),
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -201,9 +201,9 @@ export function animationInspectorSections(asset: CatalogAsset, selection: AppSe
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -296,9 +296,9 @@ export function rawAnimationInspectorSections(asset: CatalogAsset, selection: Ap
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -416,9 +416,9 @@ export function spriteFrameInspectorSections(asset: CatalogAsset, selection: App
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -668,9 +668,9 @@ export function sampleAudioInspectorSections(asset: CatalogAsset, selection: App
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -791,9 +791,9 @@ export function smackerVideoInspectorSections(asset: CatalogAsset, selection: Ap
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -909,9 +909,9 @@ export function textPayloadInspectorSections(asset: CatalogAsset, selection: App
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -1112,9 +1112,9 @@ export function paletteImageInspectorSections(asset: CatalogAsset, selection: Ap
     paletteImagePrimarySection(resource),
     paletteContextSection(asset, resource),
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -1213,9 +1213,9 @@ export function runtimeTableInspectorSections(asset: CatalogAsset, selection: Ap
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -1320,9 +1320,9 @@ export function holomapInspectorSections(asset: CatalogAsset, selection: AppSele
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -1426,9 +1426,9 @@ export function backgroundInspectorSections(asset: CatalogAsset, selection: AppS
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -1473,7 +1473,11 @@ export function backgroundInspectorSections(asset: CatalogAsset, selection: AppS
   }));
 }
 
-export function sceneInspectorSections(asset: CatalogAsset, selection: AppSelection): InspectorSection[] {
+export function sceneInspectorSections(
+  asset: CatalogAsset,
+  selection: AppSelection,
+  graphRelationships: Record<string, CatalogGraphSceneObjectRelationshipProjection> = {},
+): InspectorSection[] {
   const stats = asset.stats;
   if (asset.kind !== 'scene' || !('semantic_layout' in stats) || stats.semantic_layout !== 'scene_runtime_layout_partial') return [];
   const scene = stats as SceneStats;
@@ -1540,8 +1544,8 @@ export function sceneInspectorSections(asset: CatalogAsset, selection: AppSelect
     },
     {
       id: 'runtime_links',
-      title: 'Runtime Links',
-      rows: sceneRuntimeLinkRows(scene),
+      title: 'Graph Runtime Links',
+      rows: sceneRuntimeLinkRows(scene, asset.id, graphRelationships),
       defaultOpen: true,
       searchText: '',
     },
@@ -1555,7 +1559,7 @@ export function sceneInspectorSections(asset: CatalogAsset, selection: AppSelect
     {
       id: 'sampled_objects',
       title: 'Sampled Objects',
-      rows: sceneSampledObjectRows(scene),
+      rows: sceneSampledObjectRows(scene, asset.id, graphRelationships),
       defaultOpen: false,
       searchText: '',
     },
@@ -1671,9 +1675,9 @@ export function unclassifiedResourceInspectorSections(asset: CatalogAsset, selec
       searchText: '',
     },
     {
-      id: 'scene_usages',
-      title: 'Scene Usages',
-      rows: usageRows(asset.scene_usages || []),
+      id: 'graph_usage_evidence',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
       defaultOpen: false,
       searchText: '',
     },
@@ -2417,16 +2421,21 @@ function sceneHeroRows(scene: SceneStats): InspectorRow[] {
   ];
 }
 
-function sceneRuntimeLinkRows(scene: SceneStats): InspectorRow[] {
+function sceneRuntimeLinkRows(
+  scene: SceneStats,
+  sceneAssetId: string,
+  graphRelationships: Record<string, CatalogGraphSceneObjectRelationshipProjection>,
+): InspectorRow[] {
   const recon = scene.reconnaissance || {};
+  const graphEdges = graphSceneObjectRelationshipEdges(sceneAssetId, graphRelationships);
   return [
     { label: 'Objects', value: `${recon.object_count ?? '-'} total, ${recon.sprite_object_count ?? 0} sprite, ${recon.anim3ds_object_count ?? 0} ANIM3DS` },
-    { label: 'Object links', value: `${recon.linked_body_refs ?? 0} body, ${recon.linked_animation_refs ?? 0} animation, ${recon.linked_sprite_refs ?? 0} sprite` },
-    { label: 'Script asset links', value: `${recon.script_linked_body_refs ?? 0} body, ${recon.script_linked_animation_refs ?? 0} animation, ${recon.script_linked_sprite_refs ?? 0} sprite` },
-    { label: 'Text links', value: `${recon.text_link_counts?.script_logical_refs ?? 0} script refs, ${recon.text_link_counts?.zone_logical_refs ?? 0} zone refs, file ${recon.text_file_index ?? '-'}` },
-    { label: 'Sample links', value: `${recon.sample_link_counts?.script_linked_refs ?? 0} script refs, ${recon.sample_link_counts?.ambience_linked_refs ?? 0} ambience refs, ${(recon.sample_link_counts?.script_missing_refs ?? 0) + (recon.sample_link_counts?.ambience_missing_refs ?? 0)} missing` },
-    { label: 'Video links', value: `${recon.video_link_counts?.script_linked_refs ?? 0}/${recon.video_link_counts?.script_logical_refs ?? 0} script refs` },
-    { label: 'Local script links', value: `${recon.script_local_link_counts?.object ?? 0} objects, ${recon.script_local_link_counts?.waypoint ?? 0} waypoints, ${recon.script_local_link_counts?.zone ?? 0} zones` },
+    { label: 'Graph object links', value: graphUsageCounts(graphEdges, 'scene_object_state', ['USES_AS_BODY', 'USES_AS_ANIMATION', 'USES_AS_SPRITE']) },
+    { label: 'Graph script asset links', value: graphUsageCounts(graphEdges, 'script_reference', ['USES_AS_BODY', 'USES_AS_ANIMATION', 'USES_AS_SPRITE']) },
+    { label: 'Graph text links', value: graphUsageCounts(graphEdges, 'script_reference', ['USES_TEXT']) },
+    { label: 'Graph sample links', value: graphUsageCounts(graphEdges, 'script_reference', ['USES_SAMPLE']) },
+    { label: 'Graph video links', value: graphUsageCounts(graphEdges, 'script_reference', ['USES_VIDEO']) },
+    { label: 'Decoded local script links', value: `${recon.script_local_link_counts?.object ?? 0} objects, ${recon.script_local_link_counts?.waypoint ?? 0} waypoints, ${recon.script_local_link_counts?.zone ?? 0} zones` },
     { label: 'Control flow', value: `${recon.script_control_flow_counts?.found ?? 0}/${recon.script_control_flow_counts?.links ?? 0} resolved targets, ${recon.script_control_flow_counts?.labels ?? 0} labels; ${formatCounts(recon.script_control_flow_target_status_counts) || '-'}` },
     { label: 'Cross-script targets', value: `${recon.script_cross_link_counts?.found ?? 0}/${recon.script_cross_link_counts?.links ?? 0} resolved, ${recon.script_cross_link_counts?.track ?? 0} track, ${recon.script_cross_link_counts?.life ?? 0} life; ${formatCounts(recon.script_cross_link_target_status_counts) || '-'}` },
   ];
@@ -2462,17 +2471,17 @@ function sceneRenderContractRows(scene: SceneStats): InspectorRow[] {
   return rows;
 }
 
-function sceneSampledObjectRows(scene: SceneStats): InspectorRow[] {
+function sceneSampledObjectRows(
+  scene: SceneStats,
+  sceneAssetId: string,
+  graphRelationships: Record<string, CatalogGraphSceneObjectRelationshipProjection>,
+): InspectorRow[] {
   const recon = scene.reconnaissance || {};
   const objects = recon.sampled_objects || [];
   if (objects.length === 0) return [{ label: 'Sampled objects', value: 'No sampled scene objects are available.' }];
   const rows: InspectorRow[] = objects.slice(0, 12).map((object) => {
-    const links = object.links;
-    const linked = [
-      links?.body?.asset_id ? `body ${links.body.asset_id}` : `gen body ${object.gen_body}`,
-      links?.animation?.asset_id ? `anim ${links.animation.asset_id}` : `gen anim ${object.gen_anim}`,
-      links?.sprite?.asset_id ? `sprite ${links.sprite.asset_id}` : `sprite ${object.sprite}`,
-    ].join(' | ');
+    const projection = graphRelationships[`${sceneAssetId}#object:${object.index}`];
+    const linked = sceneObjectGraphVisuals(projection);
     const runtime = object.runtime ? ` | ${object.runtime.render_type}${object.runtime.render_pipeline ? ` ${object.runtime.render_pipeline.draw_path}` : ''}` : '';
     return {
       label: `Object ${object.index}`,
@@ -2483,6 +2492,45 @@ function sceneSampledObjectRows(scene: SceneStats): InspectorRow[] {
   const total = recon.sampled_object_count ?? objects.length;
   if (total > rows.length) rows.push({ label: 'Folded objects', value: `${total - rows.length} additional sampled objects remain in catalog evidence.` });
   return rows;
+}
+
+function graphSceneObjectRelationshipEdges(
+  sceneAssetId: string,
+  graphRelationships: Record<string, CatalogGraphSceneObjectRelationshipProjection>,
+) {
+  return Object.values(graphRelationships)
+    .filter((projection) => projection.stableId.startsWith(`${sceneAssetId}#object:`))
+    .flatMap((projection) => projection.edges.filter((edge) => edge.direction === 'out'));
+}
+
+function graphUsageCounts(
+  edges: ReturnType<typeof graphSceneObjectRelationshipEdges>,
+  proofScope: string,
+  edgeTypes: string[],
+): string {
+  if (edges.length === 0) return 'graph relationships unavailable';
+  const matching = edges.filter((edge) => edge.proofScope === proofScope && edgeTypes.includes(edge.type));
+  if (matching.length === 0) return '0 graph links';
+  const counts: Record<string, number> = {};
+  for (const edge of matching) {
+    const key = edge.type.replace(/^USES_(AS_)?/, '').toLowerCase();
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return Object.entries(counts)
+    .map(([key, count]) => `${count} ${key}`)
+    .join(', ');
+}
+
+function sceneObjectGraphVisuals(projection?: CatalogGraphSceneObjectRelationshipProjection): string {
+  if (!projection) return 'graph relationship unavailable';
+  const values = ['body', 'animation', 'sprite']
+    .map((role) => {
+      const link = projection.visualLinks.find((item) => item.role === role);
+      if (!link?.stableId) return `${role} -`;
+      const missing = link.targetAvailable ? '' : ' missing';
+      return `${role} ${link.stableId}${missing}`;
+    });
+  return values.join(' | ');
 }
 
 function sceneZoneTrackPatchRows(scene: SceneStats): InspectorRow[] {
@@ -2627,22 +2675,31 @@ function statusPill(status: string): HTMLElement {
   return pill;
 }
 
-function usageRows(usages: SceneAssetUsage[]): InspectorRow[] {
-  if (usages.length === 0) {
-    return [{ label: 'Known usages', value: 'No scene usage is known for this model.' }];
+function graphRelationshipCount(selection: AppSelection): number {
+  const facetCount = selection.facets?.relationshipLinkCount;
+  if (typeof facetCount === 'number') return facetCount;
+  return selection.links.filter((link) => link.kind === 'scene_object' || link.kind === 'scene_usage').length;
+}
+
+function graphUsageRows(selection: AppSelection): InspectorRow[] {
+  const links = selection.links.filter((link) => link.kind === 'scene_object' || link.kind === 'scene_usage');
+  if (links.length === 0) {
+    return [{ label: 'Graph usage evidence', value: 'No graph usage relationship is known for this asset.' }];
   }
-  const rows: InspectorRow[] = usages.slice(0, 12).map((usage) => ({
-    label: `${usage.scene_label} object ${usage.object_index}`,
+  const rows: InspectorRow[] = links.slice(0, 12).map((link) => ({
+    label: link.label,
     value: [
-      usage.kind,
-      usage.resolution_rule,
-      usage.generic_name,
-      usage.position ? `${usage.position.x},${usage.position.y},${usage.position.z}` : '',
-    ].filter(Boolean).join(' | '),
-    copyValue: `${usage.scene_asset_id}#object:${usage.object_index}`,
+      link.proofScope,
+      link.evidenceStatus,
+      link.sourceRule,
+      link.sourceField,
+      link.indexRule,
+    ].filter(Boolean).join(' | ') || 'catalog graph relationship',
+    copyValue: link.stableId,
   }));
-  if (usages.length > rows.length) {
-    rows.push({ label: 'Folded usages', value: `${usages.length - rows.length} additional scene usages remain in catalog evidence.` });
+  const relationshipCount = graphRelationshipCount(selection);
+  if (relationshipCount > rows.length) {
+    rows.push({ label: 'Folded graph relationships', value: `${relationshipCount - rows.length} additional graph relationships remain in the selection projection.` });
   }
   return rows;
 }

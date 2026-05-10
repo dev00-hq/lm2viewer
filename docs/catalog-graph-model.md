@@ -130,7 +130,7 @@ adding another local validator.
 
 The HTTP catalog projection now includes
 `catalog_graph.selection_projection.v0` records under `selectionByAssetId` for
-migrated model and resource assets.
+catalog assets.
 
 Current migrated asset selection projection fields include:
 
@@ -144,24 +144,35 @@ Current migrated asset selection projection fields include:
 - graph-backed usage/script relationship links with edge evidence fields;
 - direct scene usage count separated from total relationship link count.
 
-Frontend model-asset and resource-asset selection must consume this projection.
-It may render or copy the fields locally, but it must not re-derive migrated
-selection identity, workspace suggestion, exportability, or relationship links
-from `asset.kind`, `semantic_layout`, `scene_usages`, or stable-id string
-parsing.
+Frontend asset selection consumes this projection when it is present. It may
+render or copy the fields locally, but it must not re-derive migrated selection
+identity, workspace suggestion, exportability, inspector route, or relationship
+links from `asset.kind`, `semantic_layout`, `scene_usages`, or stable-id string
+parsing. Canonical graph builds also do not index `scene_usages`; relationship
+authority comes from scene/object/script/resource graph evidence.
 
-Resource exportability is a graph projection decision for migrated resource
-assets. The current exportable resource semantic layouts are
+Exportability is a graph projection decision for migrated asset selections. The
+current exportable resource semantic layouts are
 `sample_wave_audio`, `lba2_texture_atlas_indexed`, `lba2_indexed_image_256`,
-`screen_indexed_image_640x480`, `bkg_grid_map`, `bkg_brick_graphic`,
+`screen_indexed_image_640x480`, `bkg_grid_map`,
 `holomap_plan_image_640x480`, `text_payload_bank`, and `smacker_video`.
+Model assets, sprite frame assets, and scene assets with a resolved background
+export route also receive graph-projected export actions.
 
-Inspector routing is also graph-projected for migrated model/resource assets.
-Current routes are `model`, `sample_audio`, `smacker_video`, `text_order`,
+Inspector routing is also graph-projected for migrated asset selections.
+Current routes are `model`, `animation`, `raw_animation`, `scene`,
+`anim3ds_range`, `sprite_frame`, `sample_audio`, `smacker_video`, `text_order`,
 `text_payload`, `palette_image`, `runtime_table`, `holomap`, `background`, and
 `unclassified_resource`. Frontend code may call the existing renderer for that
 route, but it must not rediscover the route from `asset.kind +
-semantic_layout` for migrated selections.
+semantic_layout` for migrated selections. If a graph-projected asset selection
+has an unknown or missing route, the UI must fail closed instead of falling
+back to local kind/layout routing.
+
+Export manifests consume `catalog_graph.export_context.v0` for migrated
+provenance. That context separates direct scene-object usage counts from script
+reference counts and carries proof scopes, evidence statuses, source rules,
+source fields, and index rules from graph edges.
 
 ## Scene Object Relationship Projections
 
@@ -179,6 +190,11 @@ Current migrated scene object relationship projection fields include:
   `indexRule`;
 - `visualLinks` for `file3d`, `body`, `animation`, and `sprite` roles,
   including `MissingTarget` targets.
+
+Scene Inspector relationship sections consume the same projection for
+graph-modeled body, animation, sprite, text, sample, and video relationships.
+Decoded script rows, control-flow rows, and opcode-level local facts remain
+scene-local decoder evidence until the graph explicitly models those details.
 
 The scene object table's File3D and Visuals columns consume this projection.
 They must not re-derive body, animation, sprite, or missing visual target ids
@@ -224,7 +240,7 @@ present.
 ## Real Examples
 
 - `SCENE.HQR:2#object:2` has `HAS_FILE3D_RECORD -> RESS.HQR:44#file3d:16`, `USES_AS_BODY -> BODY.HQR:29`, and `USES_AS_ANIMATION -> ANIM.HQR:220`.
-- `BODY.HQR:2` has no known scene usage edges in the current reverse index, but it has many incoming `COMPATIBLE_WITH` edges.
+- `BODY.HQR:2` has no known scene usage edges in the current graph projection, but it has many incoming `COMPATIBLE_WITH` edges.
 - `ANIM.HQR:2 -> BODY.HQR:2` is `COMPATIBLE_WITH` with `proofScope: classic_source_rule`, `evidenceStatus: source_backed`, and `compatibilityReason: file3d_allowlist`. Bone-count-only compatibility remains `frontend_compatibility_rule`/`decoded_only` until stronger source evidence exists.
 - `ANIM3DS.HQR:127` materializes `SpriteRange` nodes; range `COQU 0..32` contains `ANIM3DS.HQR:0` through `ANIM3DS.HQR:32`.
 - `RESS.HQR:48` materializes `ResourceRecord` nodes from sampled ACF-name records; record ids are payload-local.

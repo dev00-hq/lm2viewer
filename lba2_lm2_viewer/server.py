@@ -21,8 +21,10 @@ from .catalog_graph import (
     build_catalog_graph,
     catalog_scene_object_relationship_projection,
     catalog_selection_projection,
+    query_asset_usage_records,
     query_animation_operation_compatibility,
     query_compatible,
+    query_export_context,
 )
 from .entities import (
     build_asset_entity_workflow,
@@ -360,7 +362,9 @@ class ViewerServer:
     def asset_entity_workflow(self, asset_id: str) -> dict[str, Any]:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
-        workflow = build_asset_entity_workflow(self.catalog, asset_id)
+        if self.catalog_graph is None:
+            self.attach_catalog_graph_projection()
+        workflow = build_asset_entity_workflow(self.catalog, asset_id, self.catalog_graph)
         if workflow.get("resolved_asset") is None:
             raise Lm2Error(f"catalog asset not found: {asset_id}")
         return workflow
@@ -370,8 +374,10 @@ class ViewerServer:
     ) -> dict[str, Any]:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
+        if self.catalog_graph is None:
+            self.attach_catalog_graph_projection()
         workflow = build_scene_object_entity_workflow(
-            self.catalog, scene_asset_id, object_index
+            self.catalog, scene_asset_id, object_index, self.catalog_graph
         )
         if workflow.get("resolved_asset") is None:
             raise Lm2Error(f"scene asset not found: {scene_asset_id}")
@@ -380,8 +386,10 @@ class ViewerServer:
     def runtime_sprite_entity_workflow(self, request: dict[str, Any]) -> dict[str, Any]:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
+        if self.catalog_graph is None:
+            self.attach_catalog_graph_projection()
         state = self.resolve_runtime_sprite_object(request)
-        return build_runtime_sprite_entity_workflow(self.catalog, state)
+        return build_runtime_sprite_entity_workflow(self.catalog, state, self.catalog_graph)
 
     def catalog_graph_compatible(self, model_id: str) -> dict[str, Any]:
         if self.catalog is None:
@@ -414,12 +422,23 @@ class ViewerServer:
     def export_evidence_context(
         self, asset: dict[str, Any], proof_scope: str
     ) -> dict[str, Any]:
+        if self.catalog_graph is None:
+            self.attach_catalog_graph_projection()
+        graph_context = query_export_context(self.catalog_graph, str(asset.get("id")), proof_scope)
         packet_links = self.export_promotion_packet_links(asset)
         return {
             "stable_id": asset.get("id"),
             "evidence_status": self.export_evidence_status(asset),
             "proof_scope": proof_scope,
-            "scene_usage_count": len(asset.get("scene_usages") or []),
+            "scene_usage_count": graph_context["scene_usage_count"],
+            "relationship_link_count": graph_context["relationship_link_count"],
+            "direct_scene_object_usage_count": graph_context["direct_scene_object_usage_count"],
+            "script_reference_count": graph_context["script_reference_count"],
+            "proof_scopes": graph_context["proof_scopes"],
+            "evidence_statuses": graph_context["evidence_statuses"],
+            "source_rules": graph_context["source_rules"],
+            "source_fields": graph_context["source_fields"],
+            "index_rules": graph_context["index_rules"],
             "runtime_contract_ids": packet_links["runtime_contract_ids"],
             "promotion_packet_ids": packet_links["promotion_packet_ids"],
             "promotion_packet_source": packet_links["promotion_packet_source"],
@@ -433,13 +452,21 @@ class ViewerServer:
             "evidence_status": context["evidence_status"],
             "proof_scope": context["proof_scope"],
             "scene_usage_count": context["scene_usage_count"],
+            "relationship_link_count": context["relationship_link_count"],
+            "direct_scene_object_usage_count": context["direct_scene_object_usage_count"],
+            "script_reference_count": context["script_reference_count"],
+            "proof_scopes": context["proof_scopes"],
+            "evidence_statuses": context["evidence_statuses"],
+            "source_rules": context["source_rules"],
+            "source_fields": context["source_fields"],
+            "index_rules": context["index_rules"],
             "runtime_contract_ids": context["runtime_contract_ids"],
             "promotion_packet_ids": context["promotion_packet_ids"],
             "promotion_packet_source": context["promotion_packet_source"],
         }
 
     def export_promotion_packet_links(self, asset: dict[str, Any]) -> dict[str, Any]:
-        scene_indices = self.export_scene_indices_for_asset(asset)
+        scene_indices = self.export_scene_indices_for_graph_asset(asset)
         if not scene_indices:
             return {
                 "promotion_packet_ids": [],
@@ -482,7 +509,14 @@ class ViewerServer:
             entry_index = source.get("entry_index")
             if isinstance(entry_index, int):
                 indices.add(entry_index - 1)
-        for usage in asset.get("scene_usages") or []:
+        return indices
+
+    def export_scene_indices_for_graph_asset(self, asset: dict[str, Any]) -> set[int]:
+        indices = self.export_scene_indices_for_asset(asset)
+        if self.catalog_graph is None:
+            self.attach_catalog_graph_projection()
+        usage_records = query_asset_usage_records(self.catalog_graph, str(asset.get("id")))["usageRecords"]
+        for usage in usage_records:
             if not isinstance(usage, dict):
                 continue
             scene_index = usage.get("scene_index")
@@ -1014,6 +1048,10 @@ class ViewerServer:
         smk_name = stem
         manifest_name = "manifest.json"
         (output_dir / smk_name).write_bytes(payload)
+        evidence = self.export_evidence_context(
+            asset,
+            "original Smacker container and metadata evidence; not codec decode or live playback proof",
+        )
         manifest = {
             "schema_version": "smacker_video_export_manifest.v0",
             "source": {
@@ -1031,10 +1069,7 @@ class ViewerServer:
                 "resource": resource,
                 "source_mode": self.catalog.get("source_mode") if self.catalog else None,
             },
-            "evidence": self.export_evidence_context(
-                asset,
-                "original Smacker container and metadata evidence; not codec decode or live playback proof",
-            ),
+            "evidence": evidence,
             "options": {
                 "format": "smacker_container_passthrough",
                 "codec_decode": False,
@@ -1052,8 +1087,7 @@ class ViewerServer:
                 "frames_per_second": stats.get("frames_per_second"),
                 "duration_ms": stats.get("duration_ms"),
                 "header": stats.get("header"),
-                "scene_usage_count": len(asset.get("scene_usages") or []),
-                "scene_usages": asset.get("scene_usages") or [],
+                "scene_usage_count": evidence["scene_usage_count"],
             },
             "files": {
                 "manifest": manifest_name,

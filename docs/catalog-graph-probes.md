@@ -37,6 +37,8 @@ python scripts/catalog_graph_probe.py --graph-json temp/catalog-graph.json scene
 | App consumer | Model asset selection | Model asset active selection consumes `graph.selectionByAssetId`, including selected node id, workspace suggestion, inspector route, export capability/action, direct scene usage count, total relationship link count, and usage/script edge evidence. | Unit-covered and browser-validated in `docs/validation-m3-model-selection-2026-05-07.md`. |
 | App consumer | Resource asset selection | Resource asset active selection consumes `graph.selectionByAssetId`, including workspace suggestion, inspector route, source provenance, export capability/action based on semantic layout, and usage/script edge evidence. | Unit-covered and browser-validated in `docs/validation-m4-resource-selection-2026-05-07.md` and `docs/validation-m5-inspector-routing-2026-05-07.md`. |
 | App consumer | Scene object relationship rows | Scene object table File3D/Visuals cells consume `graph.sceneObjectRelationshipsByStableId`, including File3D/body/animation/sprite roles, missing sprite targets, and edge evidence fields. | Unit-covered and browser-validated in `docs/validation-m6-scene-object-relationships-2026-05-07.md`. |
+| App consumer | Scene Inspector relationship sections | Scene Inspector runtime-link and sampled-object visual rows consume `graph.sceneObjectRelationshipsByStableId` for graph-modeled body, animation, sprite, text, sample, and video relationships while keeping opcode-level local rows decoded. | Unit/build-covered and browser-validated in `docs/validation-task-gpt-explorer-inspector-2026-05-09.md`. |
+| App consumer | Resource-record export action | A selected `resource_record` inherits export actions from the parent asset graph selection projection and exports through the parent asset graph context. | Browser-validated in `docs/validation-task-gpt-graph-decisions-2026-05-09.md`. |
 
 ## Representative Assertions
 
@@ -113,6 +115,10 @@ Keep a probe manual or exploratory when:
   `BODY.HQR:<GenBody>`.
 - Scene object usage is materialized from the scene object's own `links`, even
   when all reverse `scene_usages` fields are removed from the catalog.
+- Canonical graph builds do not index reverse `scene_usages` arrays as usage
+  authority; export packet linkage has a stale reverse-usage regression test.
+- The stale reverse-usage materializer helper is removed from `catalog_graph.py`
+  so future graph builds cannot silently revive that authority path.
 - `BODY.HQR:29` usage query emits `USES_AS_BODY` with
   `proofScope: scene_object_state` and `evidenceStatus: source_backed`, while
   same-endpoint script references remain separate `SCRIPT_REFERENCES` edges.
@@ -141,3 +147,9 @@ Keep a probe manual or exploratory when:
   catalog graph projection. The frontend no longer derives the scene object
   table's File3D/body/animation/sprite relationship cells from compact
   `sampled_objects[].links`.
+- Scene Inspector graph relationship rows consume the same projection for
+  graph-modeled relationships and leave only opcode/control-flow detail as
+  decoded local scene evidence.
+- Resource-record export selection is browser-validated with
+  `LBA_BKG.HQR:1#record:0`; the selected record exposes an inherited graph
+  export action and writes the parent asset evidence bundle.

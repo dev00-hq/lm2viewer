@@ -153,11 +153,19 @@ Implemented and run:
   them with File3D resolver nodes and source fields.
 - Revised graph construction so available scene-object usage edges are
   materialized directly from `SceneStats.reconnaissance.sampled_objects[].links`.
-  `CatalogAsset.scene_usages[]` is now corroborating/reverse evidence, not the
-  only source for normal available usage edges.
+  `CatalogAsset.scene_usages[]` is now legacy reverse enrichment only; the
+  canonical graph build does not index it as relationship authority.
+- Removed the stale reverse-usage materializer helper from `catalog_graph.py`
+  after validation showed it was no longer part of the canonical build path.
 - Added `tests/test_catalog_graph.py::test_scene_object_usage_does_not_depend_on_reverse_scene_usages`
   to remove every `scene_usages` field from a synthetic catalog and still assert
   `SCENE.HQR:2#object:2 -> BODY.HQR:29` and `ANIM.HQR:220`.
+- Added export regression coverage that injects stale `asset.scene_usages` and
+  asserts promotion packet links remain empty unless scene evidence is present
+  in the canonical graph.
+- Added standalone export-probe regression coverage that injects stale reverse
+  usage and asserts exported evidence counts and promotion packet ids stay
+  graph-derived.
 
 ## Unresolved Questions
 
@@ -166,11 +174,18 @@ Implemented and run:
   `MissingTarget`, but broad missing-target materialization is not complete.
 - `SceneZone` and `Waypoint` should be promoted when script/local navigation
   queries become first-class.
-- Export manifests currently accept asset ids. Later export work should carry
-  selected graph node/edge id plus proof scope and evidence status.
-- Frontend selection still has local derivation and `stableId.split('#')` paths.
-  The next implementation slice should replace those with graph indexes before
-  changing Explorer rendering.
+- Export manifests currently carry graph export context for asset ids. Later
+  export work should carry the selected graph node/edge id when exports are
+  launched from relationship rows rather than whole assets.
+- Frontend selection no longer uses `stableId.split('#')` as app decision
+  authority. Owner/highlight decisions use graph selection evidence, explicit
+  selection evidence payloads, or typed facets.
+- Graph-projected frontend selections now fail closed when an `inspectorRoute`
+  is missing or unknown rather than falling back to local `asset.kind` or
+  `semantic_layout` routing.
+- Scene Inspector graph-modeled relationship rows now read
+  `graph.sceneObjectRelationshipsByStableId`; local script/control-flow rows
+  remain decoded scene facts until graph vocabulary covers opcode-level detail.
 - Graph export/import now supports repeated CLI calls through
   `catalog-graph build --output temp/catalog-graph.json` and
   `--graph-json temp/catalog-graph.json`. Freshness is explicitly warned rather

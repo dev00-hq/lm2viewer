@@ -52,10 +52,16 @@ proofs, and negative evidence. It is intentionally internal until a CLI or HTTP
 consumer needs it.
 
 The HTTP catalog payload also exposes internal
-`catalog_graph.selection_projection.v0` records for migrated model/resource
-asset selection under `graph.selectionByAssetId`. These records are the UI
-authority for migrated selection identity, workspace suggestion, export action,
-export capability, inspector route, and graph-backed relationship links.
+`catalog_graph.selection_projection.v0` records for asset selection under
+`graph.selectionByAssetId`. These records are the UI authority for migrated
+selection identity, workspace suggestion, export action, export capability,
+inspector route, and graph-backed relationship links.
+
+Export manifests use `catalog_graph.export_context.v0` internally. The context
+derives direct scene-object usage counts, script reference counts, scene
+indices, proof scopes, evidence statuses, source rules, source fields, and
+index rules from graph usage edges rather than from reverse `scene_usages`
+arrays.
 
 For migrated scene object relationship rows, the HTTP catalog payload exposes
 `catalog_graph.scene_object_relationship_projection.v0` records under
@@ -63,6 +69,11 @@ For migrated scene object relationship rows, the HTTP catalog payload exposes
 for scene object File3D/body/animation/sprite relationship display and preserve
 edge endpoints, `MissingTarget`, `proofScope`, `evidenceStatus`, `sourceRule`,
 `sourceField`, and `indexRule`.
+
+Scene Inspector relationship sections consume these same records for
+graph-modeled body, animation, sprite, text, sample, and video links. Decoded
+script/control-flow rows remain local decoder evidence until graph vocabulary
+covers opcode-level facts.
 
 ## JSON Rules
 
@@ -221,10 +232,19 @@ edge endpoints, `MissingTarget`, `proofScope`, `evidenceStatus`, `sourceRule`,
 - UI agents validating migrated scene relationship rows should confirm
   `graph.sceneObjectRelationshipsByStableId[sceneObjectStableId]` exists before
   relying on the File3D or Visuals table cells.
+- UI agents validating migrated Inspector scene relationships should confirm
+  the visible relationship section names graph evidence and that graph-modeled
+  visual/audio/text/video rows come from
+  `sceneObjectRelationshipsByStableId`, not compact scene-local link arrays.
+- UI agents validating `resource_record` export should select the child record,
+  confirm the active selection is `resource_record`, and verify the export
+  action is inherited from the parent asset graph selection projection.
 - Port checks should filter by `proofScope` and `evidenceStatus`; decoded-only
   evidence must not be treated as live proof.
-- Promotion packet joins should use scene usage edges and explicit
-  `port_implication` edges later, not UI labels.
+- Promotion packet joins use graph-derived scene usage records and explicit
+  scene asset source identity. Stale reverse `scene_usages` arrays are not
+  promotion packet evidence; later `port_implication` edges can make that
+  relationship explicit.
 - Full graph export is suitable for offline analysis and repeated CLI calls.
   Export metadata includes schema version, asset root, HQR file count, asset
   count, graph node/edge counts, catalog summary, build timestamp, and a

@@ -50,6 +50,11 @@ export interface SelectionLink {
   kind: SelectionKind | 'asset';
   stableId: string;
   label: string;
+  proofScope?: string;
+  evidenceStatus?: string;
+  sourceRule?: string;
+  sourceField?: string;
+  indexRule?: string;
 }
 
 export interface SelectionAction {
@@ -92,7 +97,6 @@ export interface AppSelection {
     sceneUsage?: SceneAssetUsage;
   };
 }
-
 type SelectionListener = (selection: AppSelection | null) => void;
 
 export class AppSelectionStore {
@@ -129,11 +133,11 @@ export function selectionFromCatalogAsset(
     graphSelection?: CatalogGraphSelectionProjection;
   } = {},
 ): AppSelection {
-  if (asset.kind === 'model' || asset.kind === 'resource') {
-    if (!options.graphSelection) {
-      throw new Error(`Missing graph selection projection for migrated ${asset.kind} asset ${asset.id}`);
-    }
+  if (options.graphSelection) {
     return selectionFromGraphProjection(options.graphSelection, options);
+  }
+  if (asset.kind === 'model' || asset.kind === 'resource') {
+    throw new Error(`Missing graph selection projection for migrated ${asset.kind} asset ${asset.id}`);
   }
   return {
     kind: 'asset',
@@ -151,7 +155,6 @@ export function selectionFromCatalogAsset(
     facets: facetsForAsset(asset),
   };
 }
-
 function selectionFromGraphProjection(
   projection: CatalogGraphSelectionProjection,
   options: {
@@ -170,6 +173,11 @@ function selectionFromGraphProjection(
       kind: link.kind as SelectionKind | 'asset',
       stableId: link.stableId,
       label: link.label,
+      proofScope: link.proofScope,
+      evidenceStatus: link.evidenceStatus,
+      sourceRule: link.sourceRule,
+      sourceField: link.sourceField,
+      indexRule: link.indexRule,
     })),
     unknowns: projection.unknowns,
     previewActions: projection.previewActions,
@@ -178,8 +186,32 @@ function selectionFromGraphProjection(
     inspectorRoute: projection.inspectorRoute,
     compatibilityStatus: options.compatibilityStatus || projection.compatibilityStatus,
     workspaceSuggestion: options.workspaceSuggestion || projection.workspaceSuggestion,
-    facets: projection.facets,
+    facets: {
+      ...projection.facets,
+      graphNodeId: projection.facets?.graphNodeId || projection.nodeId,
+    },
   };
+}
+
+function parentGraphLinks(
+  asset: CatalogAsset | undefined,
+  graphSelection?: CatalogGraphSelectionProjection,
+): SelectionLink[] {
+  const links: SelectionLink[] = asset ? [{ kind: 'asset', stableId: asset.id, label: asset.label }] : [];
+  for (const link of graphSelection?.links || []) {
+    if (links.some((existing) => existing.kind === link.kind && existing.stableId === link.stableId)) continue;
+    links.push({
+      kind: link.kind as SelectionKind | 'asset',
+      stableId: link.stableId,
+      label: link.label,
+      proofScope: link.proofScope,
+      evidenceStatus: link.evidenceStatus,
+      sourceRule: link.sourceRule,
+      sourceField: link.sourceField,
+      indexRule: link.indexRule,
+    });
+  }
+  return links;
 }
 
 export function selectionFromRuntimeResolution(payload: RuntimeSpriteResolvePayload): AppSelection {
@@ -214,14 +246,22 @@ export function selectionFromRuntimeResolution(payload: RuntimeSpriteResolvePayl
   };
 }
 
-export function selectionFromSpriteFrame(asset: CatalogAsset, payload: SpritePayload): AppSelection {
+export function selectionFromSpriteFrame(
+  asset: CatalogAsset,
+  payload: SpritePayload,
+  options: { graphSelection?: CatalogGraphSelectionProjection } = {},
+): AppSelection {
   const frame = payload.frame;
   const stats = asset.stats;
   const runtime = 'semantic_layout' in stats && (stats.semantic_layout === 'lsp_sprite_frame' || stats.semantic_layout === 'raw_sprite_frame')
     ? stats.runtime
     : undefined;
+  const baseSelection = selectionFromCatalogAsset(asset, {
+    graphSelection: options.graphSelection,
+    workspaceSuggestion: 'sprite',
+  });
   return {
-    ...selectionFromCatalogAsset(asset, { exportable: true, workspaceSuggestion: 'sprite' }),
+    ...baseSelection,
     kind: 'sprite_frame',
     stableId: frame?.variant ? `${asset.id}#frame:${frame.variant}` : `${asset.id}#frame:${asset.source.entry_index}`,
     label: frame?.variant_label ? `${asset.label} ${frame.variant_label}` : asset.label,
@@ -239,6 +279,11 @@ export function selectionFromSpriteFrame(asset: CatalogAsset, payload: SpritePay
       paletteSource: frame?.palette_source,
       backend: runtime?.backend,
       runtimeSpriteIndex: runtime?.runtime_sprite_index,
+      graphNodeId: baseSelection.facets?.graphNodeId,
+      relationshipLinkCount: baseSelection.facets?.relationshipLinkCount,
+    },
+    evidence: {
+      usageAsset: asset,
     },
   };
 }
@@ -300,10 +345,15 @@ export function selectionFromEntityWorkflow(workflow: EntityWorkflowPayload): Ap
   };
 }
 
-export function selectionFromModelSurface(model: Lm2Model, polygon: PolygonEvidence): AppSelection {
+export function selectionFromModelSurface(
+  model: Lm2Model,
+  polygon: PolygonEvidence,
+  options: { graphSelection?: CatalogGraphSelectionProjection } = {},
+): AppSelection {
   const asset = model.catalog_asset;
   const assetId = asset?.id || model.source || 'uploaded_model';
   const material = `${polygon.material.kind} ${polygon.material.value}`;
+  const graphExportActions = options.graphSelection?.exportActions || [];
   return {
     kind: 'model_surface',
     stableId: `${assetId}#polygon:${polygon.polygon_index}`,
@@ -311,10 +361,11 @@ export function selectionFromModelSurface(model: Lm2Model, polygon: PolygonEvide
     source: asset ? sourceFromAsset(asset) : undefined,
     provenance: asset ? provenanceForAsset(asset) : model.source,
     evidenceStatus: asset ? evidenceStatusForAsset(asset) : 'decoded_only',
-    links: asset ? [{ kind: 'asset', stableId: asset.id, label: asset.label }] : [],
+    links: parentGraphLinks(asset, options.graphSelection),
     unknowns: polygon.unknowns.map((unknown) => `${unknown.field}: ${unknown.note}`),
     previewActions: [],
-    exportActions: asset?.kind === 'model' ? [{ id: 'export_catalog_asset', label: 'Export evidence bundle', targetAssetId: asset.id }] : [],
+    exportActions: graphExportActions,
+    exportCapability: options.graphSelection?.exportCapability,
     workspaceSuggestion: 'model',
     facets: {
       assetId,
@@ -325,6 +376,8 @@ export function selectionFromModelSurface(model: Lm2Model, polygon: PolygonEvide
       hasTexture: polygon.render_flags.has_texture,
       hasTransparency: polygon.render_flags.has_transparency,
       vertexCount: polygon.vertices.length,
+      graphNodeId: options.graphSelection?.facets?.graphNodeId || options.graphSelection?.nodeId,
+      relationshipLinkCount: options.graphSelection?.facets?.relationshipLinkCount,
     },
     evidence: {
       model,
@@ -339,9 +392,11 @@ export function selectionFromAnimationSample(
   sequence: AnimationSequencePayload,
   frame: AnimationSequenceFrame,
   loopCycle = 0,
+  options: { graphSelection?: CatalogGraphSelectionProjection } = {},
 ): AppSelection {
   const stableId = `${body.id}+${animation.id}#sample:${frame.sequence_index};frame=${frame.frame};elapsed=${frame.elapsed_ms}`;
   const rootMotion = frame.root_motion;
+  const graphExportActions = options.graphSelection?.exportActions || [];
   return {
     kind: 'animation_sample',
     stableId,
@@ -350,12 +405,13 @@ export function selectionFromAnimationSample(
     provenance: `BODY ${body.id} posed by ANIM ${animation.id} through decoded playback sequence`,
     evidenceStatus: 'decoded_only',
     links: [
-      { kind: 'asset', stableId: body.id, label: body.label },
+      ...parentGraphLinks(body, options.graphSelection),
       { kind: 'asset', stableId: animation.id, label: animation.label },
     ],
     unknowns: [],
     previewActions: [],
-    exportActions: body.kind === 'model' ? [{ id: 'export_catalog_asset', label: 'Export evidence bundle', targetAssetId: body.id }] : [],
+    exportActions: graphExportActions,
+    exportCapability: options.graphSelection?.exportCapability,
     workspaceSuggestion: 'model',
     facets: {
       bodyAssetId: body.id,
@@ -374,6 +430,8 @@ export function selectionFromAnimationSample(
       rootMotionX: rootMotion?.[0],
       rootMotionY: rootMotion?.[1],
       rootMotionZ: rootMotion?.[2],
+      graphNodeId: options.graphSelection?.facets?.graphNodeId || options.graphSelection?.nodeId,
+      relationshipLinkCount: options.graphSelection?.facets?.relationshipLinkCount,
     },
     evidence: {
       animation,
@@ -388,11 +446,13 @@ export function selectionFromAnimationPose(
   body: CatalogAsset,
   animation: CatalogAsset,
   model: Lm2Model,
+  options: { graphSelection?: CatalogGraphSelectionProjection } = {},
 ): AppSelection | null {
   const pose = model.pose;
   if (!pose) return null;
   const sample = pose.sample;
   const rootMotion = sample.root_delta;
+  const graphExportActions = options.graphSelection?.exportActions || [];
   return {
     kind: 'animation_sample',
     stableId: `${body.id}+${animation.id}#pose:frame=${sample.target_frame_index};previous=${sample.previous_frame_index};elapsed=${sample.elapsed_ms}`,
@@ -401,12 +461,13 @@ export function selectionFromAnimationPose(
     provenance: `BODY ${body.id} posed by ANIM ${animation.id} through decoded pose sample`,
     evidenceStatus: 'decoded_only',
     links: [
-      { kind: 'asset', stableId: body.id, label: body.label },
+      ...parentGraphLinks(body, options.graphSelection),
       { kind: 'asset', stableId: animation.id, label: animation.label },
     ],
     unknowns: [],
     previewActions: [],
-    exportActions: body.kind === 'model' ? [{ id: 'export_catalog_asset', label: 'Export evidence bundle', targetAssetId: body.id }] : [],
+    exportActions: graphExportActions,
+    exportCapability: options.graphSelection?.exportCapability,
     workspaceSuggestion: 'model',
     facets: {
       bodyAssetId: body.id,
@@ -421,6 +482,8 @@ export function selectionFromAnimationPose(
       rootMotionX: rootMotion?.[0],
       rootMotionY: rootMotion?.[1],
       rootMotionZ: rootMotion?.[2],
+      graphNodeId: options.graphSelection?.facets?.graphNodeId || options.graphSelection?.nodeId,
+      relationshipLinkCount: options.graphSelection?.facets?.relationshipLinkCount,
     },
     evidence: {
       animation,
@@ -430,7 +493,12 @@ export function selectionFromAnimationPose(
   };
 }
 
-export function selectionFromResourceRecord(asset: CatalogAsset, record: ResourceRecordEvidence): AppSelection {
+export function selectionFromResourceRecord(
+  asset: CatalogAsset,
+  record: ResourceRecordEvidence,
+  options: { graphSelection?: CatalogGraphSelectionProjection } = {},
+): AppSelection {
+  const exportActions = options.graphSelection?.exportActions || [];
   return {
     kind: 'resource_record',
     stableId: record.stableId,
@@ -438,13 +506,16 @@ export function selectionFromResourceRecord(asset: CatalogAsset, record: Resourc
     source: sourceFromAsset(asset),
     provenance: `${asset.id} ${record.kind} sampled decoded resource evidence`,
     evidenceStatus: evidenceStatusForAsset(asset),
-    links: [{ kind: 'asset', stableId: asset.id, label: asset.label }],
+    links: parentGraphLinks(asset, options.graphSelection),
     unknowns: unknownsForAsset(asset),
     previewActions: [],
-    exportActions: isExportableResource(asset) ? [{ id: 'export_catalog_asset', label: 'Export evidence bundle', targetAssetId: asset.id }] : [],
+    exportActions,
+    exportCapability: options.graphSelection?.exportCapability,
     workspaceSuggestion: 'resource',
     facets: {
       assetId: asset.id,
+      graphNodeId: options.graphSelection?.facets?.graphNodeId,
+      relationshipLinkCount: options.graphSelection?.facets?.relationshipLinkCount,
       recordKind: record.kind,
       summary: record.summary,
       detail: record.detail,
@@ -456,7 +527,11 @@ export function selectionFromResourceRecord(asset: CatalogAsset, record: Resourc
   };
 }
 
-export function selectionFromResourcePaletteContext(asset: CatalogAsset, record?: ResourceRecordEvidence): AppSelection | null {
+export function selectionFromResourcePaletteContext(
+  asset: CatalogAsset,
+  record?: ResourceRecordEvidence,
+  options: { graphSelection?: CatalogGraphSelectionProjection } = {},
+): AppSelection | null {
   if (asset.kind !== 'resource') return null;
   const stats = asset.stats as ResourceStats;
   const paletteEntry = stats.palette_entry ? `${stats.palette_entry.hqr}:${stats.palette_entry.entry_index}` : null;
@@ -479,15 +554,18 @@ export function selectionFromResourcePaletteContext(asset: CatalogAsset, record?
     provenance: stats.source_provenance || stats.runtime_reference_status || `${asset.id} palette context`,
     evidenceStatus: stats.source_provenance || stats.runtime_reference_status ? 'source_backed' : 'decoded_only',
     links: [
-      { kind: 'asset', stableId: asset.id, label: asset.label },
+      ...parentGraphLinks(asset, options.graphSelection),
       ...(paletteEntry ? [{ kind: 'asset' as const, stableId: paletteEntry, label: `Palette ${paletteEntry}` }] : []),
     ],
     unknowns: paletteEntry || pairedEntry ? [] : ['Palette source is not resolved for this resource.'],
     previewActions: paletteEntry ? [{ id: 'open_palette_asset', label: `Open ${paletteEntry}`, targetAssetId: paletteEntry }] : [],
-    exportActions: [],
+    exportActions: options.graphSelection?.exportActions || [],
+    exportCapability: options.graphSelection?.exportCapability,
     workspaceSuggestion: 'resource',
     facets: {
       assetId: asset.id,
+      graphNodeId: options.graphSelection?.facets?.graphNodeId,
+      relationshipLinkCount: options.graphSelection?.facets?.relationshipLinkCount,
       layout: stats.semantic_layout,
       paletteSource: paletteEntry,
       sourceProvenance: stats.source_provenance,
@@ -842,15 +920,8 @@ function evidenceStatusForAsset(asset: CatalogAsset): EvidenceStatus {
 }
 
 function linksForAsset(asset: CatalogAsset): SelectionLink[] {
-  const links: SelectionLink[] = [];
-  for (const usage of asset.scene_usages || []) {
-    links.push({
-      kind: 'scene_usage',
-      stableId: `${usage.scene_asset_id}#object:${usage.object_index}`,
-      label: `${usage.scene_label} object ${usage.object_index}`,
-    });
-  }
-  return links.slice(0, 12);
+  void asset;
+  return [];
 }
 
 function unknownsForAsset(asset: CatalogAsset): string[] {
@@ -886,21 +957,6 @@ function facetsForAsset(asset: CatalogAsset): AppSelection['facets'] {
     entryType: asset.entry_type,
     semanticLayout: 'semantic_layout' in stats ? stats.semantic_layout : undefined,
     decodedBytes: asset.decoded_bytes,
-    sceneUsageCount: asset.scene_usages?.length || 0,
+    sceneUsageCount: undefined,
   };
-}
-
-function isExportableResource(asset: CatalogAsset): boolean {
-  if (asset.kind !== 'resource') return false;
-  const stats = asset.stats;
-  if (!('semantic_layout' in stats)) return false;
-  return stats.semantic_layout === 'sample_wave_audio'
-    || stats.semantic_layout === 'lba2_texture_atlas_indexed'
-    || stats.semantic_layout === 'lba2_indexed_image_256'
-    || stats.semantic_layout === 'screen_indexed_image_640x480'
-    || stats.semantic_layout === 'bkg_grid_map'
-    || stats.semantic_layout === 'bkg_brick_graphic'
-    || stats.semantic_layout === 'holomap_plan_image_640x480'
-    || stats.semantic_layout === 'text_payload_bank'
-    || stats.semantic_layout === 'smacker_video';
 }

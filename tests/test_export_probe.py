@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from lba2_lm2_viewer import server
 from lba2_lm2_viewer import viewer
+from lba2_lm2_viewer.catalog_graph import build_catalog_graph
 from lba2_lm2_viewer.exports import export_catalog_asset_probe, export_model_probe
 
 
@@ -338,6 +339,58 @@ class ExportProbeTests(unittest.TestCase):
             self.assertIn("missing LBA2 palette archive", manifest["warnings"][0])
             self.assertTrue((output_dir / "BODY.HQR_1.obj").exists())
 
+    def test_export_catalog_asset_probe_ignores_stale_reverse_usage(self) -> None:
+        payload = textured_triangle_lm2()
+        catalog = {
+            "schema": "viewer-catalog-v1",
+            "source_mode": "test",
+            "assets": [
+                {
+                    "id": "BODY.HQR:1",
+                    "kind": "model",
+                    "label": "Standalone model",
+                    "entry_type": "body",
+                    "relative_path": "BODY.HQR/1",
+                    "source": {
+                        "hqr": "BODY.HQR",
+                        "entry_index": 1,
+                        "classic_index": 0,
+                        "offset": 0,
+                        "raw_bytes": len(payload),
+                    },
+                    "stats": {"bones": 1},
+                    "scene_usages": [
+                        {
+                            "kind": "body",
+                            "scene_asset_id": "SCENE.HQR:3",
+                            "scene_entry_index": 3,
+                            "scene_index": 2,
+                            "object_index": 1,
+                            "target_asset_id": "BODY.HQR:1",
+                        }
+                    ],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "assets"
+            root.mkdir()
+            output_dir = Path(temp_dir) / "export"
+
+            with (
+                patch("lba2_lm2_viewer.viewer.build_catalog", return_value=catalog),
+                patch("lba2_lm2_viewer.viewer.read_hqr_payload", return_value=(payload, {"compression": 0})),
+            ):
+                manifest = export_catalog_asset_probe(
+                    asset_root=root,
+                    asset_id="BODY.HQR:1",
+                    output_dir=output_dir,
+                )
+
+        self.assertEqual(manifest["evidence"]["scene_usage_count"], 0)
+        self.assertEqual(manifest["evidence"]["relationship_link_count"], 0)
+        self.assertEqual(manifest["evidence"]["promotion_packet_ids"], [])
+
     def test_viewer_server_exports_loaded_catalog_asset(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "assets"
@@ -361,7 +414,7 @@ class ExportProbeTests(unittest.TestCase):
             )
             self.assertTrue((output_dir / "manifest.json").exists())
 
-    def test_viewer_server_export_manifest_links_available_promotion_packets(self) -> None:
+    def test_viewer_server_export_manifest_ignores_stale_reverse_usage_packets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "assets"
             root.mkdir()
@@ -373,12 +426,16 @@ class ExportProbeTests(unittest.TestCase):
             asset = viewer_server.find_catalog_asset("BODY.HQR:1")
             asset["scene_usages"] = [
                 {
+                    "kind": "body",
                     "scene_asset_id": "SCENE.HQR:3",
                     "scene_entry_index": 3,
                     "scene_index": 2,
                     "object_index": 1,
+                    "target_asset_id": "BODY.HQR:1",
+                    "resolution_rule": "synthetic graph usage evidence",
                 }
             ]
+            viewer_server.catalog_graph = None
             output_dir = Path(temp_dir) / "server-export"
             packets = {
                 "manifest": "D:/port/docs/promotion_packets/manifest.json",
@@ -400,13 +457,76 @@ class ExportProbeTests(unittest.TestCase):
                 response = viewer_server.export_catalog_asset("BODY.HQR:1", output_dir)
 
             evidence = response["manifest"]["evidence"]
-            self.assertEqual(evidence["scene_usage_count"], 1)
-            self.assertEqual(evidence["promotion_packet_ids"], ["scene_packet"])
-            self.assertEqual(evidence["runtime_contract_ids"], ["scene_contract"])
+            self.assertEqual(evidence["scene_usage_count"], 0)
+            self.assertEqual(evidence["promotion_packet_ids"], [])
+            self.assertEqual(evidence["runtime_contract_ids"], [])
             self.assertEqual(
                 evidence["promotion_packet_source"],
-                "D:/port/docs/promotion_packets/manifest.json",
+                "not_scene_linked",
             )
+
+    def test_viewer_server_promotion_packet_links_use_graph_scene_evidence(self) -> None:
+        catalog = {
+            "schema": "viewer-catalog-v1",
+            "assets": [
+                {
+                    "id": "SCENE.HQR:3",
+                    "kind": "scene",
+                    "label": "Scene 3",
+                    "entry_type": "scene",
+                    "source": {"hqr": "SCENE.HQR", "entry_index": 3},
+                    "stats": {
+                        "semantic_layout": "scene_runtime_layout_partial",
+                        "reconnaissance": {
+                            "sampled_objects": [
+                                {
+                                    "index": 1,
+                                    "links": {
+                                        "body": {
+                                            "asset_id": "BODY.HQR:1",
+                                            "asset_available": True,
+                                            "resolution_rule": "synthetic scene object evidence",
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                },
+                {
+                    "id": "BODY.HQR:1",
+                    "kind": "model",
+                    "label": "Linked model",
+                    "entry_type": "body",
+                    "source": {"hqr": "BODY.HQR", "entry_index": 1},
+                    "stats": {"bones": 1},
+                },
+            ],
+        }
+        viewer_server = server.ViewerServer(None, None)
+        viewer_server.catalog = catalog
+        viewer_server.catalog_graph = build_catalog_graph(catalog)
+        packets = {
+            "manifest": "D:/port/docs/promotion_packets/manifest.json",
+            "packets": [
+                {
+                    "id": "scene_packet",
+                    "runtime_contracts": ["scene_contract"],
+                    "fixture_source": {"scene": 2},
+                },
+                {
+                    "id": "other_scene_packet",
+                    "runtime_contracts": ["other_contract"],
+                    "fixture_source": {"scene": 9},
+                },
+            ],
+        }
+
+        with patch("lba2_lm2_viewer.server.read_port_promotion_packets", return_value=packets):
+            links = viewer_server.export_promotion_packet_links(catalog["assets"][1])
+
+        self.assertEqual(links["promotion_packet_ids"], ["scene_packet"])
+        self.assertEqual(links["runtime_contract_ids"], ["scene_contract"])
 
     def test_viewer_server_exports_sprite_frame_png_and_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -702,6 +822,48 @@ class ExportProbeTests(unittest.TestCase):
             self.assertEqual(composition["flat_block_refs"][:25], [1] + [0] * 24)
             self.assertEqual(composition["occupied_block_cells"], 4096)
             self.assertEqual(response["manifest"]["stats"]["preview_drawn_cells"], 4096)
+
+    def test_viewer_server_rejects_bkg_brick_graphic_export_without_route(self) -> None:
+        header = struct.pack(
+            "<HHHHHHIIII",
+            1,
+            2,
+            3,
+            4,
+            1,
+            1,
+            4096,
+            9000,
+            512,
+            256,
+        )
+        grm = bytes([1, 1, 1]) + struct.pack("<H", 0x0102)
+        bll = struct.pack("<I", 4) + bytes([1, 1, 1, 2, 0x10]) + struct.pack("<H", 1)
+        cube_records = bytearray(
+            viewer.BKG_CUBE_MAP_RECORD_COUNT * viewer.BKG_CUBE_MAP_RECORD_BYTES
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "assets"
+            root.mkdir()
+            (root / "LBA_BKG.HQR").write_bytes(
+                classic_hqr(
+                    [
+                        resource_entry(header),
+                        resource_entry(bkg_grid_payload()),
+                        resource_entry(grm),
+                        resource_entry(bll),
+                        resource_entry(bkg_affgraph_payload()),
+                        resource_entry(bytes(cube_records)),
+                    ]
+                )
+            )
+            viewer_server = server.ViewerServer(None, None)
+            viewer_server.set_asset_root(root)
+            brick_asset = viewer_server.find_catalog_asset("LBA_BKG.HQR:4")
+            self.assertEqual(brick_asset["stats"]["semantic_layout"], "bkg_brick_graphic")
+
+            with self.assertRaisesRegex(server.Lm2Error, "catalog asset is not exportable"):
+                viewer_server.export_catalog_asset("LBA_BKG.HQR:4", Path(temp_dir) / "brick-export")
 
     def test_viewer_server_exports_scene_background_grm_variants(self) -> None:
         header = struct.pack(

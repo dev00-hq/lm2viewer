@@ -29,9 +29,11 @@ def export_catalog_asset_probe(
     polygon_mode: PolygonMode = "original",
 ) -> dict[str, Any]:
     from lba2_lm2_viewer import viewer
+    from lba2_lm2_viewer.catalog_graph import build_catalog_graph, query_export_context
 
     resolved_root = asset_root.expanduser().resolve()
     catalog = viewer.build_catalog(resolved_root)
+    graph = build_catalog_graph(catalog)
     asset = _find_catalog_asset(catalog, asset_id)
     if asset.get("kind") != "model":
         raise viewer.Lm2Error(f"catalog asset is not a model: {asset_id}")
@@ -49,6 +51,8 @@ def export_catalog_asset_probe(
     except viewer.Lm2Error as exc:
         warnings.append(str(exc))
 
+    proof_scope = "decoded model geometry and generated OBJ/texture evidence; not live runtime gameplay proof"
+    graph_context = query_export_context(graph, asset["id"], proof_scope)
     source = {
         "asset_root": str(resolved_root),
         "catalog_asset_id": asset["id"],
@@ -64,8 +68,16 @@ def export_catalog_asset_probe(
         "resource": resource,
         "source_mode": catalog.get("source_mode"),
         "evidence_status": _evidence_status_for_asset(asset),
-        "proof_scope": "decoded model geometry and generated OBJ/texture evidence; not live runtime gameplay proof",
-        "scene_usage_count": len(asset.get("scene_usages") or []),
+        "proof_scope": proof_scope,
+        "scene_usage_count": graph_context["scene_usage_count"],
+        "relationship_link_count": graph_context["relationship_link_count"],
+        "direct_scene_object_usage_count": graph_context["direct_scene_object_usage_count"],
+        "script_reference_count": graph_context["script_reference_count"],
+        "proof_scopes": graph_context["proof_scopes"],
+        "evidence_statuses": graph_context["evidence_statuses"],
+        "source_rules": graph_context["source_rules"],
+        "source_fields": graph_context["source_fields"],
+        "index_rules": graph_context["index_rules"],
         "runtime_contract_ids": [],
         "promotion_packet_ids": [],
         "promotion_packet_source": "not_scene_linked",
@@ -398,6 +410,14 @@ def _evidence_context_from_source(source: dict[str, Any], *, default_scope: str)
         "evidence_status": source.get("evidence_status") or "decoded_only",
         "proof_scope": source.get("proof_scope") or default_scope,
         "scene_usage_count": source.get("scene_usage_count", 0),
+        "relationship_link_count": source.get("relationship_link_count", 0),
+        "direct_scene_object_usage_count": source.get("direct_scene_object_usage_count", 0),
+        "script_reference_count": source.get("script_reference_count", 0),
+        "proof_scopes": list(source.get("proof_scopes") or []),
+        "evidence_statuses": list(source.get("evidence_statuses") or []),
+        "source_rules": list(source.get("source_rules") or []),
+        "source_fields": list(source.get("source_fields") or []),
+        "index_rules": list(source.get("index_rules") or []),
         "runtime_contract_ids": list(source.get("runtime_contract_ids") or []),
         "promotion_packet_ids": list(source.get("promotion_packet_ids") or []),
         "promotion_packet_source": source.get("promotion_packet_source") or "not_scene_linked",

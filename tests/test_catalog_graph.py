@@ -9,8 +9,10 @@ from lba2_lm2_viewer.catalog_graph import (
     file3d_record_node_id_for,
     graph_from_export_document,
     query_edges,
+    query_export_context,
     query_prove,
     query_scene_object,
+    query_asset_usage_records,
     query_usages,
 )
 from lba2_lm2_viewer.viewer import ANIM_3DS_FLAG, SPRITE_3D_FLAG, resolve_runtime_sprite
@@ -202,6 +204,19 @@ def synthetic_catalog() -> dict[str, object]:
                 },
             },
             {
+                "id": "LBA_BKG.HQR:1024",
+                "kind": "resource",
+                "label": "Background brick graphic",
+                "entry_type": "resource",
+                "source": {"hqr": "LBA_BKG.HQR", "entry_index": 1024},
+                "stats": {
+                    "semantic_layout": "bkg_brick_graphic",
+                    "decode_status": "decoded",
+                    "width": 32,
+                    "height": 24,
+                },
+            },
+            {
                 "id": "ANIM3DS.HQR:0",
                 "kind": "sprite",
                 "label": "COQU frame 0",
@@ -285,6 +300,30 @@ class CatalogGraphTests(unittest.TestCase):
             ),
             "GenBody must not be treated as a direct BODY.HQR asset id.",
         )
+
+    def test_asset_usage_records_do_not_require_reverse_scene_usages(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog_without_reverse_usages())
+
+        records = query_asset_usage_records(graph, "BODY.HQR:29")["usageRecords"]
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0]["scene_asset_id"], "SCENE.HQR:2")
+        self.assertEqual(records[0]["object_index"], 2)
+        self.assertEqual(records[0]["target_asset_id"], "BODY.HQR:29")
+        self.assertEqual(records[0]["proofScope"], "scene_object_state")
+        self.assertEqual(records[1]["proofScope"], "script_reference")
+
+    def test_export_context_uses_graph_usage_evidence(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog_without_reverse_usages())
+
+        context = query_export_context(graph, "BODY.HQR:29", "test export proof")
+
+        self.assertEqual(context["scene_usage_count"], 1)
+        self.assertEqual(context["direct_scene_object_usage_count"], 1)
+        self.assertEqual(context["script_reference_count"], 1)
+        self.assertIn("scene_object_state", context["proof_scopes"])
+        self.assertIn("script_reference", context["proof_scopes"])
+        self.assertTrue(any("SceneObject" in field for field in context["source_fields"]))
 
     def test_scene_object_usage_does_not_depend_on_reverse_scene_usages(self) -> None:
         graph = build_catalog_graph(synthetic_catalog_without_reverse_usages())
@@ -476,6 +515,16 @@ class CatalogGraphTests(unittest.TestCase):
         self.assertEqual(table_selection["inspectorRoute"], "runtime_table")
         self.assertFalse(table_selection["exportCapability"]["exportable"])
         self.assertEqual(table_selection["exportActions"], [])
+
+    def test_bkg_brick_graphic_selection_is_not_exportable_without_server_route(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog())
+
+        brick_selection = catalog_selection_projection(graph)["LBA_BKG.HQR:1024"]
+
+        self.assertEqual(brick_selection["inspectorRoute"], "background")
+        self.assertEqual(brick_selection["facets"]["semanticLayout"], "bkg_brick_graphic")
+        self.assertFalse(brick_selection["exportCapability"]["exportable"])
+        self.assertEqual(brick_selection["exportActions"], [])
 
     def test_scene_object_relationship_projection_preserves_graph_edges_and_missing_targets(self) -> None:
         graph = build_catalog_graph(synthetic_catalog_without_reverse_usages())
