@@ -2241,7 +2241,7 @@ export function sceneUsageInspectorSections(selection: AppSelection): InspectorS
       rows: [
         { label: 'Status', value: selection.evidenceStatus, status: selection.evidenceStatus },
         { label: 'Provenance', value: selection.provenance },
-        { label: 'Proof scope', value: 'reverse catalog usage evidence; not live runtime proof' },
+        { label: 'Proof scope', value: 'catalog graph usage record; not live runtime proof' },
       ],
       defaultOpen: true,
       searchText: '',

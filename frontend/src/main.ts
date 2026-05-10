@@ -778,6 +778,12 @@ function sceneUsageRecordForGraphLink(records: SceneAssetUsage[] | undefined, li
   )) || null;
 }
 
+function activeGraphUsageStableId(selection: AppSelection | null): string {
+  const usage = selection?.kind === 'scene_usage' ? selection.evidence?.sceneUsage : null;
+  if (!usage) return '';
+  return usage.graphLinkStableId || `${usage.scene_asset_id}#object:${usage.object_index}`;
+}
+
 function renderSceneUsageStrip(selection: AppSelection | null): void {
   const asset = assetForUsageStrip(selection);
   const graphSelection = asset ? currentCatalog?.graph?.selectionByAssetId?.[asset.id] : null;
@@ -786,7 +792,7 @@ function renderSceneUsageStrip(selection: AppSelection | null): void {
     .map((link) => ({ link, usage: sceneUsageRecordForGraphLink(graphSelection?.usageRecords, link) }))
     .filter((item): item is { link: GraphUsageLink; usage: SceneAssetUsage } => Boolean(item.usage));
   if (asset && graphUsageItems.length > 0) {
-    const activeUsageId = selection?.kind === 'scene_usage' ? selection.stableId : '';
+    const activeUsageId = activeGraphUsageStableId(selection);
     sceneUsageStrip.replaceChildren(...graphUsageItems.map(({ link, usage }) => {
       const button = document.createElement('button');
       button.type = 'button';
