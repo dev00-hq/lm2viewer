@@ -596,7 +596,7 @@ export function selectionFromSceneUsage(asset: CatalogAsset, usage: SceneAssetUs
       archive: 'SCENE.HQR',
       entryIndex: usage.scene_entry_index,
     },
-    provenance: usage.resolution_rule || usage.index_rule || usage.reference_key || `${asset.id} reverse scene usage`,
+    provenance: usage.sourceRule || usage.resolution_rule || usage.indexRule || usage.index_rule || usage.reference_key || `${asset.id} catalog graph usage record`,
     evidenceStatus: usage.resolution_rule || usage.index_rule ? 'source_backed' : 'decoded_only',
     links: [
       { kind: 'asset', stableId: asset.id, label: asset.label },
