@@ -569,7 +569,7 @@ class ViewerServer:
                 return self.export_text_payload_bank_asset(asset, output_dir)
             if asset.get("kind") == "resource" and stats.get("semantic_layout") == "smacker_video":
                 return self.export_smacker_video_asset(asset, output_dir)
-            if asset.get("kind") == "scene":
+            if asset.get("kind") == "scene" and stats.get("semantic_layout") == "scene_runtime_layout_partial":
                 return self.export_scene_background_composition(asset, output_dir)
             if asset.get("kind") == "sprite" and stats.get("semantic_layout") in ("lsp_sprite_frame", "raw_sprite_frame"):
                 return self.export_sprite_frame_asset(asset, output_dir)
@@ -1474,6 +1474,8 @@ class ViewerServer:
         if self.asset_root is None:
             raise Lm2Error("no asset root loaded")
         stats = asset.get("stats") or {}
+        if stats.get("semantic_layout") != "scene_runtime_layout_partial":
+            raise Lm2Error(f"catalog asset is not an exportable scene background: {asset.get('id')}")
         reconnaissance = stats.get("reconnaissance") or {}
         background = reconnaissance.get("background") or {}
         gri_entry = background.get("resolved_gri_entry")

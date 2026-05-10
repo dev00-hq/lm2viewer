@@ -601,6 +601,16 @@ export function selectionFromSceneUsage(asset: CatalogAsset, usage: SceneAssetUs
     links: [
       { kind: 'asset', stableId: asset.id, label: asset.label },
       { kind: 'asset', stableId: usage.scene_asset_id, label: usage.scene_asset_id },
+      {
+        kind: usage.proofScope === 'scene_object_state' ? 'scene_object' : 'scene_usage',
+        stableId: usage.graphLinkStableId || `${usage.scene_asset_id}#object:${usage.object_index}`,
+        label,
+        proofScope: usage.proofScope,
+        evidenceStatus: usage.evidenceStatus,
+        sourceRule: usage.sourceRule || usage.resolution_rule,
+        sourceField: usage.sourceField,
+        indexRule: usage.indexRule || usage.index_rule,
+      },
     ],
     unknowns: [],
     previewActions: [],

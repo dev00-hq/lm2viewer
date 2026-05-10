@@ -186,6 +186,7 @@ export interface CatalogGraphSelectionProjection {
     sourceField?: string;
     indexRule?: string;
   }>;
+  usageRecords?: SceneAssetUsage[];
   unknowns: string[];
   previewActions: Array<{
     id: string;
@@ -428,6 +429,15 @@ export interface SceneAssetUsage {
   resolved_grm_entry?: number;
   target_cell_start?: { x: number; y: number; z: number };
   fragment_dimensions?: { x: number | null; y: number | null; z: number | null };
+  target_label?: string;
+  target_type?: string;
+  target_available?: boolean;
+  graphLinkStableId?: string;
+  proofScope?: string;
+  evidenceStatus?: string;
+  sourceRule?: string;
+  sourceField?: string;
+  indexRule?: string;
 }
 
 export interface Anim3dsSceneRange {

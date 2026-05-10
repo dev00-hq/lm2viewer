@@ -3,8 +3,8 @@ import { buildCatalog, catalogAudioUrl, exportCatalogAsset, fetchCatalog, fetchD
 import { animationCompatibilityPrefix, compatibleAnimationIds } from './compatibility';
 import { requireElement } from './dom';
 import { InspectorRenderer, anim3dsRangeInspectorSections, animationInspectorSections, animationSampleInspectorSections, backgroundInspectorSections, entityFacetInspectorSections, evidenceArtifactInspectorSections, holomapInspectorSections, modelInspectorSections, modelSurfaceInspectorSections, paletteImageInspectorSections, rawAnimationInspectorSections, resourceRecordInspectorSections, runtimeTableInspectorSections, sampleAudioInspectorSections, sceneInspectorSections, sceneObjectInspectorSections, sceneUsageInspectorSections, smackerVideoInspectorSections, spriteFrameInspectorSections, textOrderInspectorSections, textPayloadInspectorSections, unclassifiedResourceInspectorSections, type InspectorSection } from './inspector';
-import { AppSelectionStore, selectionFromAnimationPose, selectionFromAnimationSample, selectionFromCatalogAsset as buildSelectionFromCatalogAsset, selectionFromEntityFacet, selectionFromEntityWorkflow, selectionFromModelSurface, selectionFromResourcePaletteContext, selectionFromResourceRecord, selectionFromRuntimeResolution, selectionFromSceneUsageFacet, selectionFromSpriteFrame, type AppSelection, type EntityFacetSelectionKind } from './selection';
-import type { Catalog, CatalogAsset, CatalogGraphSceneObjectRelationshipProjection, CatalogGraphSceneObjectVisualLink, DecodeProgress, Lm2Model, PolygonMode, PortPromotionPacketsPayload, SceneScriptAnalysis, SceneStats, SpritePayload } from './types';
+import { AppSelectionStore, selectionFromAnimationPose, selectionFromAnimationSample, selectionFromCatalogAsset as buildSelectionFromCatalogAsset, selectionFromEntityFacet, selectionFromEntityWorkflow, selectionFromModelSurface, selectionFromResourcePaletteContext, selectionFromResourceRecord, selectionFromRuntimeResolution, selectionFromSceneUsage, selectionFromSceneUsageFacet, selectionFromSpriteFrame, type AppSelection, type EntityFacetSelectionKind } from './selection';
+import type { Catalog, CatalogAsset, CatalogGraphSceneObjectRelationshipProjection, CatalogGraphSceneObjectVisualLink, CatalogGraphSelectionProjection, DecodeProgress, Lm2Model, PolygonMode, PortPromotionPacketsPayload, SceneAssetUsage, SceneScriptAnalysis, SceneStats, SpritePayload } from './types';
 import { AnimationController } from './ui/animationController';
 import { CatalogUi } from './ui/catalog';
 import { EntityView } from './ui/entityView';
@@ -759,6 +759,21 @@ function assetForUsageStrip(selection: AppSelection | null): CatalogAsset | null
   return findCatalogAsset(selection.stableId);
 }
 
+type GraphUsageLink = CatalogGraphSelectionProjection['links'][number];
+
+function sceneUsageRecordForGraphLink(records: SceneAssetUsage[] | undefined, link: GraphUsageLink): SceneAssetUsage | null {
+  const candidates = records || [];
+  const exact = candidates.find((usage) => usage.graphLinkStableId === link.stableId);
+  if (exact) return exact;
+  return candidates.find((usage) => (
+    `${usage.scene_asset_id}#object:${usage.object_index}` === link.stableId
+    && (!link.proofScope || usage.proofScope === link.proofScope)
+    && (!link.sourceRule || usage.sourceRule === link.sourceRule || usage.resolution_rule === link.sourceRule)
+    && (!link.sourceField || usage.sourceField === link.sourceField)
+    && (!link.indexRule || usage.indexRule === link.indexRule || usage.index_rule === link.indexRule)
+  )) || null;
+}
+
 function renderSceneUsageStrip(selection: AppSelection | null): void {
   const asset = assetForUsageStrip(selection);
   const graphSelection = asset ? currentCatalog?.graph?.selectionByAssetId?.[asset.id] : null;
@@ -779,6 +794,11 @@ function renderSceneUsageStrip(selection: AppSelection | null): void {
         link.indexRule,
       ].filter(Boolean).join(' | ');
       button.addEventListener('click', () => {
+        const usage = sceneUsageRecordForGraphLink(graphSelection?.usageRecords, link);
+        if (usage) {
+          selectionStore.set(selectionFromSceneUsage(asset, usage));
+          return;
+        }
         selectionStore.set({
           kind: 'scene_usage',
           stableId: link.stableId,

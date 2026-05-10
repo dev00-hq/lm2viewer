@@ -2167,6 +2167,13 @@ export function resourceRecordInspectorSections(selection: AppSelection): Inspec
       defaultOpen: true,
       searchText: '',
     },
+    {
+      id: 'graph_usage',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
+      defaultOpen: selection.links.some((link) => link.kind === 'scene_object' || link.kind === 'scene_usage'),
+      searchText: '',
+    },
   ];
   return sections.map((section) => ({
     ...section,
@@ -2178,7 +2185,47 @@ export function sceneUsageInspectorSections(selection: AppSelection): InspectorS
   if (selection.kind !== 'scene_usage') return [];
   const asset = selection.evidence?.usageAsset;
   const usage = selection.evidence?.sceneUsage;
-  if (!asset || !usage) return [];
+  if (!asset) return [];
+  if (!usage) {
+    const sections: InspectorSection[] = [
+      {
+        id: 'summary',
+        title: 'Summary',
+        rows: [
+          { label: 'Stable ID', value: selection.stableId, copyValue: selection.stableId },
+          { label: 'Label', value: selection.label },
+          { label: 'Kind', value: selection.kind },
+          { label: 'Workspace', value: selection.workspaceSuggestion || 'entity' },
+        ],
+        actions: [{ id: 'copy_stable_id', label: 'Copy Stable ID', copyValue: selection.stableId }],
+        defaultOpen: true,
+        searchText: '',
+      },
+      {
+        id: 'evidence_status',
+        title: 'Evidence Status',
+        status: selection.evidenceStatus,
+        rows: [
+          { label: 'Status', value: selection.evidenceStatus, status: selection.evidenceStatus },
+          { label: 'Provenance', value: selection.provenance },
+          { label: 'Selected asset', value: asset.id, copyValue: asset.id },
+        ],
+        defaultOpen: true,
+        searchText: '',
+      },
+      {
+        id: 'graph_usage',
+        title: 'Graph Usage Evidence',
+        rows: graphUsageRows(selection),
+        defaultOpen: true,
+        searchText: '',
+      },
+    ];
+    return sections.map((section) => ({
+      ...section,
+      searchText: sectionSearchText(section),
+    }));
+  }
   const rows: InspectorRow[] = [
     { label: 'Usage kind', value: usage.kind },
     { label: 'Target asset', value: usage.target_asset_id, copyValue: usage.target_asset_id },
@@ -2244,6 +2291,13 @@ export function sceneUsageInspectorSections(selection: AppSelection): InspectorS
       title: 'Scene Usage',
       rows,
       defaultOpen: true,
+      searchText: '',
+    },
+    {
+      id: 'graph_usage',
+      title: 'Graph Usage Evidence',
+      rows: graphUsageRows(selection),
+      defaultOpen: graphRelationshipCount(selection) > 0,
       searchText: '',
     },
   ];

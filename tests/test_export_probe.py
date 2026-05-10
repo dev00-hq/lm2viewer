@@ -902,6 +902,35 @@ class ExportProbeTests(unittest.TestCase):
                     with self.assertRaisesRegex(server.Lm2Error, "missing resolved background"):
                         viewer_server.render_scene_background_preview_frames(scene_asset)
 
+    def test_viewer_server_rejects_scene_background_without_scene_runtime_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "assets"
+            root.mkdir()
+            scene_asset = {
+                "id": "SCENE.HQR:1",
+                "kind": "scene",
+                "label": "Scene 0",
+                "entry_type": "scene",
+                "source": {"hqr": "SCENE.HQR", "entry_index": 1},
+                "stats": {
+                    "semantic_layout": "unknown",
+                    "reconnaissance": {
+                        "background": {
+                            "resolved_gri_entry": 1,
+                            "resolved_bll_entry": 3,
+                        }
+                    },
+                },
+            }
+            viewer_server = server.ViewerServer(None, None)
+            viewer_server.asset_root = root
+            viewer_server.catalog = {"assets": [scene_asset]}
+
+            with self.assertRaisesRegex(server.Lm2Error, "catalog asset is not exportable"):
+                viewer_server.export_catalog_asset("SCENE.HQR:1", Path(temp_dir) / "scene-export")
+            with self.assertRaisesRegex(server.Lm2Error, "not an exportable scene background"):
+                viewer_server.export_scene_background_composition(scene_asset, Path(temp_dir) / "direct-export")
+
     def test_viewer_server_exports_scene_background_grm_variants(self) -> None:
         header = struct.pack(
             "<HHHHHHIIII",

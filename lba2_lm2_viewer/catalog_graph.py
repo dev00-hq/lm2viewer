@@ -1002,6 +1002,7 @@ def usage_record_from_edge(graph: CatalogGraph, edge: dict[str, Any]) -> dict[st
     proof_scope = edge.get("proofScope")
     if proof_scope == "script_reference":
         reference_node = graph.nodes_by_id.get(str(edge.get("from")), {})
+        graph_link_node = reference_node
         source = reference_node.get("source") if isinstance(reference_node.get("source"), dict) else {}
         scene_id = source.get("scene_asset_id")
         object_index = source.get("object_index")
@@ -1010,6 +1011,7 @@ def usage_record_from_edge(graph: CatalogGraph, edge: dict[str, Any]) -> dict[st
         kind = f"script_{usage_kind}" if usage_kind else "script_reference"
     else:
         scene_object = graph.nodes_by_id.get(str(edge.get("from")), {})
+        graph_link_node = scene_object
         source = scene_object.get("source") if isinstance(scene_object.get("source"), dict) else {}
         scene_id = source.get("scene_asset_id")
         object_index = source.get("object_index")
@@ -1039,6 +1041,7 @@ def usage_record_from_edge(graph: CatalogGraph, edge: dict[str, Any]) -> dict[st
         "target_label": target.get("label"),
         "target_type": target.get("type"),
         "target_available": target.get("type") != "MissingTarget",
+        "graphLinkStableId": graph_link_node.get("stableId") or stable_id_from_node_id(str(edge.get("from"))),
         "resolution_rule": edge.get("sourceRule"),
         "proofScope": edge.get("proofScope"),
         "evidenceStatus": edge.get("evidenceStatus"),
@@ -1289,6 +1292,14 @@ def asset_selection_projection(graph: CatalogGraph, node: dict[str, Any]) -> dic
         for edge_id in usage_edge_ids
         if graph.edges_by_id.get(edge_id, {}).get("proofScope") == "scene_object_state"
     )
+    usage_records = query_asset_usage_records(graph, stable_id)["usageRecords"]
+    visible_usage_link_ids = {str(link.get("stableId")) for link in usage_links[:48]}
+    visible_usage_records = [
+        record
+        for record in usage_records
+        if str(record.get("graphLinkStableId")) in visible_usage_link_ids
+        or f"{record.get('scene_asset_id')}#object:{record.get('object_index')}" in visible_usage_link_ids
+    ]
     export_actions = []
     exportable = is_exportable_asset_node(node)
     if exportable:
@@ -1316,6 +1327,7 @@ def asset_selection_projection(graph: CatalogGraph, node: dict[str, Any]) -> dic
         "provenance": provenance_for_asset_node(node),
         "evidenceStatus": node.get("evidenceStatus") or "unknown",
         "links": usage_links[:12],
+        "usageRecords": visible_usage_records,
         "unknowns": unknowns_for_asset_node(node),
         "previewActions": [
             {

@@ -238,6 +238,9 @@ Validation:
 - Inspector graph usage evidence for a graph-linked parent and a derived
   selection must either show relationship links or clearly explain that the
   derived selection delegates relationship evidence to its parent asset.
+- Agent-browser replay for `BODY.HQR:26` confirmed that a graph usage strip click
+  selects a real `scene_usage` record and renders both Scene Usage details and
+  Graph Usage Evidence.
 
 ### M16.4 - Produce clean post-fix browser evidence
 
@@ -262,6 +265,8 @@ Evidence:
 
 - `docs/validation-task-final-agent-browser-2026-05-10.md`
 - `docs/validation-task-final-agent-browser-2026-05-10.jpg`
+- `docs/validation-task-final-usage-strip-agent-browser-2026-05-10.md`
+- `docs/validation-task-final-usage-strip-agent-browser-2026-05-10.png`
 
 Validation note should include URL, asset root, selected ids, expected state,
 observed state, screenshot path, and validation commands.
