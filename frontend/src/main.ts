@@ -461,9 +461,13 @@ function selectionFromCatalogAsset(
   asset: CatalogAsset,
   options: Parameters<typeof buildSelectionFromCatalogAsset>[1] = {},
 ): AppSelection {
+  const graphSelection = graphSelectionForAsset(asset);
+  if (currentCatalog?.graph && !graphSelection) {
+    throw new Error(`Missing graph selection projection for catalog asset ${asset.id}`);
+  }
   return buildSelectionFromCatalogAsset(asset, {
     ...options,
-    graphSelection: graphSelectionForAsset(asset),
+    graphSelection,
   });
 }
 
@@ -778,9 +782,12 @@ function renderSceneUsageStrip(selection: AppSelection | null): void {
   const asset = assetForUsageStrip(selection);
   const graphSelection = asset ? currentCatalog?.graph?.selectionByAssetId?.[asset.id] : null;
   const graphLinks = graphSelection?.links?.filter((link) => link.kind === 'scene_object' || link.kind === 'scene_usage') || [];
-  if (asset && graphLinks.length > 0) {
+  const graphUsageItems = graphLinks.slice(0, 48)
+    .map((link) => ({ link, usage: sceneUsageRecordForGraphLink(graphSelection?.usageRecords, link) }))
+    .filter((item): item is { link: GraphUsageLink; usage: SceneAssetUsage } => Boolean(item.usage));
+  if (asset && graphUsageItems.length > 0) {
     const activeUsageId = selection?.kind === 'scene_usage' ? selection.stableId : '';
-    sceneUsageStrip.replaceChildren(...graphLinks.slice(0, 48).map((link) => {
+    sceneUsageStrip.replaceChildren(...graphUsageItems.map(({ link, usage }) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'scene-usage-item';
@@ -794,34 +801,7 @@ function renderSceneUsageStrip(selection: AppSelection | null): void {
         link.indexRule,
       ].filter(Boolean).join(' | ');
       button.addEventListener('click', () => {
-        const usage = sceneUsageRecordForGraphLink(graphSelection?.usageRecords, link);
-        if (usage) {
-          selectionStore.set(selectionFromSceneUsage(asset, usage));
-          return;
-        }
-        selectionStore.set({
-          kind: 'scene_usage',
-          stableId: link.stableId,
-          label: link.label,
-          provenance: link.sourceRule || link.indexRule || 'catalog graph usage edge',
-          evidenceStatus: (link.evidenceStatus || 'unknown') as AppSelection['evidenceStatus'],
-          links: [
-            { kind: 'asset', stableId: asset.id, label: asset.label },
-            { kind: 'scene_object', stableId: link.stableId, label: link.label },
-          ],
-          unknowns: [],
-          previewActions: [],
-          exportActions: [],
-          workspaceSuggestion: 'entity',
-          facets: {
-            assetId: asset.id,
-            proofScope: link.proofScope,
-            sourceRule: link.sourceRule,
-            sourceField: link.sourceField,
-            indexRule: link.indexRule,
-          },
-          evidence: { usageAsset: asset },
-        });
+        selectionStore.set(selectionFromSceneUsage(asset, usage));
       });
       const title = document.createElement('strong');
       title.textContent = link.label;
@@ -840,7 +820,9 @@ function renderSceneUsageStrip(selection: AppSelection | null): void {
     sceneUsageStrip.textContent = 'No selected usage strip.';
     return;
   }
-  sceneUsageStrip.textContent = 'No graph usage evidence for selected asset.';
+  sceneUsageStrip.textContent = graphLinks.length > 0
+    ? 'Graph usage links are missing usage records.'
+    : 'No graph usage evidence for selected asset.';
 }
 
 function sceneAssetForObjectTable(selection: AppSelection | null): CatalogAsset | null {

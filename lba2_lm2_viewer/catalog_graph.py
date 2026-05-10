@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from . import viewer
+from .exportability import graph_asset_export_route, has_exact_scene_background_links
 
 
 CatalogNodeId = str
@@ -276,20 +277,7 @@ def add_archives_and_assets(graph: CatalogGraph, catalog: dict[str, Any], assets
                 "semanticLayout": (asset.get("stats") or {}).get("semantic_layout")
                 if isinstance(asset.get("stats"), dict)
                 else None,
-                "sceneBackgroundResolved": (
-                    type(
-                        ((asset.get("stats") or {}).get("reconnaissance") or {})
-                        .get("background", {})
-                        .get("resolved_gri_entry"),
-                    )
-                    is int
-                    and type(
-                        ((asset.get("stats") or {}).get("reconnaissance") or {})
-                        .get("background", {})
-                        .get("resolved_bll_entry"),
-                    )
-                    is int
-                )
+                "sceneBackgroundResolved": has_exact_scene_background_links(asset.get("stats"))
                 if asset.get("kind") == "scene" and isinstance(asset.get("stats"), dict)
                 else None,
                 "decodedBytes": asset.get("decoded_bytes"),
@@ -1384,24 +1372,7 @@ def unknowns_for_asset_node(node: dict[str, Any]) -> list[str]:
 
 
 def is_exportable_asset_node(node: dict[str, Any]) -> bool:
-    if node.get("assetKind") == "model":
-        return True
-    if node.get("assetKind") == "sprite":
-        return node.get("semanticLayout") in {"lsp_sprite_frame", "raw_sprite_frame"}
-    if node.get("assetKind") == "scene":
-        return node.get("semanticLayout") == "scene_runtime_layout_partial" and bool(node.get("sceneBackgroundResolved"))
-    if node.get("assetKind") != "resource":
-        return False
-    return node.get("semanticLayout") in {
-        "sample_wave_audio",
-        "lba2_texture_atlas_indexed",
-        "lba2_indexed_image_256",
-        "screen_indexed_image_640x480",
-        "bkg_grid_map",
-        "holomap_plan_image_640x480",
-        "text_payload_bank",
-        "smacker_video",
-    }
+    return graph_asset_export_route(node) is not None
 
 
 def inspector_route_for_asset_node(node: dict[str, Any]) -> str | None:

@@ -31,6 +31,7 @@ from .entities import (
     build_runtime_sprite_entity_workflow,
     build_scene_object_entity_workflow,
 )
+from .exportability import catalog_asset_export_route
 from .viewer import (
     DEFAULT_HOST,
     DEFAULT_PORT,
@@ -556,26 +557,26 @@ class ViewerServer:
             if self.asset_root is None:
                 raise Lm2Error("no asset root loaded")
             asset = self.find_catalog_asset(asset_id)
-            stats = asset.get("stats") or {}
-            if asset.get("kind") == "resource" and stats.get("semantic_layout") == "bkg_grid_map":
+            route = catalog_asset_export_route(asset)
+            if route == "bkg_grid_composition":
                 return self.export_bkg_grid_composition(asset, output_dir)
-            if asset.get("kind") == "resource" and stats.get("semantic_layout") == "screen_indexed_image_640x480":
+            if route == "screen_indexed_image":
                 return self.export_screen_indexed_image_asset(asset, output_dir)
-            if asset.get("kind") == "resource" and stats.get("semantic_layout") in ("lba2_indexed_image_256", "lba2_texture_atlas_indexed"):
+            if route == "ress_indexed_image":
                 return self.export_ress_indexed_image_asset(asset, output_dir)
-            if asset.get("kind") == "resource" and stats.get("semantic_layout") == "holomap_plan_image_640x480":
+            if route == "holomap_plan_image":
                 return self.export_holomap_plan_image_asset(asset, output_dir)
-            if asset.get("kind") == "resource" and stats.get("semantic_layout") == "text_payload_bank":
+            if route == "text_payload_bank":
                 return self.export_text_payload_bank_asset(asset, output_dir)
-            if asset.get("kind") == "resource" and stats.get("semantic_layout") == "smacker_video":
+            if route == "smacker_video":
                 return self.export_smacker_video_asset(asset, output_dir)
-            if asset.get("kind") == "scene" and stats.get("semantic_layout") == "scene_runtime_layout_partial":
+            if route == "scene_background_composition":
                 return self.export_scene_background_composition(asset, output_dir)
-            if asset.get("kind") == "sprite" and stats.get("semantic_layout") in ("lsp_sprite_frame", "raw_sprite_frame"):
+            if route == "sprite_frame":
                 return self.export_sprite_frame_asset(asset, output_dir)
-            if asset.get("kind") == "resource" and stats.get("semantic_layout") == "sample_wave_audio":
+            if route == "sample_audio":
                 return self.export_sample_audio_asset(asset, output_dir)
-            if asset.get("kind") != "model":
+            if route != "model":
                 raise Lm2Error(f"catalog asset is not exportable: {asset_id}")
             payload, resource = read_hqr_payload(self.asset_root, asset["source"])
             model = load_lm2_bytes(payload, str(asset["relative_path"]))

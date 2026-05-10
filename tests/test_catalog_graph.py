@@ -19,6 +19,11 @@ from lba2_lm2_viewer.catalog_graph import (
     query_asset_usage_records,
     query_usages,
 )
+from lba2_lm2_viewer.exportability import (
+    CATALOG_EXPORT_ROUTES_BY_KIND_LAYOUT,
+    catalog_asset_export_route,
+    graph_asset_export_route,
+)
 from lba2_lm2_viewer.viewer import ANIM_3DS_FLAG, SPRITE_3D_FLAG, resolve_runtime_sprite
 from lba2_lm2_viewer.server import ViewerServer
 
@@ -529,6 +534,71 @@ class CatalogGraphTests(unittest.TestCase):
         self.assertEqual(brick_selection["facets"]["semanticLayout"], "bkg_brick_graphic")
         self.assertFalse(brick_selection["exportCapability"]["exportable"])
         self.assertEqual(brick_selection["exportActions"], [])
+
+    def test_catalog_graph_and_server_share_exportability_routes(self) -> None:
+        expected_routes = {
+            ("model", None): "model",
+            ("resource", "sample_wave_audio"): "sample_audio",
+            ("resource", "lba2_texture_atlas_indexed"): "ress_indexed_image",
+            ("resource", "lba2_indexed_image_256"): "ress_indexed_image",
+            ("resource", "screen_indexed_image_640x480"): "screen_indexed_image",
+            ("resource", "bkg_grid_map"): "bkg_grid_composition",
+            ("resource", "holomap_plan_image_640x480"): "holomap_plan_image",
+            ("resource", "text_payload_bank"): "text_payload_bank",
+            ("resource", "smacker_video"): "smacker_video",
+            ("scene", "scene_runtime_layout_partial"): "scene_background_composition",
+            ("sprite", "lsp_sprite_frame"): "sprite_frame",
+            ("sprite", "raw_sprite_frame"): "sprite_frame",
+        }
+        self.assertEqual(CATALOG_EXPORT_ROUTES_BY_KIND_LAYOUT, expected_routes)
+        for (kind, layout), route in expected_routes.items():
+            with self.subTest(kind=kind, layout=layout):
+                asset = {
+                    "kind": kind,
+                    "stats": {
+                        "semantic_layout": layout,
+                        "reconnaissance": {
+                            "background": {
+                                "resolved_gri_entry": 1,
+                                "resolved_bll_entry": 3,
+                            }
+                        },
+                    },
+                }
+                node = {
+                    "assetKind": kind,
+                    "semanticLayout": layout,
+                    "sceneBackgroundResolved": True,
+                }
+                self.assertEqual(catalog_asset_export_route(asset), route)
+                self.assertEqual(graph_asset_export_route(node), route)
+
+        negatives = [
+            ("resource", "bkg_brick_graphic"),
+            ("resource", "bkg_grm_fragment"),
+            ("animation", "unknown"),
+            ("scene", "unknown"),
+            ("sprite", "anim3ds_frame_ranges"),
+        ]
+        for kind, layout in negatives:
+            with self.subTest(kind=kind, layout=layout):
+                self.assertIsNone(catalog_asset_export_route({"kind": kind, "stats": {"semantic_layout": layout}}))
+                self.assertIsNone(graph_asset_export_route({"assetKind": kind, "semanticLayout": layout}))
+
+        scene_asset = {
+            "kind": "scene",
+            "stats": {
+                "semantic_layout": "scene_runtime_layout_partial",
+                "reconnaissance": {"background": {"resolved_gri_entry": "1", "resolved_bll_entry": 3}},
+            },
+        }
+        scene_node = {
+            "assetKind": "scene",
+            "semanticLayout": "scene_runtime_layout_partial",
+            "sceneBackgroundResolved": False,
+        }
+        self.assertIsNone(catalog_asset_export_route(scene_asset))
+        self.assertIsNone(graph_asset_export_route(scene_node))
 
     def test_scene_selection_requires_exact_int_gri_and_bll_for_exportability(self) -> None:
         invalid_backgrounds = {

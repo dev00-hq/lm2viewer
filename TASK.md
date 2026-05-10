@@ -170,6 +170,8 @@ Result:
 - Graph exportability remains aligned with actual
   `ViewerServer.export_catalog_asset()` branches; `bkg_brick_graphic` is
   inspectable through the background route and non-exportable.
+- `lba2_lm2_viewer.exportability` is the single route table used by both graph
+  selection exportability and server export routing.
 
 Validation:
 
@@ -241,6 +243,11 @@ Validation:
 - Agent-browser replay for `BODY.HQR:26` confirmed that a graph usage strip click
   selects a real `scene_usage` record and renders both Scene Usage details and
   Graph Usage Evidence.
+- Graph usage strip clicks now fail closed when a projected link has no matching
+  usage record; they no longer fabricate partial `scene_usage` selections.
+- Catalog-backed selections now fail closed when the loaded catalog graph lacks
+  a selection projection, instead of falling through to local selection
+  inference for animations, sprites, or scenes.
 
 ### M16.4 - Produce clean post-fix browser evidence
 
@@ -296,6 +303,7 @@ Result:
   discarded historical comparison material.
 - Historical validation filenames are retained as evidence, while this
   `TASK.md` is the only current task authority.
+- Generated `exports/` evidence bundles are not tracked.
 
 ## 7. Validation Strategy
 

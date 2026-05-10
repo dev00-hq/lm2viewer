@@ -895,7 +895,7 @@ class ExportProbeTests(unittest.TestCase):
             for name, background in invalid_backgrounds.items():
                 with self.subTest(name=name):
                     scene_asset["stats"]["reconnaissance"]["background"] = background
-                    with self.assertRaisesRegex(server.Lm2Error, "missing resolved background GRI/BLL"):
+                    with self.assertRaisesRegex(server.Lm2Error, "catalog asset is not exportable"):
                         viewer_server.export_catalog_asset("SCENE.HQR:1", Path(temp_dir) / f"{name}-export")
                     with self.assertRaisesRegex(server.Lm2Error, "missing resolved background GRI/BLL"):
                         viewer_server.scene_background_variant_compositions(scene_asset)
