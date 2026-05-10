@@ -248,6 +248,9 @@ Validation:
 - Catalog-backed selections now fail closed when the loaded catalog graph lacks
   a selection projection, instead of falling through to local selection
   inference for animations, sprites, or scenes.
+- Usage strips resolve parent graph usage from derived selection evidence for
+  model surfaces, animation samples/poses, resource records, palette contexts,
+  and sprite frames.
 
 ### M16.4 - Produce clean post-fix browser evidence
 
@@ -274,6 +277,8 @@ Evidence:
 - `docs/validation-task-final-agent-browser-2026-05-10.jpg`
 - `docs/validation-task-final-usage-strip-agent-browser-2026-05-10.md`
 - `docs/validation-task-final-usage-strip-agent-browser-2026-05-10.png`
+- `docs/validation-task-final-derived-usage-strip-agent-browser-2026-05-10.md`
+- `docs/validation-task-final-derived-usage-strip-agent-browser-2026-05-10.png`
 
 Validation note should include URL, asset root, selected ids, expected state,
 observed state, screenshot path, and validation commands.

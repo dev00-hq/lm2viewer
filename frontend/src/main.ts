@@ -758,7 +758,10 @@ function assetForUsageStrip(selection: AppSelection | null): CatalogAsset | null
     return findCatalogAsset(selection.evidence?.entityWorkflow?.resolved_asset?.id || String(selection.facets?.resolvedAssetId || ''));
   }
   if (selection.kind === 'resource_record') return selection.evidence?.resourceAsset || null;
+  if (selection.kind === 'palette_context') return selection.evidence?.resourceAsset || null;
   if (selection.kind === 'sprite_frame') return selection.evidence?.usageAsset || null;
+  if (selection.kind === 'model_surface') return selection.evidence?.model?.catalog_asset || null;
+  if (selection.kind === 'animation_sample') return selection.evidence?.animationBody || null;
   if (selection.kind !== 'asset') return null;
   return findCatalogAsset(selection.stableId);
 }
