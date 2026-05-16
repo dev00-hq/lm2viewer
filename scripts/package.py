@@ -25,6 +25,8 @@ RUNTIME_FILES = (
     "lba_hqr.py",
 )
 
+RUNTIME_PACKAGES = ("lba2_lm2_viewer", "symphony")
+
 
 def run(command: list[str], cwd: Path) -> None:
     executable = shutil.which(command[0]) or shutil.which(f"{command[0]}.cmd") or command[0]
@@ -39,11 +41,12 @@ def copy_runtime() -> None:
     for relative in RUNTIME_FILES:
         shutil.copy2(ROOT / relative, PACKAGE_ROOT / relative)
 
-    shutil.copytree(
-        ROOT / "lba2_lm2_viewer",
-        PACKAGE_ROOT / "lba2_lm2_viewer",
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-    )
+    for package in RUNTIME_PACKAGES:
+        shutil.copytree(
+            ROOT / package,
+            PACKAGE_ROOT / package,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
 
     frontend_dist = ROOT / "lba2_lm2_viewer" / "frontend" / "dist"
     if not frontend_dist.exists():

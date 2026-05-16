@@ -306,3 +306,23 @@ Release artifacts include the built frontend. Source checkouts do not.
 - palette, texture atlas, File3D, sprite bounds, and named `RESS_FLOW`/`RESS_POF`/`RESS_IMPACT` runtime tables from `RESS.HQR`
 
 Decoded payloads are kept in memory for viewing and are not written back into the project directory.
+
+## Symphony
+
+This repository also includes a stdlib-only Python implementation of the draft
+OpenAI Symphony service specification.
+
+Run it with:
+
+```powershell
+symphony .\WORKFLOW.md
+```
+
+or for one poll/dispatch cycle:
+
+```powershell
+symphony .\WORKFLOW.md --once
+```
+
+See `docs/symphony.md` for the implemented surface, workflow format, and trust
+posture.
