@@ -13,6 +13,7 @@ dependencies = ["msgspec>=0.18,<1"]
 
 [project.scripts]
 lba2-lm2-viewer = "lba2_lm2_viewer.viewer:main"
+symphony = "symphony.cli:main"
 
 [tool.setuptools]
 packages = ["lba2_lm2_viewer", "lba2_lm2_viewer.contracts", "lba2_lm2_viewer.exports"]
