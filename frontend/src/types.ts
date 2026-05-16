@@ -138,15 +138,57 @@ export interface Catalog {
   hqr_files: HqrFileSummary[];
   coverage?: HqrCoverageMatrix;
   assets: CatalogAsset[];
+  page?: {
+    offset: number;
+    limit: number;
+    count: number;
+    total: number;
+  };
+  capabilities?: Record<string, string>;
+}
+
+export interface CatalogSearchPayload {
+  schema: string;
+  q: string;
+  kind: KindFilter;
+  offset: number;
+  limit: number;
+  total: number;
+  assets: CatalogAsset[];
+}
+
+export interface CatalogAssetDetailPayload {
+  schema: string;
+  asset: CatalogAsset;
+}
+
+export interface CatalogGraphSelectionPayload {
+  schema: string;
+  id: string;
+  found: boolean;
+  selection: CatalogGraphSelectionProjection;
+}
+
+export interface CatalogGraphCompatiblePayload {
+  schema: string;
+  modelId: string;
+  compatibleAnimationIds: string[];
+  animations?: CatalogAsset[];
+  compatibility: CatalogGraphCompatibility[];
 }
 
 export interface CatalogGraphProjection {
   schema: 'catalog_graph.catalog_projection.v0' | string;
   indexes: {
     compatibleAnimationsByModelId?: Record<string, string[]>;
+    sceneZonesBySceneId?: Record<string, string[]>;
+    waypointsBySceneId?: Record<string, string[]>;
+    selectionByNodeId?: Record<string, string>;
+    missingTargetsByStableId?: Record<string, string>;
   };
   compatibilityByModelId?: Record<string, CatalogGraphCompatibility[]>;
   selectionByAssetId?: Record<string, CatalogGraphSelectionProjection>;
+  selectionByStableId?: Record<string, CatalogGraphSelectionProjection>;
   sceneObjectRelationshipsByStableId?: Record<string, CatalogGraphSceneObjectRelationshipProjection>;
 }
 
@@ -178,6 +220,7 @@ export interface CatalogGraphSelectionProjection {
   evidenceStatus: string;
   links: Array<{
     kind: string;
+    edgeId?: string;
     stableId: string;
     label: string;
     proofScope?: string;
@@ -185,6 +228,14 @@ export interface CatalogGraphSelectionProjection {
     sourceRule?: string;
     sourceField?: string;
     indexRule?: string;
+    sourceEvidenceId?: string;
+    occurrenceOrdinal?: number;
+    ownerNodeId?: string;
+    sourcePath?: string;
+    sourceOffset?: number;
+    rawReference?: string | number | boolean | null;
+    targetStableId?: string;
+    resolverKind?: string;
   }>;
   usageRecords?: SceneAssetUsage[];
   unknowns: string[];
@@ -197,6 +248,7 @@ export interface CatalogGraphSelectionProjection {
     id: string;
     label: string;
     targetAssetId?: string;
+    selectedEdgeId?: string;
   }>;
   exportCapability?: {
     exportable: boolean;
@@ -230,6 +282,7 @@ export interface CatalogGraphRelationshipEndpoint {
 
 export interface CatalogGraphRelationshipEdgeProjection {
   id: string;
+  edgeId?: string;
   type: string;
   relationship?: string;
   direction: 'in' | 'out' | 'incident' | string;
@@ -241,10 +294,19 @@ export interface CatalogGraphRelationshipEdgeProjection {
   sourceField?: string;
   indexRule?: string;
   usageKind?: string;
+  sourceEvidenceId?: string;
+  occurrenceOrdinal?: number;
+  ownerNodeId?: string;
+  sourcePath?: string;
+  sourceOffset?: number;
+  rawReference?: string | number | boolean | null;
+  targetStableId?: string;
+  resolverKind?: string;
 }
 
 export interface CatalogGraphSceneObjectVisualLink {
   role: 'file3d' | 'body' | 'animation' | 'sprite' | string;
+  edgeId?: string;
   stableId: string;
   label?: string;
   targetType?: string;
@@ -254,6 +316,8 @@ export interface CatalogGraphSceneObjectVisualLink {
   sourceRule?: string;
   sourceField?: string;
   indexRule?: string;
+  sourceEvidenceId?: string;
+  occurrenceOrdinal?: number;
 }
 
 export interface PortPromotionPacketsPayload {
@@ -433,6 +497,17 @@ export interface SceneAssetUsage {
   target_type?: string;
   target_available?: boolean;
   graphLinkStableId?: string;
+  graphEdgeId?: string;
+  selectedEdgeId?: string;
+  edgeId?: string;
+  sourceEvidenceId?: string;
+  occurrenceOrdinal?: number;
+  ownerNodeId?: string;
+  sourcePath?: string;
+  sourceOffset?: number;
+  rawReference?: string | number | boolean | null;
+  targetStableId?: string;
+  resolverKind?: string;
   proofScope?: string;
   evidenceStatus?: string;
   sourceRule?: string;
@@ -733,6 +808,18 @@ export interface SceneStats {
     zone_type_counts?: Record<string, number>;
     zone_effect_counts?: Record<string, number>;
     zone_runtime_contract_counts?: Record<string, number>;
+    zones?: Array<{
+      index: number;
+      offset: number;
+      start: { x: number; y: number; z: number };
+      end: { x: number; y: number; z: number };
+      info: number[];
+      type: number;
+      type_name: string;
+      value: number;
+      load_rules: Record<string, boolean>;
+      runtime?: SceneZoneRuntimeSemantics;
+    }>;
     sampled_zones?: Array<{
       index: number;
       offset: number;
@@ -751,6 +838,11 @@ export interface SceneStats {
     grm_fragment_links?: Array<SceneGrmFragmentLink>;
     grm_fragment_link_counts?: Record<string, number>;
     track_count?: number;
+    tracks?: Array<{
+      index: number;
+      offset: number;
+      position: { x: number; y: number; z: number };
+    }>;
     sampled_tracks?: Array<{
       index: number;
       offset: number;
@@ -764,6 +856,29 @@ export interface SceneStats {
     patch_field_counts?: Record<string, number>;
     patch_field_source_counts?: Record<string, number>;
     patch_instruction_field_counts?: Record<string, number>;
+    patches?: Array<{
+      index: number;
+      offset: number;
+      size: number;
+      target_offset: number;
+      target: {
+        kind: string;
+        owner: string | null;
+        script_relative_offset: number | null;
+        instruction_found?: boolean;
+        instruction_offset?: number;
+        instruction_relative_offset?: number;
+        instruction_opcode?: string;
+        instruction_behavior_category?: string;
+        hits_opcode_byte?: boolean;
+        operand_relative_offset?: number;
+        patched_field?: string;
+        patched_field_offset?: number;
+        patched_field_size?: number;
+        patched_field_byte_offset?: number;
+        patched_field_source?: string;
+      };
+    }>;
     sampled_patches?: Array<{
       index: number;
       offset: number;

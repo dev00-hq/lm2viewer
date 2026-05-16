@@ -1,4 +1,4 @@
-import type { AnimationPayload, AnimationSequencePayload, Catalog, CatalogAsset, DecodeProgress, EntityWorkflowPayload, ErrorPayload, ExportPayload, Lm2Model, PolygonMode, PortPromotionPacketsPayload, ResourcePayload, RuntimeSpriteResolvePayload, ScenePayload, SpritePayload } from './types';
+import type { AnimationPayload, AnimationSequencePayload, Catalog, CatalogAsset, CatalogAssetDetailPayload, CatalogGraphCompatiblePayload, CatalogGraphSelectionPayload, CatalogSearchPayload, DecodeProgress, EntityWorkflowPayload, ErrorPayload, ExportPayload, KindFilter, Lm2Model, PolygonMode, PortPromotionPacketsPayload, ResourcePayload, RuntimeSpriteResolvePayload, ScenePayload, SpritePayload } from './types';
 
 async function readJson<T extends object>(response: Response): Promise<T> {
   const payload = await response.json() as T | ErrorPayload;
@@ -52,6 +52,23 @@ export async function buildCatalog(assetRoot: string): Promise<Catalog> {
   }));
 }
 
+export async function searchCatalog(q: string, kind: KindFilter = 'all', offset = 0, limit = 260): Promise<CatalogSearchPayload> {
+  return readJson<CatalogSearchPayload>(await fetch('/api/catalog/search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ q, kind, offset, limit }),
+  }));
+}
+
+export async function loadCatalogAssetDetail(id: string): Promise<CatalogAsset> {
+  const payload = await readJson<CatalogAssetDetailPayload>(await fetch('/api/catalog/asset', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id }),
+  }));
+  return payload.asset;
+}
+
 export async function pickCatalogFolder(): Promise<Catalog> {
   return readJson<Catalog>(await fetch('/api/catalog/pick', { method: 'POST' }));
 }
@@ -65,6 +82,22 @@ export async function loadCatalogAsset(asset: CatalogAsset): Promise<Lm2Model | 
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id: asset.id }),
+  }));
+}
+
+export async function loadCatalogGraphSelection(id: string): Promise<CatalogGraphSelectionPayload> {
+  return readJson<CatalogGraphSelectionPayload>(await fetch('/api/catalog-graph/selection', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id }),
+  }));
+}
+
+export async function loadCatalogGraphCompatible(modelId: string): Promise<CatalogGraphCompatiblePayload> {
+  return readJson<CatalogGraphCompatiblePayload>(await fetch('/api/catalog-graph/compatible', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model_id: modelId }),
   }));
 }
 
@@ -113,11 +146,11 @@ export async function loadRuntimeSpriteEntityWorkflow(request: {
   }));
 }
 
-export async function exportCatalogAsset(asset: CatalogAsset, polygonMode: PolygonMode): Promise<ExportPayload> {
+export async function exportCatalogAsset(asset: CatalogAsset, polygonMode: PolygonMode, selectedEdgeId?: string): Promise<ExportPayload> {
   return readJson<ExportPayload>(await fetch('/api/catalog/export', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id: asset.id, polygon_mode: polygonMode }),
+    body: JSON.stringify({ id: asset.id, polygon_mode: polygonMode, selected_edge_id: selectedEdgeId }),
   }));
 }
 

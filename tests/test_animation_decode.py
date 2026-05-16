@@ -3103,7 +3103,7 @@ class AnimationParserTests(unittest.TestCase):
                     "stats": {
                         "reconnaissance": {
                             "hero": {},
-                            "sampled_objects": [
+                            "objects": [
                                 {"index": index, "track_script_analysis": {"first_instructions": []}}
                                 for index in range(30)
                             ],
@@ -3116,8 +3116,11 @@ class AnimationParserTests(unittest.TestCase):
         viewer.compact_scene_catalog_payload(catalog)
 
         recon = catalog["assets"][0]["stats"]["reconnaissance"]
+        self.assertEqual(len(recon["objects"]), 30)
+        self.assertEqual(recon["object_record_count"], 30)
         self.assertEqual(len(recon["sampled_objects"]), 24)
         self.assertEqual(recon["sampled_objects"][-1]["index"], 23)
+        self.assertEqual(recon["sampled_object_count"], 30)
         self.assertEqual(recon["catalog_sampled_object_limit"], 24)
 
     def test_scene_zone_runtime_semantics_name_classic_zone_types(self) -> None:

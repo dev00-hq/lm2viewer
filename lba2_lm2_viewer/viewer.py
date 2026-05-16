@@ -8305,7 +8305,9 @@ def parse_scene_reconnaissance(payload: bytes) -> dict[str, Any]:
         "objects_offset": objects_offset,
         "object_count": object_count,
         "scene_frame_render_contract": scene_frame_render_contract(object_count),
-        "sampled_objects": object_summaries,
+        "objects": object_summaries,
+        "object_record_count": len(object_summaries),
+        "sampled_objects": object_summaries[:24],
         "sampled_object_count": len(object_summaries),
         "object_render_type_counts": object_render_type_counts,
         "object_render_pipeline_counts": object_render_pipeline_counts,
@@ -8343,6 +8345,7 @@ def parse_scene_reconnaissance(payload: bytes) -> dict[str, Any]:
         "zone_type_counts": zone_type_counts,
         "zone_effect_counts": zone_effect_counts,
         "zone_runtime_contract_counts": zone_runtime_contract_counts,
+        "zones": zones,
         "sampled_zones": zones[:24],
         "sampled_zone_count": len(zones),
         "text_message_zones": text_message_zones,
@@ -8352,6 +8355,7 @@ def parse_scene_reconnaissance(payload: bytes) -> dict[str, Any]:
         "tracks_offset": tracks_offset,
         "track_count": track_count,
         "track_record_bytes": SCENE_TRACK_RECORD_BYTES,
+        "tracks": tracks,
         "sampled_tracks": tracks[:24],
         "sampled_track_count": len(tracks),
         "patches_offset": patches_offset,
@@ -8364,6 +8368,7 @@ def parse_scene_reconnaissance(payload: bytes) -> dict[str, Any]:
         "patch_field_counts": patch_field_counts,
         "patch_field_source_counts": patch_field_source_counts,
         "patch_instruction_field_counts": patch_instruction_field_counts,
+        "patches": patches,
         "sampled_patches": patches[:32],
         "sampled_patch_count": len(patches),
         "bytes_consumed": reader.index,
@@ -8407,19 +8412,36 @@ def compact_scene_catalog_payload(catalog: dict[str, Any]) -> None:
         if asset.get("kind") != "scene":
             continue
         reconnaissance = (asset.get("stats") or {}).get("reconnaissance") or {}
+        objects = reconnaissance.get("objects") or []
+        if isinstance(objects, list):
+            reconnaissance["object_record_count"] = len(objects)
+            reconnaissance["sampled_objects"] = objects[:24]
+            reconnaissance["sampled_object_count"] = len(objects)
+            if len(objects) > 24:
+                reconnaissance["catalog_sampled_object_limit"] = 24
+            else:
+                reconnaissance.pop("catalog_sampled_object_limit", None)
+        zones = reconnaissance.get("zones")
+        if isinstance(zones, list):
+            reconnaissance["sampled_zones"] = zones[:24]
+            reconnaissance["sampled_zone_count"] = len(zones)
+        tracks = reconnaissance.get("tracks")
+        if isinstance(tracks, list):
+            reconnaissance["sampled_tracks"] = tracks[:24]
+            reconnaissance["sampled_track_count"] = len(tracks)
+        patches = reconnaissance.get("patches")
+        if isinstance(patches, list):
+            reconnaissance["sampled_patches"] = patches[:32]
+            reconnaissance["sampled_patch_count"] = len(patches)
         owners = [
             reconnaissance.get("hero") or {},
-            *(reconnaissance.get("sampled_objects") or []),
+            *(objects if isinstance(objects, list) else []),
         ]
         for owner in owners:
             for script_key in ("track_script_analysis", "life_script_analysis"):
                 script = owner.get(script_key)
                 if isinstance(script, dict):
                     compact_scene_script_analysis_for_catalog(script)
-        sampled_objects = reconnaissance.get("sampled_objects")
-        if isinstance(sampled_objects, list) and len(sampled_objects) > 24:
-            reconnaissance["sampled_objects"] = sampled_objects[:24]
-            reconnaissance["catalog_sampled_object_limit"] = 24
 
 
 def scene_catalog_stats(payload: bytes) -> dict[str, Any]:

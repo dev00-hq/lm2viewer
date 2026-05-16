@@ -2708,8 +2708,9 @@ function graphUsageRows(selection: AppSelection): InspectorRow[] {
       link.sourceRule,
       link.sourceField,
       link.indexRule,
+      link.edgeId,
     ].filter(Boolean).join(' | ') || 'catalog graph relationship',
-    copyValue: link.stableId,
+    copyValue: link.edgeId || link.stableId,
   }));
   const relationshipCount = graphRelationshipCount(selection);
   if (relationshipCount > rows.length) {

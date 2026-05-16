@@ -7,27 +7,34 @@ export interface CatalogUiOptions {
   filter: HTMLSelectElement;
   list: HTMLElement;
   onSelect: (asset: CatalogAsset) => void;
+  onSearch?: (q: string, kind: KindFilter) => Promise<{ assets: CatalogAsset[]; total: number }>;
 }
 
 export class CatalogUi {
   private catalog: Catalog | null = null;
+  private assets: CatalogAsset[] = [];
+  private totalAssets = 0;
+  private searchRequestId = 0;
   private highlightedAssetId: string | null = null;
   private selectedModel: CatalogAsset | null = null;
   private expandedSpriteGroups = new Set<string>();
 
   constructor(private readonly options: CatalogUiOptions) {
-    options.search.addEventListener('input', () => this.render());
-    options.filter.addEventListener('change', () => this.render());
+    options.search.addEventListener('input', () => void this.refresh());
+    options.filter.addEventListener('change', () => void this.refresh());
   }
 
   setCatalog(catalog: Catalog | null): void {
     this.catalog = catalog;
+    this.assets = catalog?.assets || [];
+    this.totalAssets = catalog?.page?.total ?? this.assets.length;
     if (!catalog) {
       this.options.summary.textContent = 'Choose the folder containing your LBA2 HQR files to enable exploration.';
       this.options.list.replaceChildren();
       return;
     }
     this.render();
+    void this.refresh();
   }
 
   select(asset: CatalogAsset): void {
@@ -41,6 +48,27 @@ export class CatalogUi {
 
   setSelectedModel(asset: CatalogAsset | null): void {
     this.selectedModel = asset;
+    void this.refresh();
+  }
+
+  async refresh(): Promise<void> {
+    if (!this.catalog || !this.options.onSearch) {
+      this.render();
+      return;
+    }
+    const requestId = ++this.searchRequestId;
+    const query = this.options.search.value.trim();
+    const kind = this.options.filter.value as KindFilter;
+    try {
+      const result = await this.options.onSearch(query, kind);
+      if (requestId !== this.searchRequestId) return;
+      this.assets = result.assets;
+      this.totalAssets = result.total;
+    } catch {
+      if (requestId !== this.searchRequestId) return;
+      this.assets = this.catalog.assets || [];
+      this.totalAssets = this.catalog.page?.total ?? this.assets.length;
+    }
     this.render();
   }
 
@@ -49,7 +77,7 @@ export class CatalogUi {
     const summary = this.catalog.summary || {};
     const query = this.options.search.value.trim().toLowerCase();
     const kind = this.options.filter.value as KindFilter;
-    let assets = this.catalog.assets || [];
+    let assets = this.assets || [];
     assets = assets.filter((asset) => {
       if (kind !== 'all' && asset.kind !== kind) return false;
       if (kind === 'animation' && this.selectedModel && !animationMatchesModel(this.catalog, asset, this.selectedModel)) return false;
@@ -72,6 +100,9 @@ export class CatalogUi {
       `Scene background links: ${summary.scene_background_cube_links || 0} cube, ${summary.scene_grm_fragment_links || 0} GRM fragments. ` +
       `Catalog relationship refs: ${summary.scene_usage_refs || 0} refs across ${summary.scene_used_assets || 0} assets. ` +
       `${this.filterContext(kind)}Showing ${visible.length} of ${assets.length} matching entries.`;
+    if (this.totalAssets > assets.length) {
+      this.options.summary.textContent += ` Catalog total: ${this.totalAssets} entries.`;
+    }
     this.options.list.replaceChildren(...this.renderAssetItems(visible, kind));
   }
 

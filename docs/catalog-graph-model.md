@@ -10,6 +10,10 @@ be exported as `catalog_graph.export.v1` JSON and reloaded by CLI/script queries
 with `--graph-json`; exported freshness is reported as metadata and warning, not
 silently trusted.
 
+Root-level `viewer.py` and `lba_hqr.py` are explicit compatibility-wrapper
+exceptions for invocation convenience. They are not a pattern for adding new
+compatibility paths; new graph behavior belongs in the package modules.
+
 ## Node Vocabulary
 
 | Node type | Stable id | Meaning | Evidence |
@@ -18,23 +22,31 @@ silently trusted.
 | `Archive` | `BODY.HQR` | HQR archive identity. | `Catalog.hqr_files[]`. |
 | `ArchiveEntry` | `BODY.HQR:2` | Addressable HQR entry before semantic decode. | `CatalogAsset.source`. |
 | `Scene` | `SCENE.HQR:2` | Decoded scene asset as a scene domain node. | `CatalogAsset.kind == scene`. |
-| `SceneObject` | `SCENE.HQR:2#object:2` | Runtime scene object slot. | `SceneStats.reconnaissance.sampled_objects[]`; object index is zero-based. |
+| `SceneObject` | `SCENE.HQR:2#object:2` | Runtime scene object slot. | `SceneStats.reconnaissance.objects[]`; object index is zero-based. |
+| `SceneZone` | `SCENE.HQR:2#zone:0` | Decoded scene zone table row, including serialized Info fields and source-backed contract summaries. | `SceneStats.reconnaissance.zones[]`; zone index is zero-based. |
+| `Waypoint` | `SCENE.HQR:2#waypoint:0` | Decoded `T_TRACK` waypoint coordinate row. | `SceneStats.reconnaissance.tracks[]`; waypoint index is zero-based. |
+| `ScriptBlock` | `SCENE.HQR:2#object:2#script:track` | Embedded track/life script block for a scene object. | `track_script_analysis`, `life_script_analysis`. |
+| `ScriptInstruction` | `SCENE.HQR:2#object:2#script:track#offset:3` | Selectable structural script instruction occurrence. | Script decoder instruction offsets and operand summaries. |
+| `PatchRecord` | `SCENE.HQR:2#patch:0` | Decoded scene patch table row. | `SceneStats.reconnaissance.patches[]`. |
+| `RuntimeStateField` | `SCENE.HQR:2#object:2#script:track#offset:3#field:target_offset` | Static decoded runtime-mutable script operand field. | `runtime_state_fields` and patch field target evidence. |
 | `File3DRecord` | `RESS.HQR:44#file3d:16` | Runtime resolver table row for generic body/animation slots. | `SceneObject.file3d_index`, `RESS.HQR:44` File3D evidence. |
 | `ScriptReference` | generated script-ref id | Life/track script asset or resource reference. | `track_script_analysis.asset_links`, `life_script_analysis.asset_links`. |
 | `SpriteRange` | `ANIM3DS:0` | ANIM3DS projected sprite animation range. | `ANIM3DS.HQR:127 stats.entries[]`. |
 | `ResourceRecord` | `RESS.HQR:48#record:0` | Payload-local resource subrecord. | `ResourceStats.sampled_records[]`, `text_links[]`. |
 | `MissingTarget` | target stable id | Explicit unresolved asset/resource target. | Missing link metadata or range missing-frame warnings. |
 
-Future node candidates are `SceneZone`, `Waypoint`, `PortContract`,
-`RuntimeState`, `ExportArtifact`, and `EvidenceSource`. They are intentionally
-not fully materialized in the first slice unless the current payload exposes a
-selectable/queryable fact.
+Future node candidates are `PortContract`, `ExportArtifact`, and
+`EvidenceSource`. Live runtime/event facts remain out of the catalog graph.
 
 ## Edge Vocabulary
 
 Every edge carries direction, inverse, cardinality, proof scope, evidence
 status, source rule, source field, index rule, materialization location,
-selectability, and search participation.
+selectability, search participation, and stable occurrence identity. Selectable
+relationship projections expose `edgeId`, `sourceEvidenceId`,
+`occurrenceOrdinal`, `ownerNodeId`, `sourcePath`, `sourceOffset`,
+`rawReference`, `targetStableId`, and `resolverKind` where the decoded source
+provides them.
 
 | Edge | Direction | Inverse | Cardinality | Proof scope | Evidence status |
 | --- | --- | --- | --- | --- | --- |
@@ -42,6 +54,23 @@ selectability, and search participation.
 | `DECODED_AS` | `ArchiveEntry -> Asset` | decoded from entry | `0..1 -> 1` | `decoded_payload` | asset status |
 | `DECODED_AS` | `Asset -> Scene` | scene asset | `0..1 -> 1` | `decoded_payload` | asset status |
 | `HAS_SCENE_OBJECT` | `Scene -> SceneObject` | object of scene | `0..n -> 1` | `decoded_payload` | `decoded_only` |
+| `HAS_ZONE` | `Scene -> SceneZone` | zone of scene | `0..n -> 1` | `decoded_payload` | `decoded_only` |
+| `HAS_WAYPOINT` | `Scene -> Waypoint` | waypoint of scene | `0..n -> 1` | `decoded_payload` | `decoded_only` |
+| `HAS_SCRIPT` | `SceneObject -> ScriptBlock` | script of scene object | `0..n -> 1` | `script_structure` | `decoded_only` |
+| `HAS_INSTRUCTION` | `ScriptBlock -> ScriptInstruction` | instruction of script | `0..n -> 1` | `script_structure` | `decoded_only` |
+| `CONTROL_FLOW_TO` | `ScriptInstruction -> ScriptInstruction/MissingTarget` | control flow from | `0..n -> 0..n` | `script_structure` | `decoded_only` or `unknown` |
+| `REFERENCES_WAYPOINT` | `ScriptInstruction -> Waypoint/MissingTarget` | waypoint referenced by script | `0..n -> 0..n` | `script_structure` | `source_backed` or `unknown` |
+| `CONTROLS_ZONE` | `ScriptInstruction -> SceneZone/MissingTarget` | zone controlled by script | `0..n -> 0..n` | `script_structure` | `source_backed` or `unknown` |
+| `DECLARES_EXECUTION_CONTRACT` | `ScriptInstruction -> ScriptInstruction` | execution contract declared by instruction | `0..n -> 0..n` | `classic_source_rule` | `source_backed` |
+| `MOVEMENT_TARGETS` | `SceneObject -> Waypoint/MissingTarget` | waypoint targeted by movement | `0..n -> 0..n` | `classic_source_rule` | `source_backed` or `unknown` |
+| `DECLARES_RUNTIME_CONTRACT` | `SceneZone -> SceneZone` | runtime contract declared by zone | `0..n -> 0..n` | `classic_source_rule` | `source_backed` |
+| `CHANGES_CUBE_TO` | `SceneZone -> Asset/MissingTarget` | background cube target declared by zone | `0..1 -> 0..n` | `classic_source_rule` | `source_backed` or `unknown` |
+| `USES_TEXT` | `SceneZone -> ResourceRecord/Asset/MissingTarget` | text used by zone | `0..n -> 0..n` | `classic_source_rule` | `source_backed` or `unknown` |
+| `APPLIES_GRM_FRAGMENT` | `SceneZone -> Asset/MissingTarget` | GRM fragment applied by zone | `0..n -> 0..n` | `classic_source_rule` | `source_backed` or `unknown` |
+| `REFERENCES_ZONE` | `SceneZone -> SceneZone/MissingTarget` | related zone referenced by zone | `0..n -> 0..n` | `classic_source_rule` | `source_backed` or `unknown` |
+| `HAS_PATCH` | `Scene -> PatchRecord` | patch of scene | `0..n -> 1` | `decoded_payload` | `decoded_only` |
+| `PATCHES_INSTRUCTION` | `PatchRecord -> ScriptInstruction/MissingTarget` | instruction patched by | `0..1 -> 0..n` | `script_structure` | `decoded_only` or `unknown` |
+| `PATCHES_FIELD` | `PatchRecord -> RuntimeStateField` | field patched by | `0..1 -> 0..n` | `script_structure` | `source_backed` |
 | `HAS_FILE3D_RECORD` | `SceneObject -> File3DRecord` | File3D record used by scene object | `0..1 -> 0..n` | `scene_object_state` | `source_backed` when resolved |
 | `RESOLVES_TO` | `File3DRecord -> Asset` | resolved from File3D slot | `0..n -> 0..n` | `classic_source_rule` | `source_backed` or `unknown` |
 | `USES_AS_BODY` | `SceneObject -> Asset` | used as body | `0..1 -> 0..n` | `scene_object_state` | `source_backed` |
@@ -67,12 +96,16 @@ All first-slice graph edges are materialized by the backend graph builder from
 the current catalog payload; none are derived in the frontend. All listed edges
 participate in search unless noted.
 
+`TRACK_LABEL_TARGETS` is intentionally absent in M17 until decoded evidence maps
+track labels to waypoint records. The graph must not infer that relation from
+matching numeric values alone.
+
 | Edge | Source node | Target node | Source rule / field | Index rule | Selectable |
 | --- | --- | --- | --- | --- | --- |
 | `HAS_ENTRY` | `Archive` | `ArchiveEntry` | `build_catalog` HQR scan / `hqr_files[].path`, `CatalogAsset.source.entry_index` | Archive-specific `source.entry_index`, `classic_index`, or `hqr_table_index` | no |
 | `DECODED_AS` | `ArchiveEntry` | `Asset` | Catalog asset creation / `Catalog.assets[]` | Same as asset source archive | yes |
 | `DECODED_AS` | `Asset` | `Scene` | Scene semantic layout / `CatalogAsset.stats.reconnaissance` | `SCENE.HQR` entry is scene id + 1 | yes |
-| `HAS_SCENE_OBJECT` | `Scene` | `SceneObject` | Scene decode / `SceneStats.reconnaissance.sampled_objects[]` | Scene object index is zero-based runtime object index | yes |
+| `HAS_SCENE_OBJECT` | `Scene` | `SceneObject` | Scene decode / `SceneStats.reconnaissance.objects[]` | Scene object index is zero-based runtime object index | yes |
 | `HAS_FILE3D_RECORD` | `SceneObject` | `File3DRecord` | Scene object `IndexFile3D` selects `RESS.HQR:44` resolver / `SceneObject.file3d_index` | File3D record index is zero-based in `RESS.HQR:44` | yes |
 | `RESOLVES_TO` | `File3DRecord` | `Asset` or `MissingTarget` | File3D generic slot resolves to HQR asset / `file3d_index + gen_body/gen_anim` | File3D body ids become `BODY.HQR` catalog ids by body index + 1; animation ids are `ANIM.HQR` entries | yes |
 | `USES_AS_BODY` | `SceneObject` | `Asset` or `MissingTarget` | Scene body link / `SceneObject.links.body.asset_id`, `SceneAssetUsage.target_asset_id` | File3D body generic id resolves to `BODY.HQR` catalog entry index | yes |
@@ -198,8 +231,15 @@ scene-local decoder evidence until the graph explicitly models those details.
 
 The scene object table's File3D and Visuals columns consume this projection.
 They must not re-derive body, animation, sprite, or missing visual target ids
-from `SceneStats.reconnaissance.sampled_objects[].links` once the projection is
+from `SceneStats.reconnaissance.objects[].links` once the projection is
 present.
+
+The HTTP catalog projection also exposes `selectionByStableId` for backend
+graph-node and selectable graph-edge selections. Resource-record clicks consume
+the `ResourceRecord` selection projection from this map instead of inheriting
+parent resource asset selection authority. Scene usage strip clicks consume the
+selected edge projection from the same map, including the backend-owned export
+action for edge evidence bundles.
 
 ## Proof Scopes
 
@@ -209,11 +249,23 @@ present.
 | `classic_source_rule` | Backed by classic source rules such as `DISKFUNC.CPP`, `OBJECT.CPP`, `FICHE.CPP`, `GERELIFE.CPP`, `GERETRAK.CPP`. |
 | `scene_object_state` | Decoded scene object initial state such as `file3d_index`, `gen_body`, `gen_anim`, flags, sprite, FPS. |
 | `script_reference` | Life/track script reference or possible mutation, not current ownership. |
+| `script_structure` | Decoded script layout, instruction identity, structural control-flow targets, local object/zone/waypoint references, patch links, and runtime-mutable operand fields. It does not imply execution. |
 | `frontend_compatibility_rule` | Current frontend-only rule, mainly bone-count-only animation compatibility. |
 | `runtime_live_proof` | Reserved for live runtime reads. Not emitted by the first slice. |
 | `port_implication` | Reserved for port-facing contract/promotion packet implications. |
 | `export_manifest` | Reserved for export artifact provenance edges. |
 | `unknown` | Unresolved or ambiguous evidence. |
+
+## Missing Target Taxonomy
+
+`MissingTarget` is used when an addressable target is referenced but not
+available as a graph node. It is distinct from unknown semantics, which stay as
+unknown descriptors until a target is addressable. Missing targets carry
+`targetStableId`, `targetKind`, `resolutionState`, `rawReference`,
+`ownerNodeId`, `resolverKind`, `candidateTargets`, `absenceEvidenceStatus`, and
+`missingReason` when known. Current resolution states include
+`outside_table`, `empty_archive_slot`, `undecoded_slot`, `unresolved_name`,
+`not_loaded_archive`, `outside_script`, and `backend_unresolved`.
 
 ## Evidence Statuses
 

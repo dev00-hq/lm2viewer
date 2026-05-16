@@ -7,17 +7,29 @@ from http.server import ThreadingHTTPServer
 from lba2_lm2_viewer.catalog_graph import (
     asset_node_id_for,
     build_catalog_graph,
+    catalog_node_selection_projection,
     catalog_scene_object_relationship_projection,
     catalog_selection_projection,
     export_graph_document,
     file3d_record_node_id_for,
     graph_from_export_document,
+    query_animation_operation_compatibility,
+    query_export,
     query_edges,
+    query_search,
     query_export_context,
     query_prove,
+    query_script_instruction,
     query_scene_object,
+    query_selection,
     query_asset_usage_records,
     query_usages,
+    query_waypoint,
+    query_zone,
+    runtime_state_field_node_id_for,
+    scene_zone_node_id_for,
+    script_instruction_node_id_for,
+    waypoint_node_id_for,
 )
 from lba2_lm2_viewer.exportability import (
     CATALOG_EXPORT_ROUTES_BY_KIND_LAYOUT,
@@ -49,7 +61,7 @@ def synthetic_catalog() -> dict[str, object]:
                 "stats": {
                     "semantic_layout": "scene_runtime_layout_partial",
                     "reconnaissance": {
-                        "sampled_objects": [
+                        "objects": [
                             {
                                 "index": 2,
                                 "file3d_index": 7,
@@ -116,7 +128,8 @@ def synthetic_catalog() -> dict[str, object]:
                                     ],
                                 },
                             }
-                        ]
+                        ],
+                        "sampled_objects": [],
                     },
                 },
             },
@@ -288,6 +301,226 @@ def synthetic_catalog_without_reverse_usages() -> dict[str, object]:
     for asset in catalog["assets"]:  # type: ignore[index]
         if isinstance(asset, dict):
             asset.pop("scene_usages", None)
+    return catalog
+
+
+def synthetic_scene_mechanics_catalog() -> dict[str, object]:
+    catalog = synthetic_catalog_without_reverse_usages()
+    scene = next(asset for asset in catalog["assets"] if asset["id"] == "SCENE.HQR:2")  # type: ignore[index]
+    recon = scene["stats"]["reconnaissance"]  # type: ignore[index]
+    sampled_object = recon["objects"][0]  # type: ignore[index]
+    sampled_object["runtime"] = {
+        "movement": {
+            "references": [
+                {
+                    "field": "Info0",
+                    "role": "circle_waypoint",
+                    "kind": "waypoint",
+                    "value": 1,
+                    "target": "waypoint",
+                    "target_found": True,
+                    "source": "OBJECT.CPP movement target",
+                }
+            ]
+        }
+    }
+    sampled_object["track_script_analysis"]["asset_links"].append(  # type: ignore[index]
+        dict(sampled_object["track_script_analysis"]["asset_links"][0])  # type: ignore[index]
+    )
+    sampled_object["track_script_analysis"]["status"] = "decoded"  # type: ignore[index]
+    sampled_object["track_script_analysis"]["byte_length"] = 9  # type: ignore[index]
+    sampled_object["track_script_analysis"]["decoded_bytes"] = 9  # type: ignore[index]
+    sampled_object["track_script_analysis"]["instruction_count"] = 4  # type: ignore[index]
+    sampled_object["track_script_analysis"]["sha256"] = "track-sha"  # type: ignore[index]
+    sampled_object["track_script_analysis"]["first_instructions"] = [  # type: ignore[index]
+        {
+            "offset": 0,
+            "opcode": 4,
+            "mnemonic": "TM_GOTO_POINT",
+            "byte_length": 3,
+            "operand_hex": "0100",
+            "operand_semantics": {"waypoint_id": 1},
+            "behavior_category": "movement",
+        },
+        {
+            "offset": 3,
+            "opcode": 10,
+            "mnemonic": "TM_GOTO",
+            "byte_length": 3,
+            "operand_hex": "0000",
+            "operand_semantics": {"target_offset": 0},
+            "behavior_category": "control_flow",
+        },
+        {
+            "offset": 6,
+            "opcode": 9,
+            "mnemonic": "TM_LABEL",
+            "byte_length": 2,
+            "operand_hex": "07",
+            "operand_semantics": {"track_label": 7},
+            "behavior_category": "control_flow",
+        },
+        {
+            "offset": 8,
+            "opcode": 11,
+            "mnemonic": "TM_STOP",
+            "byte_length": 1,
+            "operand_hex": "",
+            "operand_semantics": {},
+            "behavior_category": "control_flow",
+        },
+    ]
+    sampled_object["track_script_analysis"]["label_definitions"] = [  # type: ignore[index]
+        {"label": 7, "offset": 6, "opcode": "TM_LABEL"}
+    ]
+    sampled_object["track_script_analysis"]["control_flow_links"] = [  # type: ignore[index]
+        {
+            "source_offset": 3,
+            "source_opcode": "TM_GOTO",
+            "source_behavior_category": "control_flow",
+            "target_field": "target_offset",
+            "target_script_kind": "track",
+            "target_offset": 0,
+            "target_found": True,
+            "target_opcode": "TM_GOTO_POINT",
+            "target_behavior_category": "movement",
+        }
+    ]
+    sampled_object["track_script_analysis"]["execution_contracts"] = [  # type: ignore[index]
+        {
+            "contract": "track_pass_control",
+            "count": 1,
+            "source": "GERETRAK.CPP",
+            "effect": "stop current track",
+            "mnemonics": ["TM_STOP"],
+        }
+    ]
+    sampled_object["track_script_analysis"]["local_links"] = [  # type: ignore[index]
+        {
+            "kind": "waypoint",
+            "reference_key": "waypoint",
+            "reference_value": 1,
+            "target": "waypoint",
+            "target_available": True,
+            "waypoint_index": 1,
+            "position": {"x": 10, "y": 20, "z": 30},
+        }
+    ]
+    sampled_object["track_script_analysis"]["runtime_state_fields"] = [  # type: ignore[index]
+        {
+            "source_offset": 3,
+            "opcode": "TM_GOTO",
+            "behavior_category": "control_flow",
+            "field": "target_offset",
+            "instruction_relative_offset": 1,
+            "operand_offset": 0,
+            "size": 2,
+            "initial_hex": "0000",
+            "initial_value": 0,
+            "source": "track_opcode_layout",
+        }
+    ]
+    sampled_object["life_script_analysis"] = {  # type: ignore[index]
+        "status": "decoded",
+        "byte_length": 0,
+        "decoded_bytes": 0,
+        "instruction_count": 0,
+        "sha256": "life-sha",
+        "first_instructions": [],
+    }
+    recon["sampled_zones"] = [  # type: ignore[index]
+        {
+            "index": 0,
+            "offset": 120,
+            "start": {"x": 0, "y": 0, "z": 0},
+            "end": {"x": 100, "y": 100, "z": 100},
+            "info": [0, 12, 0, 0, 0, 0, 0, 0],
+            "type": 5,
+            "type_name": "message",
+            "value": 77,
+            "load_rules": {"starts_on": True},
+            "runtime": {
+                "source": "OBJECT.CPP::GereZoneMessage",
+                "effect": "show_message",
+                "fields": {"message_id": 77, "associated_camera_zone": 12},
+                "message_application": {"dialogue_call": "Dial(zone.Num, TRUE)"},
+            },
+        },
+        {
+            "index": 1,
+            "offset": 180,
+            "start": {"x": 200, "y": 0, "z": 0},
+            "end": {"x": 300, "y": 100, "z": 100},
+            "info": [0, 0, 0, 0, 0, 0, 0, 0],
+            "type": 1,
+            "type_name": "camera",
+            "value": 12,
+            "load_rules": {},
+            "runtime": {"source": "OBJECT.CPP::SetZoneCamera", "effect": "camera_zone", "camera_application": {}},
+        },
+        {
+            "index": 2,
+            "offset": 220,
+            "start": {"x": 400, "y": 0, "z": 0},
+            "end": {"x": 500, "y": 100, "z": 100},
+            "info": [1, 2, 3, 0, 77, 0, 0, 1],
+            "type": 0,
+            "type_name": "change_cube",
+            "value": 9,
+            "load_rules": {"starts_on": True},
+            "runtime": {
+                "source": "OBJECT.CPP::GereZoneChangeCube",
+                "effect": "change_cube",
+                "fields": {"target_cube": 9, "script_control_id": 77},
+                "change_cube_application": {"new_cube": "NewCube = zone.Num"},
+            },
+        },
+    ]
+    recon["zones"] = recon["sampled_zones"]  # type: ignore[index]
+    recon["sampled_tracks"] = [  # type: ignore[index]
+        {"index": 1, "offset": 240, "position": {"x": 10, "y": 20, "z": 30}}
+    ]
+    recon["tracks"] = recon["sampled_tracks"]  # type: ignore[index]
+    recon["text_zone_links"] = [  # type: ignore[index]
+        {
+            "zone_index": 0,
+            "asset_id": "RESS.HQR:48",
+            "asset_available": True,
+            "text_id": 77,
+            "text_file_index": 3,
+            "resolution_rule": "zone message text resolved",
+        }
+    ]
+    recon["message_camera_links"] = [  # type: ignore[index]
+        {
+            "zone_index": 0,
+            "associated_camera_zone": 12,
+            "target_zone_index": 1,
+            "target_available": True,
+            "source_provenance": "OBJECT.CPP::GereZoneMessage camera lookup",
+        }
+    ]
+    recon["sampled_patches"] = [  # type: ignore[index]
+        {
+            "index": 0,
+            "offset": 300,
+            "size": 2,
+            "target_offset": 3,
+            "target": {
+                "kind": "track",
+                "owner": "object:2",
+                "script_relative_offset": 3,
+                "instruction_found": True,
+                "instruction_offset": 3,
+                "instruction_opcode": "TM_GOTO",
+                "instruction_behavior_category": "control_flow",
+                "patched_field": "target_offset",
+                "patched_field_size": 2,
+                "patched_field_source": "track_opcode_layout",
+            },
+        }
+    ]
+    recon["patches"] = recon["sampled_patches"]  # type: ignore[index]
     return catalog
 
 
@@ -705,6 +938,372 @@ class CatalogGraphTests(unittest.TestCase):
         self.assertEqual(projection["nodeId"], "scene-object:SCENE.HQR:2:2")
         self.assertEqual(projection["visualLinks"][1]["role"], "body")
         self.assertEqual(projection["visualLinks"][3]["stableId"], "SPRITES.HQR:999")
+
+    def test_compact_catalog_response_excludes_full_graph_projections(self) -> None:
+        server = ViewerServer(None, None)
+        server.catalog = synthetic_catalog_without_reverse_usages()
+        server.ensure_catalog_graph()
+
+        compact = server.compact_catalog_response()
+        selection = server.catalog_graph_selection("BODY.HQR:29")
+
+        self.assertEqual(compact["schema"], "viewer-compact-catalog-v1")
+        self.assertNotIn("graph", compact)
+        self.assertNotIn("selectionByAssetId", json.dumps(compact))
+        self.assertNotIn("selectionByStableId", json.dumps(compact))
+        self.assertNotIn("sceneObjectRelationshipsByStableId", json.dumps(compact))
+        self.assertLess(len(json.dumps(compact).encode("utf-8")), 20000)
+        self.assertTrue(selection["found"])
+        self.assertEqual(selection["selection"]["stableId"], "BODY.HQR:29")
+
+    def test_http_catalog_and_build_return_compact_catalog(self) -> None:
+        server = ViewerServer(None, None)
+        server.catalog = synthetic_catalog_without_reverse_usages()
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.handler_class())
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{httpd.server_port}/catalog.json",
+                timeout=2,
+            ) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(2)
+
+        self.assertEqual(payload["schema"], "viewer-compact-catalog-v1")
+        self.assertNotIn("graph", payload)
+        self.assertIn("search", payload["capabilities"])
+
+    def test_catalog_query_surface_is_bounded_and_backend_owned(self) -> None:
+        server = ViewerServer(None, None)
+        server.catalog = synthetic_catalog_without_reverse_usages()
+
+        search = server.catalog_search_response({"q": "saucer", "kind": "model", "limit": 1})
+        detail = server.catalog_asset_detail("BODY.HQR:29")
+        selection = server.catalog_graph_selection("BODY.HQR:29")
+        usages = server.catalog_graph_usages({"id": "BODY.HQR:29", "limit": 1})
+        edges = server.catalog_graph_edges({"id": "BODY.HQR:29", "direction": "both", "limit": 1})
+        compatible = server.catalog_graph_compatible_compact("BODY.HQR:2")
+
+        self.assertEqual(len(search["assets"]), 1)
+        self.assertEqual(search["assets"][0]["id"], "BODY.HQR:29")
+        self.assertEqual(detail["asset"]["stats"]["bones"], 19)
+        self.assertEqual(selection["selection"]["facets"]["relationshipLinkCount"], 2)
+        self.assertEqual(usages["limit"], 1)
+        self.assertLessEqual(len(usages["edges"]), 1)
+        self.assertEqual(edges["limit"], 1)
+        self.assertLessEqual(len(edges["edges"]), 1)
+        self.assertIn("ANIM.HQR:2", compatible["compatibleAnimationIds"])
+        self.assertNotIn("edges", compatible)
+
+    def test_script_reference_occurrences_do_not_collapse(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+
+        usages = query_usages(graph, "BODY.HQR:29", proof_scope="script_reference")
+        body_script_edges = [edge for edge in usages["edges"] if edge["type"] == "SCRIPT_REFERENCES"]
+
+        self.assertGreaterEqual(len(body_script_edges), 2)
+        self.assertEqual(len({edge["id"] for edge in body_script_edges}), len(body_script_edges))
+        self.assertTrue(all(edge["edgeId"] == edge["id"] for edge in body_script_edges))
+
+    def test_relationship_row_selection_uses_edge_id(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+
+        selection = catalog_selection_projection(graph)["BODY.HQR:29"]
+        link = next(link for link in selection["links"] if link["proofScope"] == "scene_object_state")
+        record = next(record for record in selection["usageRecords"] if record["proofScope"] == "scene_object_state")
+        edge_selection = catalog_node_selection_projection(graph)[link["edgeId"]]
+
+        self.assertTrue(str(link["edgeId"]).startswith("edge:"))
+        self.assertEqual(record["graphEdgeId"], link["edgeId"])
+        self.assertEqual(record["selectedEdgeId"], link["edgeId"])
+        self.assertEqual(edge_selection["kind"], "graph_edge")
+        self.assertEqual(edge_selection["stableId"], link["edgeId"])
+        self.assertEqual(edge_selection["facets"]["selectedEdgeId"], link["edgeId"])
+        self.assertEqual(edge_selection["exportActions"][0]["targetAssetId"], "BODY.HQR:29")
+        self.assertEqual(edge_selection["exportActions"][0]["selectedEdgeId"], link["edgeId"])
+
+    def test_resource_record_selection_comes_from_graph_node(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog())
+
+        selection = catalog_node_selection_projection(graph)["RESS.HQR:48#record:0"]
+
+        self.assertEqual(selection["kind"], "resource_record")
+        self.assertEqual(selection["stableId"], "RESS.HQR:48#record:0")
+        self.assertEqual(selection["facets"]["graphNodeId"], "resource-record:RESS.HQR:48:0")
+        self.assertEqual(selection["workspaceSuggestion"], "resource")
+
+    def test_subgraph_export_includes_selected_edge_identity(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+        edge_id = query_usages(graph, "BODY.HQR:29")["edges"][0]["id"]
+
+        subgraph = query_export(graph, edge_id)
+
+        self.assertEqual(subgraph["rootKind"], "edge")
+        self.assertEqual(subgraph["selectedEdgeId"], edge_id)
+        self.assertIn(edge_id, {edge["id"] for edge in subgraph["edges"]})
+
+    def test_export_context_proof_scope_not_ambiguous(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+        selected_edge_id = query_usages(graph, "BODY.HQR:29", proof_scope="scene_object_state")["edges"][0]["id"]
+
+        filtered = query_export_context(graph, "BODY.HQR:29", "scene_object_state")
+        selected = query_export_context(
+            graph,
+            "BODY.HQR:29",
+            "decoded model export proof",
+            selected_edge_id=selected_edge_id,
+        )
+        unfiltered = query_export_context(graph, "BODY.HQR:29", "decoded model export proof")
+
+        self.assertEqual(filtered["relationship_proof_filter"], "scene_object_state")
+        self.assertEqual(filtered["script_reference_count"], 0)
+        self.assertEqual(len(filtered["selected_edge_ids"]), 1)
+        self.assertEqual(selected["selected_edge_ids"], [selected_edge_id])
+        self.assertEqual(selected["relationship_link_count"], 1)
+        self.assertGreater(unfiltered["script_reference_count"], 0)
+        self.assertIsNone(unfiltered["relationship_proof_filter"])
+
+    def test_scene_zones_materialized_with_contract_edges(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+        zone_id = scene_zone_node_id_for("SCENE.HQR:2", 0)
+
+        zone = graph.nodes_by_id[zone_id]
+        edges = graph.node_edges(zone_id, "out")
+        edge_types = {edge["type"] for edge in edges}
+
+        self.assertEqual(zone["type"], "SceneZone")
+        self.assertIn("message", zone["contractKinds"])
+        self.assertIn("HAS_ZONE", {edge["type"] for edge in graph.node_edges(zone_id, "in")})
+        self.assertIn("DECLARES_RUNTIME_CONTRACT", edge_types)
+        self.assertIn("USES_TEXT", edge_types)
+        self.assertIn("REFERENCES_ZONE", edge_types)
+
+    def test_change_cube_zone_edge_uses_deferred_background_target(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+        zone_id = scene_zone_node_id_for("SCENE.HQR:2", 2)
+
+        edge = next(edge for edge in graph.node_edges(zone_id, "out") if edge["type"] == "CHANGES_CUBE_TO")
+        target = graph.nodes_by_id[edge["to"]]
+
+        self.assertEqual(edge["proofScope"], "classic_source_rule")
+        self.assertEqual(edge["evidenceStatus"], "source_backed")
+        self.assertEqual(edge["rawReference"], 9)
+        self.assertEqual(target["type"], "MissingTarget")
+        self.assertEqual(target["targetKind"], "background_resource")
+        self.assertEqual(target["resolutionState"], "intentionally_deferred_target")
+
+    def test_waypoints_materialized_and_script_refs_resolve(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+        waypoint_id = waypoint_node_id_for("SCENE.HQR:2", 1)
+        instruction_id = script_instruction_node_id_for("SCENE.HQR:2", 2, "track", 0)
+
+        self.assertEqual(graph.nodes_by_id[waypoint_id]["type"], "Waypoint")
+        self.assertIn(
+            ("MOVEMENT_TARGETS", waypoint_id),
+            {(edge["type"], edge["to"]) for edge in graph.node_edges("scene-object:SCENE.HQR:2:2", "out")},
+        )
+        self.assertIn(
+            ("REFERENCES_WAYPOINT", waypoint_id),
+            {(edge["type"], edge["to"]) for edge in graph.node_edges(instruction_id, "out")},
+        )
+
+    def test_track_label_targets_stay_out_of_scope_without_waypoint_mapping(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+
+        edge_types = {edge["type"] for edge in graph.sorted_edges()}
+
+        self.assertIn(script_instruction_node_id_for("SCENE.HQR:2", 2, "track", 6), graph.nodes_by_id)
+        self.assertNotIn("TRACK_LABEL_TARGETS", edge_types)
+
+    def test_script_instruction_declares_execution_contract(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+        instruction_id = script_instruction_node_id_for("SCENE.HQR:2", 2, "track", 8)
+
+        edge = next(edge for edge in graph.node_edges(instruction_id, "out") if edge["type"] == "DECLARES_EXECUTION_CONTRACT")
+
+        self.assertEqual(edge["executionContract"], "track_pass_control")
+        self.assertEqual(edge["proofScope"], "classic_source_rule")
+        self.assertEqual(edge["evidenceStatus"], "source_backed")
+
+    def test_patch_record_targets_runtime_state_field(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+        field_id = runtime_state_field_node_id_for("SCENE.HQR:2", 2, "track", 3, "target_offset")
+        patch_edges = graph.node_edges("patch-record:SCENE.HQR:2:0", "out")
+
+        self.assertEqual(graph.nodes_by_id[field_id]["type"], "RuntimeStateField")
+        self.assertIn(("PATCHES_FIELD", field_id), {(edge["type"], edge["to"]) for edge in patch_edges})
+        self.assertIn(
+            ("PATCHES_INSTRUCTION", script_instruction_node_id_for("SCENE.HQR:2", 2, "track", 3)),
+            {(edge["type"], edge["to"]) for edge in patch_edges},
+        )
+
+    def test_scene_mechanics_graph_uses_full_decoded_lists_not_samples(self) -> None:
+        catalog = synthetic_scene_mechanics_catalog()
+        scene = next(asset for asset in catalog["assets"] if asset["id"] == "SCENE.HQR:2")  # type: ignore[index]
+        recon = scene["stats"]["reconnaissance"]  # type: ignore[index]
+        template_object = dict(recon["objects"][0])  # type: ignore[index]
+        template_object.pop("runtime", None)
+        template_object.pop("track_script_analysis", None)
+        template_object.pop("life_script_analysis", None)
+        recon["objects"] = [  # type: ignore[index]
+            {**template_object, "index": index, "links": {}}
+            for index in range(1, 26)
+        ]
+        recon["sampled_objects"] = recon["objects"][:24]  # type: ignore[index]
+        recon["zones"] = [  # type: ignore[index]
+            {
+                "index": index,
+                "offset": 120 + index * 16,
+                "start": {"x": index, "y": 0, "z": 0},
+                "end": {"x": index + 1, "y": 1, "z": 1},
+                "info": [0, 0, 0, 0, 0, 0, 0, 0],
+                "type": 1,
+                "type_name": "camera",
+                "value": index,
+                "load_rules": {},
+                "runtime": {},
+            }
+            for index in range(25)
+        ]
+        recon["sampled_zones"] = recon["zones"][:24]  # type: ignore[index]
+        recon["tracks"] = [  # type: ignore[index]
+            {"index": index, "offset": 240 + index * 6, "position": {"x": index, "y": index + 1, "z": index + 2}}
+            for index in range(25)
+        ]
+        recon["sampled_tracks"] = recon["tracks"][:24]  # type: ignore[index]
+        recon["patches"] = [  # type: ignore[index]
+            {
+                "index": index,
+                "offset": 300 + index * 4,
+                "size": 2,
+                "target_offset": index,
+                "target": {"kind": "unknown", "owner": None, "instruction_found": False},
+            }
+            for index in range(33)
+        ]
+        recon["sampled_patches"] = recon["patches"][:32]  # type: ignore[index]
+
+        graph = build_catalog_graph(catalog)
+
+        self.assertIn("scene-object:SCENE.HQR:2:25", graph.nodes_by_id)
+        self.assertIn(scene_zone_node_id_for("SCENE.HQR:2", 24), graph.nodes_by_id)
+        self.assertIn(waypoint_node_id_for("SCENE.HQR:2", 24), graph.nodes_by_id)
+        self.assertIn("patch-record:SCENE.HQR:2:32", graph.nodes_by_id)
+
+    def test_scene_mechanics_graph_requires_canonical_decoded_lists(self) -> None:
+        catalog = synthetic_scene_mechanics_catalog()
+        scene = next(asset for asset in catalog["assets"] if asset["id"] == "SCENE.HQR:2")  # type: ignore[index]
+        recon = scene["stats"]["reconnaissance"]  # type: ignore[index]
+        recon.pop("objects", None)
+        recon.pop("zones", None)
+        recon.pop("tracks", None)
+        recon.pop("patches", None)
+
+        graph = build_catalog_graph(catalog)
+
+        self.assertNotIn("scene-object:SCENE.HQR:2:2", graph.nodes_by_id)
+        self.assertNotIn(scene_zone_node_id_for("SCENE.HQR:2", 0), graph.nodes_by_id)
+        self.assertNotIn(waypoint_node_id_for("SCENE.HQR:2", 1), graph.nodes_by_id)
+        self.assertNotIn("patch-record:SCENE.HQR:2:0", graph.nodes_by_id)
+
+    def test_missing_target_taxonomy(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog())
+
+        sample = graph.nodes_by_id["missing:SAMPLES.HQR:999"]
+        video = graph.nodes_by_id["missing:VIDEO/VIDEO.HQR:MISSING"]
+
+        self.assertEqual(sample["targetKind"], "sample")
+        self.assertEqual(sample["resolutionState"], "outside_table")
+        self.assertEqual(video["resolutionState"], "unresolved_name")
+        self.assertEqual(video["targetAvailable"] if "targetAvailable" in video else False, False)
+
+    def test_multiple_occurrences_share_missing_target_but_keep_distinct_edges(self) -> None:
+        catalog = synthetic_scene_mechanics_catalog()
+        scene = next(asset for asset in catalog["assets"] if asset["id"] == "SCENE.HQR:2")  # type: ignore[index]
+        script = scene["stats"]["reconnaissance"]["objects"][0]["track_script_analysis"]  # type: ignore[index]
+        missing = {
+            "sample_id": 999,
+            "hqr_table_index": 1000,
+            "status": "outside_archive_table",
+            "reason": "outside SAMPLES.HQR table",
+            "reference_key": "sample",
+            "reference_value": 999,
+        }
+        script["missing_sample_links"] = [dict(missing), dict(missing)]
+        graph = build_catalog_graph(catalog)
+
+        usages = query_usages(graph, "SAMPLES.HQR:999", proof_scope="script_reference", evidence_status="unknown")
+
+        self.assertEqual(graph.nodes_by_id["missing:SAMPLES.HQR:999"]["resolutionState"], "outside_table")
+        self.assertEqual(len(usages["edges"]), 2)
+        self.assertEqual(len({edge["id"] for edge in usages["edges"]}), 2)
+
+    def test_empty_sample_slot_is_not_decode_failure(self) -> None:
+        graph = build_catalog_graph(synthetic_catalog())
+
+        sample = graph.nodes_by_id["missing:SAMPLES.HQR:999"]
+
+        self.assertEqual(sample["absenceEvidenceStatus"], "decoded_absent")
+        self.assertEqual(sample["evidenceStatus"], "unknown")
+
+    def test_catalog_graph_never_emits_live_confirmed_without_event_graph(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+
+        statuses = {
+            str(payload.get("evidenceStatus"))
+            for payload in [*graph.nodes_by_id.values(), *graph.edges_by_id.values()]
+            if payload.get("evidenceStatus")
+        }
+
+        self.assertNotIn("live_confirmed", statuses)
+
+    def test_search_filters_proof_and_evidence_status(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+
+        results = query_search(
+            graph,
+            "target_offset",
+            proof_scopes=["script_structure"],
+            evidence_statuses=["source_backed"],
+            include_edges=True,
+        )["results"]
+
+        self.assertTrue(results)
+        self.assertTrue(all(result["kind"] == "edge" for result in results if result.get("proofScope")))
+        self.assertTrue(all(result.get("proofScope") == "script_structure" for result in results if result["kind"] == "edge"))
+
+    def test_search_returns_edges_and_nodes(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+
+        results = query_search(graph, "waypoint", include_edges=True)["results"]
+        kinds = {result["kind"] for result in results}
+
+        self.assertIn("node", kinds)
+        self.assertIn("edge", kinds)
+        self.assertTrue(any(result.get("nodeType") == "Waypoint" for result in results))
+
+    def test_scene_mechanics_query_surfaces_return_graph_backed_selections(self) -> None:
+        graph = build_catalog_graph(synthetic_scene_mechanics_catalog())
+        instruction_id = script_instruction_node_id_for("SCENE.HQR:2", 2, "track", 8)
+
+        zone = query_zone(graph, "SCENE.HQR:2", "2")
+        waypoint = query_waypoint(graph, "SCENE.HQR:2", "1")
+        instruction = query_script_instruction(graph, "SCENE.HQR:2", "2", "track", "8")
+        selection = query_selection(graph, instruction_id)
+        operation = query_animation_operation_compatibility(graph, "BODY.HQR:2", "ANIM.HQR:2")
+
+        self.assertEqual(zone["schema"], "catalog_graph.zone.v0")
+        self.assertEqual(zone["node"]["type"], "SceneZone")
+        self.assertTrue(any(edge["type"] == "CHANGES_CUBE_TO" for edge in zone["edges"]))
+        self.assertEqual(waypoint["node"]["type"], "Waypoint")
+        self.assertEqual(instruction["node"]["type"], "ScriptInstruction")
+        self.assertTrue(selection["found"])
+        self.assertEqual(selection["selection"]["kind"], "script_instruction")
+        self.assertEqual(operation["schema"], "catalog_graph.animation_operation_compatibility.v0")
 
 
 if __name__ == "__main__":

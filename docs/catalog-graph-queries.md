@@ -24,8 +24,14 @@ python -m lba2_lm2_viewer catalog-graph --asset-root <root> edges BODY.HQR:29 --
 python -m lba2_lm2_viewer catalog-graph --asset-root <root> edges BODY.HQR:29 --direction incoming --proof-scope scene_object_state --evidence-status source_backed --json
 python -m lba2_lm2_viewer catalog-graph --asset-root <root> usages BODY.HQR:29 --json
 python -m lba2_lm2_viewer catalog-graph --asset-root <root> scene-object SCENE.HQR:2 2 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <root> zone SCENE.HQR:2 0 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <root> waypoint SCENE.HQR:2 1 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <root> script-instruction SCENE.HQR:2 2 track 8 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <root> selection edge:<id> --json
 python -m lba2_lm2_viewer catalog-graph --asset-root <root> compatible BODY.HQR:2 --json
 python -m lba2_lm2_viewer catalog-graph --asset-root <root> prove BODY.HQR:2 ANIM.HQR:2 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <root> operation BODY.HQR:2 ANIM.HQR:2 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <root> missing-targets --json
 python -m lba2_lm2_viewer catalog-graph --asset-root <root> export --subgraph BODY.HQR:29 --json
 python -m lba2_lm2_viewer catalog-graph --asset-root <root> export --json
 python -m lba2_lm2_viewer catalog-graph --asset-root <root> build --output temp/catalog-graph.json
@@ -40,8 +46,14 @@ python -m lba2_lm2_viewer catalog-graph --asset-root <root> build --output temp/
 | `edges` | Edges for a node, optionally filtered. | Lists relationship evidence; does not infer missing edges are impossible. |
 | `usages` | Incoming usage/script edges for an asset. | Lists known decoded/source-backed scene or script usage. |
 | `scene-object` | Scene object node and incident edges. | Explains initial-state visual links and resolver context. |
+| `zone` | Scene zone node and incident edges. | Explains decoded zone bounds, source-backed zone contracts, and precise zone relationships where modeled. |
+| `waypoint` | Waypoint node and incident edges. | Explains decoded coordinate evidence and script/object references without implying executed movement. |
+| `script-instruction` | Script instruction node and incident edges. | Explains structural instruction evidence, local references, control-flow, patch, and contract links. |
+| `selection` | Backend selection projection for a graph node or edge id. | Shows the selection envelope the frontend should consume for graph authority. |
 | `compatible` | Compatible animations for a model. | Lists graph compatibility edges and reasons. |
 | `prove` | Compatibility proof between one model and one animation. | Explains why the pair is compatible, or returns explicit negative evidence. |
+| `operation` | Animation operation eligibility for one model/animation pair. | Wraps the `COMPATIBLE_WITH` proof as operation eligibility and explicit negative evidence. |
+| `missing-targets` | Explicit missing target nodes and resolver states. | Lists unresolved evidence without turning absence into decode failure. |
 | `build` | Versioned full graph JSON written to disk. | Reusable offline graph snapshot for repeated agent/port queries. |
 | `export` | Full graph or root subgraph JSON on stdout. | Machine-readable graph snapshot for agents, scripts, or port tooling. |
 
@@ -53,7 +65,8 @@ consumer needs it.
 
 The HTTP catalog payload also exposes internal
 `catalog_graph.selection_projection.v0` records for asset selection under
-`graph.selectionByAssetId`. These records are the UI authority for migrated
+`graph.selectionByAssetId` and graph-node/graph-edge selection under
+`graph.selectionByStableId`. These records are the UI authority for migrated
 selection identity, workspace suggestion, export action, export capability,
 inspector route, and graph-backed relationship links.
 
@@ -236,9 +249,11 @@ covers opcode-level facts.
   the visible relationship section names graph evidence and that graph-modeled
   visual/audio/text/video rows come from
   `sceneObjectRelationshipsByStableId`, not compact scene-local link arrays.
-- UI agents validating `resource_record` export should select the child record,
-  confirm the active selection is `resource_record`, and verify the export
-  action is inherited from the parent asset graph selection projection.
+- UI agents validating `resource_record` selection should select the child
+  record and confirm the active selection is `resource_record` from
+  `graph.selectionByStableId[recordStableId]`. Do not expect it to inherit the
+  parent resource asset export action unless the backend projection adds an
+  explicit record export action.
 - Port checks should filter by `proofScope` and `evidenceStatus`; decoded-only
   evidence must not be treated as live proof.
 - Promotion packet joins use graph-derived scene usage records and explicit

@@ -4,6 +4,7 @@ import type { AnimationSequenceFrame, AnimationSequencePayload, CatalogAsset, Ca
 
 export type SelectionKind =
   | 'asset'
+  | 'graph_edge'
   | 'scene_usage'
   | 'runtime_resolution'
   | 'sprite_frame'
@@ -12,6 +13,11 @@ export type SelectionKind =
   | 'resource_record'
   | 'evidence_artifact'
   | 'scene_object'
+  | 'scene_zone'
+  | 'waypoint'
+  | 'script_instruction'
+  | 'patch_record'
+  | 'runtime_state_field'
   | 'runtime_sprite_state'
   | 'file3d_resolution'
   | 'anim3ds_range_state'
@@ -48,6 +54,7 @@ export interface SelectionSource {
 
 export interface SelectionLink {
   kind: SelectionKind | 'asset';
+  edgeId?: string;
   stableId: string;
   label: string;
   proofScope?: string;
@@ -55,12 +62,21 @@ export interface SelectionLink {
   sourceRule?: string;
   sourceField?: string;
   indexRule?: string;
+  sourceEvidenceId?: string;
+  occurrenceOrdinal?: number;
+  ownerNodeId?: string;
+  sourcePath?: string;
+  sourceOffset?: number;
+  rawReference?: string | number | boolean | null;
+  targetStableId?: string;
+  resolverKind?: string;
 }
 
 export interface SelectionAction {
   id: string;
   label: string;
   targetAssetId?: string;
+  selectedEdgeId?: string;
 }
 
 export interface AppSelection {
@@ -136,7 +152,7 @@ export function selectionFromCatalogAsset(
   if (options.graphSelection) {
     return selectionFromGraphProjection(options.graphSelection, options);
   }
-  if (asset.kind === 'model' || asset.kind === 'resource') {
+  if (['model', 'resource', 'scene', 'sprite', 'animation'].includes(asset.kind)) {
     throw new Error(`Missing graph selection projection for migrated ${asset.kind} asset ${asset.id}`);
   }
   return {
@@ -155,7 +171,7 @@ export function selectionFromCatalogAsset(
     facets: facetsForAsset(asset),
   };
 }
-function selectionFromGraphProjection(
+export function selectionFromGraphProjection(
   projection: CatalogGraphSelectionProjection,
   options: {
     workspaceSuggestion?: AppSelection['workspaceSuggestion'];
@@ -171,6 +187,7 @@ function selectionFromGraphProjection(
     evidenceStatus: projection.evidenceStatus as EvidenceStatus,
     links: projection.links.map((link) => ({
       kind: link.kind as SelectionKind | 'asset',
+      edgeId: link.edgeId,
       stableId: link.stableId,
       label: link.label,
       proofScope: link.proofScope,
@@ -178,6 +195,14 @@ function selectionFromGraphProjection(
       sourceRule: link.sourceRule,
       sourceField: link.sourceField,
       indexRule: link.indexRule,
+      sourceEvidenceId: link.sourceEvidenceId,
+      occurrenceOrdinal: link.occurrenceOrdinal,
+      ownerNodeId: link.ownerNodeId,
+      sourcePath: link.sourcePath,
+      sourceOffset: link.sourceOffset,
+      rawReference: link.rawReference,
+      targetStableId: link.targetStableId,
+      resolverKind: link.resolverKind,
     })),
     unknowns: projection.unknowns,
     previewActions: projection.previewActions,
@@ -199,9 +224,10 @@ function parentGraphLinks(
 ): SelectionLink[] {
   const links: SelectionLink[] = asset ? [{ kind: 'asset', stableId: asset.id, label: asset.label }] : [];
   for (const link of graphSelection?.links || []) {
-    if (links.some((existing) => existing.kind === link.kind && existing.stableId === link.stableId)) continue;
+    if (links.some((existing) => existing.kind === link.kind && existing.stableId === link.stableId && existing.edgeId === link.edgeId)) continue;
     links.push({
       kind: link.kind as SelectionKind | 'asset',
+      edgeId: link.edgeId,
       stableId: link.stableId,
       label: link.label,
       proofScope: link.proofScope,
@@ -209,6 +235,14 @@ function parentGraphLinks(
       sourceRule: link.sourceRule,
       sourceField: link.sourceField,
       indexRule: link.indexRule,
+      sourceEvidenceId: link.sourceEvidenceId,
+      occurrenceOrdinal: link.occurrenceOrdinal,
+      ownerNodeId: link.ownerNodeId,
+      sourcePath: link.sourcePath,
+      sourceOffset: link.sourceOffset,
+      rawReference: link.rawReference,
+      targetStableId: link.targetStableId,
+      resolverKind: link.resolverKind,
     });
   }
   return links;
@@ -499,26 +533,19 @@ export function selectionFromAnimationPose(
 export function selectionFromResourceRecord(
   asset: CatalogAsset,
   record: ResourceRecordEvidence,
-  options: { graphSelection?: CatalogGraphSelectionProjection } = {},
+  options: { graphSelection: CatalogGraphSelectionProjection },
 ): AppSelection {
-  const exportActions = options.graphSelection?.exportActions || [];
+  const projected = selectionFromGraphProjection(options.graphSelection, { workspaceSuggestion: 'resource' });
   return {
+    ...projected,
     kind: 'resource_record',
     stableId: record.stableId,
     label: record.label,
-    source: sourceFromAsset(asset),
-    provenance: `${asset.id} ${record.kind} sampled decoded resource evidence`,
-    evidenceStatus: evidenceStatusForAsset(asset),
-    links: parentGraphLinks(asset, options.graphSelection),
-    unknowns: unknownsForAsset(asset),
-    previewActions: [],
-    exportActions,
-    exportCapability: options.graphSelection?.exportCapability,
+    links: projected.links.length ? projected.links : [{ kind: 'asset', stableId: asset.id, label: asset.label }],
     workspaceSuggestion: 'resource',
     facets: {
+      ...projected.facets,
       assetId: asset.id,
-      graphNodeId: options.graphSelection?.facets?.graphNodeId,
-      relationshipLinkCount: options.graphSelection?.facets?.relationshipLinkCount,
       recordKind: record.kind,
       summary: record.summary,
       detail: record.detail,
@@ -585,38 +612,24 @@ export function selectionFromResourcePaletteContext(
   };
 }
 
-export function selectionFromSceneUsage(asset: CatalogAsset, usage: SceneAssetUsage): AppSelection {
-  const stableId = sceneUsageStableId(asset, usage);
-  const label = usage.label || `${usage.scene_label} object ${usage.object_index}`;
+export function selectionFromSceneUsage(
+  asset: CatalogAsset,
+  usage: SceneAssetUsage,
+  graphSelection: CatalogGraphSelectionProjection,
+): AppSelection {
+  const edgeId = graphEdgeIdForUsage(usage);
+  if (!edgeId) {
+    throw new Error(`Scene usage selection requires a catalog graph edge id for ${asset.id}.`);
+  }
+  if (graphSelection.kind !== 'graph_edge' || graphSelection.stableId !== edgeId) {
+    throw new Error(`Scene usage ${edgeId} must be selected through its catalog graph edge projection.`);
+  }
+  const projected = selectionFromGraphProjection(graphSelection, { workspaceSuggestion: 'entity' });
   return {
-    kind: 'scene_usage',
-    stableId,
-    label,
-    source: {
-      archive: 'SCENE.HQR',
-      entryIndex: usage.scene_entry_index,
-    },
-    provenance: usage.sourceRule || usage.resolution_rule || usage.indexRule || usage.index_rule || usage.reference_key || `${asset.id} catalog graph usage record`,
-    evidenceStatus: usage.resolution_rule || usage.index_rule ? 'source_backed' : 'decoded_only',
-    links: [
-      { kind: 'asset', stableId: asset.id, label: asset.label },
-      { kind: 'asset', stableId: usage.scene_asset_id, label: usage.scene_asset_id },
-      {
-        kind: usage.proofScope === 'scene_object_state' ? 'scene_object' : 'scene_usage',
-        stableId: usage.graphLinkStableId || `${usage.scene_asset_id}#object:${usage.object_index}`,
-        label,
-        proofScope: usage.proofScope,
-        evidenceStatus: usage.evidenceStatus,
-        sourceRule: usage.sourceRule || usage.resolution_rule,
-        sourceField: usage.sourceField,
-        indexRule: usage.indexRule || usage.index_rule,
-      },
-    ],
-    unknowns: [],
-    previewActions: [],
-    exportActions: [],
-    workspaceSuggestion: 'entity',
+    ...projected,
     facets: {
+      ...projected.facets,
+      selectedEdgeId: edgeId,
       assetId: asset.id,
       usageKind: usage.kind,
       sceneAssetId: usage.scene_asset_id,
@@ -628,8 +641,18 @@ export function selectionFromSceneUsage(asset: CatalogAsset, usage: SceneAssetUs
       referenceValue: usage.reference_value,
       backend: usage.backend,
       runtimeSpriteIndex: usage.runtime_sprite_index,
+      graphEdgeId: edgeId,
+      sourceEvidenceId: usage.sourceEvidenceId,
+      occurrenceOrdinal: usage.occurrenceOrdinal,
+      ownerNodeId: usage.ownerNodeId,
+      sourcePath: usage.sourcePath,
+      sourceOffset: usage.sourceOffset,
+      rawReference: usage.rawReference,
+      targetStableId: usage.targetStableId,
+      resolverKind: usage.resolverKind,
     },
     evidence: {
+      ...projected.evidence,
       usageAsset: asset,
       sceneUsage: usage,
     },
@@ -892,6 +915,8 @@ export function selectionFromSceneUsageFacet(asset: CatalogAsset, usage: SceneAs
 }
 
 export function sceneUsageStableId(asset: CatalogAsset, usage: SceneAssetUsage): string {
+  const edgeId = graphEdgeIdForUsage(usage);
+  if (edgeId) return edgeId;
   const parts = [
     `${usage.scene_asset_id}#object:${usage.object_index}`,
     usage.script_kind ? `script=${usage.script_kind}` : null,
@@ -900,6 +925,10 @@ export function sceneUsageStableId(asset: CatalogAsset, usage: SceneAssetUsage):
     usage.record_index === undefined ? null : `record=${usage.record_index}`,
   ].filter(Boolean);
   return `${asset.id}#usage:${parts.join(';')}`;
+}
+
+function graphEdgeIdForUsage(usage: SceneAssetUsage): string | undefined {
+  return usage.graphEdgeId || usage.selectedEdgeId || usage.edgeId;
 }
 
 function sourceFromAsset(asset: CatalogAsset): SelectionSource {

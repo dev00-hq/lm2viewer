@@ -1,9 +1,9 @@
 import './styles.css';
-import { buildCatalog, catalogAudioUrl, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, fetchPortPromotionPackets, loadAssetEntityWorkflow, loadCatalogAsset, loadPath, loadRuntimeSpriteEntityWorkflow, loadSceneObjectEntityWorkflow, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
+import { buildCatalog, catalogAudioUrl, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, fetchPortPromotionPackets, loadAssetEntityWorkflow, loadCatalogAsset, loadCatalogAssetDetail, loadCatalogGraphCompatible, loadCatalogGraphSelection, loadPath, loadRuntimeSpriteEntityWorkflow, loadSceneObjectEntityWorkflow, pickCatalogFiles, pickCatalogFolder, searchCatalog, uploadModel } from './api';
 import { animationCompatibilityPrefix, compatibleAnimationIds } from './compatibility';
 import { requireElement } from './dom';
 import { InspectorRenderer, anim3dsRangeInspectorSections, animationInspectorSections, animationSampleInspectorSections, backgroundInspectorSections, entityFacetInspectorSections, evidenceArtifactInspectorSections, holomapInspectorSections, modelInspectorSections, modelSurfaceInspectorSections, paletteImageInspectorSections, rawAnimationInspectorSections, resourceRecordInspectorSections, runtimeTableInspectorSections, sampleAudioInspectorSections, sceneInspectorSections, sceneObjectInspectorSections, sceneUsageInspectorSections, smackerVideoInspectorSections, spriteFrameInspectorSections, textOrderInspectorSections, textPayloadInspectorSections, unclassifiedResourceInspectorSections, type InspectorSection } from './inspector';
-import { AppSelectionStore, selectionFromAnimationPose, selectionFromAnimationSample, selectionFromCatalogAsset as buildSelectionFromCatalogAsset, selectionFromEntityFacet, selectionFromEntityWorkflow, selectionFromModelSurface, selectionFromResourcePaletteContext, selectionFromResourceRecord, selectionFromRuntimeResolution, selectionFromSceneUsage, selectionFromSceneUsageFacet, selectionFromSpriteFrame, type AppSelection, type EntityFacetSelectionKind } from './selection';
+import { AppSelectionStore, selectionFromAnimationPose, selectionFromAnimationSample, selectionFromCatalogAsset as buildSelectionFromCatalogAsset, selectionFromEntityFacet, selectionFromEntityWorkflow, selectionFromGraphProjection, selectionFromModelSurface, selectionFromResourcePaletteContext, selectionFromResourceRecord, selectionFromRuntimeResolution, selectionFromSceneUsage, selectionFromSceneUsageFacet, selectionFromSpriteFrame, type AppSelection, type EntityFacetSelectionKind } from './selection';
 import type { Catalog, CatalogAsset, CatalogGraphSceneObjectRelationshipProjection, CatalogGraphSceneObjectVisualLink, CatalogGraphSelectionProjection, DecodeProgress, Lm2Model, PolygonMode, PortPromotionPacketsPayload, SceneAssetUsage, SceneScriptAnalysis, SceneStats, SpritePayload } from './types';
 import { AnimationController } from './ui/animationController';
 import { CatalogUi } from './ui/catalog';
@@ -137,6 +137,11 @@ const catalogUi = new CatalogUi({
   filter: requireElement('kindFilter', HTMLSelectElement),
   list: requireElement('assetList', HTMLDivElement),
   onSelect: selectCatalogAsset,
+  onSearch: async (q, kind) => {
+    const result = await searchCatalog(q, kind, 0, 260);
+    mergeCatalogAssets(result.assets);
+    return { assets: result.assets, total: result.total };
+  },
 });
 const inspector = new InspectorRenderer(
   requireElement('assetDetail', HTMLDivElement),
@@ -221,8 +226,13 @@ const resourceWorkspace = new ResourceWorkspace({
       if (selection) selectionStore.set(selection);
       return;
     }
+    const graphSelection = currentCatalog?.graph?.selectionByStableId?.[record.stableId];
+    if (!graphSelection) {
+      overlay.textContent = `Graph resource record selection unavailable for ${record.stableId}`;
+      return;
+    }
     selectionStore.set(selectionFromResourceRecord(asset, record, {
-      graphSelection: currentCatalog?.graph?.selectionByAssetId?.[asset.id],
+      graphSelection,
     }));
   },
 });
@@ -389,7 +399,7 @@ mainViews.model.tab.addEventListener('click', () => setMainView('model'));
 mainViews.sprite.tab.addEventListener('click', () => setMainView('sprite'));
 mainViews.entity.tab.addEventListener('click', () => setMainView('entity'));
 mainViews.resource.tab.addEventListener('click', () => setMainView('resource'));
-canvasAnimationSelect.addEventListener('change', selectCanvasAnimation);
+canvasAnimationSelect.addEventListener('change', () => void selectCanvasAnimation());
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
@@ -451,10 +461,78 @@ async function loadPortPromotionEvidence(): Promise<void> {
 
 function setCatalog(catalog: Awaited<ReturnType<typeof fetchCatalog>>): void {
   currentCatalog = catalog;
+  if (currentCatalog && !currentCatalog.graph) {
+    currentCatalog.graph = {
+      schema: 'catalog_graph.catalog_projection.v0',
+      indexes: {},
+      compatibilityByModelId: {},
+      selectionByAssetId: {},
+      selectionByStableId: {},
+    };
+  }
   catalogUi.setCatalog(catalog);
   runtimeSpriteResolver.setCatalog(catalog);
   if (catalog?.asset_root) assetRootInput.value = catalog.asset_root;
   updateCanvasAnimationSelect(animationController.selectedBodyAsset);
+}
+
+function mergeCatalogAssets(assets: CatalogAsset[]): void {
+  if (!currentCatalog) return;
+  const byId = new Map((currentCatalog.assets || []).map((asset) => [asset.id, asset]));
+  for (const asset of assets) byId.set(asset.id, asset);
+  currentCatalog.assets = Array.from(byId.values());
+}
+
+async function hydrateCatalogAsset(asset: CatalogAsset | string): Promise<CatalogAsset> {
+  const id = typeof asset === 'string' ? asset : asset.id;
+  const detailed = await loadCatalogAssetDetail(id);
+  mergeCatalogAssets([detailed]);
+  return detailed;
+}
+
+function ensureCatalogGraphCache(): NonNullable<Catalog['graph']> {
+  if (!currentCatalog) throw new Error('No catalog loaded.');
+  if (!currentCatalog.graph) {
+    currentCatalog.graph = {
+      schema: 'catalog_graph.catalog_projection.v0',
+      indexes: {},
+      compatibilityByModelId: {},
+      selectionByAssetId: {},
+      selectionByStableId: {},
+    };
+  }
+  currentCatalog.graph.indexes ||= {};
+  currentCatalog.graph.selectionByAssetId ||= {};
+  currentCatalog.graph.selectionByStableId ||= {};
+  currentCatalog.graph.compatibilityByModelId ||= {};
+  return currentCatalog.graph;
+}
+
+async function hydrateGraphSelection(id: string): Promise<CatalogGraphSelectionProjection> {
+  const graph = ensureCatalogGraphCache();
+  const cached = graph.selectionByAssetId?.[id] || graph.selectionByStableId?.[id];
+  if (cached) return cached;
+  const payload = await loadCatalogGraphSelection(id);
+  if (!payload.found || !payload.selection) {
+    throw new Error(`Graph selection projection unavailable for ${id}.`);
+  }
+  graph.selectionByStableId![payload.selection.stableId] = payload.selection;
+  if (payload.selection.kind === 'asset') {
+    graph.selectionByAssetId![payload.selection.stableId] = payload.selection;
+  }
+  return payload.selection;
+}
+
+async function hydrateCompatibleAnimations(modelAsset: CatalogAsset): Promise<void> {
+  if (modelAsset.kind !== 'model') return;
+  const graph = ensureCatalogGraphCache();
+  if (graph.indexes.compatibleAnimationsByModelId?.[modelAsset.id]) return;
+  const payload = await loadCatalogGraphCompatible(modelAsset.id);
+  mergeCatalogAssets(payload.animations || []);
+  graph.indexes.compatibleAnimationsByModelId ||= {};
+  graph.compatibilityByModelId ||= {};
+  graph.indexes.compatibleAnimationsByModelId[modelAsset.id] = payload.compatibleAnimationIds;
+  graph.compatibilityByModelId[modelAsset.id] = payload.compatibility;
 }
 
 function selectionFromCatalogAsset(
@@ -462,7 +540,7 @@ function selectionFromCatalogAsset(
   options: Parameters<typeof buildSelectionFromCatalogAsset>[1] = {},
 ): AppSelection {
   const graphSelection = graphSelectionForAsset(asset);
-  if (currentCatalog?.graph && !graphSelection) {
+  if (currentCatalog?.graph?.selectionByAssetId && !graphSelection) {
     throw new Error(`Missing graph selection projection for catalog asset ${asset.id}`);
   }
   return buildSelectionFromCatalogAsset(asset, {
@@ -482,11 +560,16 @@ async function selectCatalogAsset(
   const requestId = ++catalogSelectionRequestId;
   animationController.stop();
   spriteViewer.stop();
-  if (!options.preserveSelection) selectionStore.set(selectionFromCatalogAsset(asset));
   await runAction(async () => {
-    const payload = await loadCatalogAsset(asset);
+    const detailedAsset = await hydrateCatalogAsset(asset);
+    await hydrateGraphSelection(detailedAsset.id);
+    if (detailedAsset.kind === 'model') await hydrateCompatibleAnimations(detailedAsset);
+    if (!options.preserveSelection) selectionStore.set(selectionFromCatalogAsset(detailedAsset));
+    const payload = await loadCatalogAsset(detailedAsset);
     if (requestId !== catalogSelectionRequestId) return;
     if ('animation' in payload) {
+      mergeCatalogAssets([payload.animation]);
+      await hydrateGraphSelection(payload.animation.id);
       resourceWorkspace.clear();
       clearModelInspection();
       const rawAnimation = isRawAnimationInspectorAsset(payload.animation);
@@ -507,6 +590,8 @@ async function selectCatalogAsset(
       return;
     }
     if ('sprite' in payload) {
+      mergeCatalogAssets([payload.sprite]);
+      await hydrateGraphSelection(payload.sprite.id);
       clearModelInspection();
       const sceneAsset = payload.sprite.kind === 'scene';
       const resourceAsset = payload.sprite.kind === 'resource';
@@ -547,6 +632,8 @@ async function selectCatalogAsset(
       return;
     }
     if ('scene' in payload) {
+      mergeCatalogAssets([payload.scene]);
+      await hydrateGraphSelection(payload.scene.id);
       resourceWorkspace.clear();
       clearModelInspection();
       if (!options.preserveSelection) {
@@ -560,6 +647,8 @@ async function selectCatalogAsset(
       return;
     }
     if ('resource' in payload) {
+      mergeCatalogAssets([payload.resource]);
+      await hydrateGraphSelection(payload.resource.id);
       clearModelInspection();
       if (!options.preserveSelection) {
         selectionStore.set(selectionFromCatalogAsset(payload.resource));
@@ -683,17 +772,19 @@ function setMainView(view: MainView): void {
   }
 }
 
-function selectCanvasAnimation(): void {
+async function selectCanvasAnimation(): Promise<void> {
   const asset = findCatalogAsset(canvasAnimationSelect.value);
   if (!asset || asset.kind !== 'animation' || asset.entry_type !== 'animation') return;
-  animationController.setAnimationAsset(asset);
-  selectionStore.set(selectionFromCatalogAsset(asset, {
+  const detailedAsset = await hydrateCatalogAsset(asset);
+  await hydrateGraphSelection(detailedAsset.id);
+  animationController.setAnimationAsset(detailedAsset);
+  selectionStore.set(selectionFromCatalogAsset(detailedAsset, {
     workspaceSuggestion: 'model',
     compatibilityStatus: animationController.selectedBodyAsset
-      ? animationCompatibilityPrefix(currentCatalog, asset, animationController.selectedBodyAsset).trim() || undefined
+      ? animationCompatibilityPrefix(currentCatalog, detailedAsset, animationController.selectedBodyAsset).trim() || undefined
       : undefined,
   }));
-  overlay.textContent = `${asset.label} selected`;
+  overlay.textContent = `${detailedAsset.label} selected`;
   updateCanvasAnimationSelect(animationController.selectedBodyAsset);
 }
 
@@ -753,7 +844,7 @@ function resourceRecordIdForSelection(selection: AppSelection | null): string | 
 
 function assetForUsageStrip(selection: AppSelection | null): CatalogAsset | null {
   if (!selection) return null;
-  if (selection.kind === 'scene_usage') return selection.evidence?.usageAsset || null;
+  if (selection.kind === 'graph_edge' || selection.kind === 'scene_usage') return selection.evidence?.usageAsset || null;
   if (selection.kind === 'scene_object') {
     return findCatalogAsset(selection.evidence?.entityWorkflow?.resolved_asset?.id || String(selection.facets?.resolvedAssetId || ''));
   }
@@ -770,21 +861,17 @@ type GraphUsageLink = CatalogGraphSelectionProjection['links'][number];
 
 function sceneUsageRecordForGraphLink(records: SceneAssetUsage[] | undefined, link: GraphUsageLink): SceneAssetUsage | null {
   const candidates = records || [];
-  const exact = candidates.find((usage) => usage.graphLinkStableId === link.stableId);
-  if (exact) return exact;
-  return candidates.find((usage) => (
-    `${usage.scene_asset_id}#object:${usage.object_index}` === link.stableId
-    && (!link.proofScope || usage.proofScope === link.proofScope)
-    && (!link.sourceRule || usage.sourceRule === link.sourceRule || usage.resolution_rule === link.sourceRule)
-    && (!link.sourceField || usage.sourceField === link.sourceField)
-    && (!link.indexRule || usage.indexRule === link.indexRule || usage.index_rule === link.indexRule)
-  )) || null;
+  if (!link.edgeId) return null;
+  const byEdge = candidates.find((usage) => usage.graphEdgeId === link.edgeId || usage.selectedEdgeId === link.edgeId || usage.edgeId === link.edgeId);
+  if (byEdge) return byEdge;
+  return null;
 }
 
 function activeGraphUsageStableId(selection: AppSelection | null): string {
-  const usage = selection?.kind === 'scene_usage' ? selection.evidence?.sceneUsage : null;
-  if (!usage) return '';
-  return usage.graphLinkStableId || `${usage.scene_asset_id}#object:${usage.object_index}`;
+  if (selection?.kind !== 'graph_edge' && selection?.kind !== 'scene_usage') return '';
+  if (selection.kind === 'graph_edge') return selection.stableId;
+  const usage = selection.evidence?.sceneUsage;
+  return usage?.graphEdgeId || usage?.selectedEdgeId || usage?.edgeId || '';
 }
 
 function renderSceneUsageStrip(selection: AppSelection | null): void {
@@ -800,7 +887,7 @@ function renderSceneUsageStrip(selection: AppSelection | null): void {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'scene-usage-item';
-      button.setAttribute('aria-current', String(link.stableId === activeUsageId));
+      button.setAttribute('aria-current', String(Boolean(link.edgeId) && link.edgeId === activeUsageId));
       button.title = [
         link.label,
         link.proofScope,
@@ -810,7 +897,14 @@ function renderSceneUsageStrip(selection: AppSelection | null): void {
         link.indexRule,
       ].filter(Boolean).join(' | ');
       button.addEventListener('click', () => {
-        selectionStore.set(selectionFromSceneUsage(asset, usage));
+        if (!link.edgeId) {
+          overlay.textContent = `Graph usage edge selection unavailable for ${asset.id}.`;
+          return;
+        }
+        void runAction(async () => {
+          const edgeSelection = await hydrateGraphSelection(link.edgeId || '');
+          selectionStore.set(selectionFromSceneUsage(asset, usage, edgeSelection));
+        }, { label: `Loading graph usage ${link.edgeId}` });
       });
       const title = document.createElement('strong');
       title.textContent = link.label;
@@ -843,7 +937,7 @@ function sceneAssetForObjectTable(selection: AppSelection | null): CatalogAsset 
   if (selection.kind === 'scene_object') {
     return findCatalogAsset(selection.evidence?.entityContract?.scene_asset_id || '');
   }
-  if (selection.kind === 'scene_usage') {
+  if (selection.kind === 'graph_edge' || selection.kind === 'scene_usage') {
     return findCatalogAsset(selection.evidence?.sceneUsage?.scene_asset_id || '');
   }
   if (selection.kind === 'sprite_frame') {
@@ -982,7 +1076,7 @@ function renderSceneLocalTable(selection: AppSelection | null): void {
   }
 
   const rows: SceneLocalEvidenceRow[] = [
-    ...(recon.sampled_zones || []).slice(0, 12).map((zone) => ({
+    ...(recon.zones || []).slice(0, 12).map((zone) => ({
       stableId: `${asset.id}#zone:${zone.index}`,
       kind: 'Zone',
       index: String(zone.index),
@@ -993,7 +1087,7 @@ function renderSceneLocalTable(selection: AppSelection | null): void {
         ? zone.runtime.script_controls.map((control) => `${control.opcode}:${control.action}`).join(', ')
         : '-',
     })),
-    ...(recon.sampled_tracks || []).slice(0, 12).map((track) => ({
+    ...(recon.tracks || []).slice(0, 12).map((track) => ({
       stableId: `${asset.id}#waypoint:${track.index}`,
       kind: 'Waypoint',
       index: String(track.index),
@@ -1011,7 +1105,7 @@ function renderSceneLocalTable(selection: AppSelection | null): void {
       contract: link.script_control || 'GRM fragment runtime state',
       target: link.asset_id || `LBA_BKG.HQR:${link.resolved_grm_entry ?? '-'}`,
     })),
-    ...(recon.sampled_patches || []).slice(0, 12).map((patch) => {
+    ...(recon.patches || []).slice(0, 12).map((patch) => {
       const target = patch.target;
       const instruction = target.instruction_opcode
         ? `${target.instruction_opcode}${target.patched_field ? `.${target.patched_field}` : ''}`
@@ -1052,6 +1146,19 @@ function renderSceneLocalTable(selection: AppSelection | null): void {
   const body = document.createElement('tbody');
   for (const rowData of rows) {
     const row = document.createElement('tr');
+    const graphSelection = currentCatalog?.graph?.selectionByStableId?.[rowData.stableId];
+    if (graphSelection) {
+      row.tabIndex = 0;
+      row.title = `Select graph evidence ${rowData.stableId}`;
+      row.addEventListener('click', () => {
+        selectionStore.set(selectionFromGraphProjection(graphSelection, { workspaceSuggestion: 'entity' }));
+      });
+      row.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        selectionStore.set(selectionFromGraphProjection(graphSelection, { workspaceSuggestion: 'entity' }));
+      });
+    }
     appendCopyableTextCell(row, rowData.stableId, 'Copy scene local ID');
     appendTextCell(row, rowData.kind);
     appendTextCell(row, rowData.index);
@@ -1368,7 +1475,7 @@ function scriptTargetForSelection(selection: AppSelection): { sceneAssetId: stri
       ? { sceneAssetId: entity.scene_asset_id, objectIndex: entity.object_index, ownerStableId: entity.entity_id }
       : null;
   }
-  if (selection.kind === 'scene_usage') {
+  if (selection.kind === 'graph_edge' || selection.kind === 'scene_usage') {
     const usage = selection.evidence?.sceneUsage;
     return usage?.scene_asset_id && usage.object_index !== null
       ? { sceneAssetId: usage.scene_asset_id, objectIndex: usage.object_index, ownerStableId: `${usage.scene_asset_id}#object:${usage.object_index}` }
@@ -1426,6 +1533,14 @@ function renderSelectionInspector(selection: AppSelection | null): void {
   if (selection.kind === 'resource_record') {
     const sections = resourceRecordInspectorSections(selection);
     setInspectorSectionsOrClear(sections, `No resource record inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  if (selection.kind === 'graph_edge') {
+    inspector.setSections(graphEdgeInspectorSections(selection));
+    return;
+  }
+  if (isGraphNodeSelection(selection)) {
+    inspector.setSections(graphNodeInspectorSections(selection));
     return;
   }
   if (selection.kind === 'scene_usage') {
@@ -1512,6 +1627,85 @@ function setInspectorSectionsOrClear(sections: InspectorSection[], emptyMessage:
   }
 }
 
+function isGraphNodeSelection(selection: AppSelection): boolean {
+  return ['scene_zone', 'waypoint', 'script_instruction', 'patch_record', 'runtime_state_field'].includes(selection.kind);
+}
+
+function graphEdgeInspectorSections(selection: AppSelection): InspectorSection[] {
+  const usage = selection.evidence?.sceneUsage;
+  const rows = [
+    { label: 'Stable ID', value: selection.stableId, copyValue: selection.stableId },
+    { label: 'Kind', value: selection.kind },
+    { label: 'Status', value: selection.evidenceStatus, status: selection.evidenceStatus },
+    { label: 'Provenance', value: selection.provenance },
+    { label: 'Proof scope', value: String(selection.links.find((link) => link.edgeId === selection.stableId)?.proofScope || usage?.proofScope || '-') },
+  ];
+  const edgeRows = [
+    { label: 'Edge ID', value: selection.stableId, copyValue: selection.stableId },
+    { label: 'Owner', value: String(selection.facets?.ownerNodeId || `${usage?.scene_asset_id || '-'}#object:${usage?.object_index ?? '-'}`) },
+    { label: 'Target', value: String(selection.facets?.targetStableId || usage?.target_asset_id || '-') },
+    { label: 'Source evidence', value: String(selection.facets?.sourceEvidenceId || '-') },
+    { label: 'Occurrence', value: String(selection.facets?.occurrenceOrdinal ?? '-') },
+    { label: 'Resolver', value: String(selection.facets?.resolverKind || '-') },
+  ];
+  return [
+    {
+      id: 'graph_edge_summary',
+      title: 'Graph Edge',
+      rows,
+      actions: [{ id: 'copy_edge_id', label: 'Copy Edge ID', copyValue: selection.stableId }],
+      defaultOpen: true,
+      searchText: rows.map((row) => `${row.label} ${row.value}`).join(' '),
+    },
+    {
+      id: 'graph_edge_identity',
+      title: 'Edge Identity',
+      rows: edgeRows,
+      defaultOpen: true,
+      searchText: edgeRows.map((row) => `${row.label} ${row.value}`).join(' '),
+    },
+    {
+      id: 'graph_edge_export',
+      title: 'Export',
+      rows: [{ label: 'Status', value: selection.exportActions.length === 1 ? 'Edge-aware export available.' : 'No edge-aware export action available.' }],
+      defaultOpen: true,
+      searchText: 'edge-aware export graph edge selected edge id',
+    },
+  ];
+}
+
+function graphNodeInspectorSections(selection: AppSelection): InspectorSection[] {
+  const rows = [
+    { label: 'Stable ID', value: selection.stableId, copyValue: selection.stableId },
+    { label: 'Kind', value: selection.kind },
+    { label: 'Status', value: selection.evidenceStatus, status: selection.evidenceStatus },
+    { label: 'Provenance', value: selection.provenance },
+    { label: 'Graph node', value: String(selection.facets?.graphNodeId || '-') },
+  ];
+  const linkRows = selection.links.slice(0, 16).map((link) => ({
+    label: link.kind,
+    value: [link.stableId, link.proofScope, link.evidenceStatus].filter(Boolean).join(' | '),
+    copyValue: link.edgeId || link.stableId,
+  }));
+  return [
+    {
+      id: 'graph_node_summary',
+      title: 'Graph Evidence',
+      rows,
+      actions: [{ id: 'copy_graph_node_id', label: 'Copy Stable ID', copyValue: selection.stableId }],
+      defaultOpen: true,
+      searchText: rows.map((row) => `${row.label} ${row.value}`).join(' '),
+    },
+    {
+      id: 'graph_node_relationships',
+      title: 'Relationships',
+      rows: linkRows.length ? linkRows : [{ label: 'Relationships', value: 'No graph relationships projected.' }],
+      defaultOpen: true,
+      searchText: linkRows.map((row) => `${row.label} ${row.value}`).join(' '),
+    },
+  ];
+}
+
 function graphRoutedInspectorSections(route: string, asset: CatalogAsset, selection: AppSelection) {
   switch (route) {
     case 'model':
@@ -1582,7 +1776,7 @@ async function exportSelectedAsset(): Promise<void> {
   if (!exportAsset) throw new Error('Select an exportable catalog model, sprite frame, sample, indexed image, background grid, or scene background before exporting.');
   exportResult.textContent = '';
   const polygonMode = selectedPolygonMode();
-  const result = await exportCatalogAsset(exportAsset, polygonMode);
+  const result = await exportCatalogAsset(exportAsset, polygonMode, exportAction?.selectedEdgeId);
   const fileEntries = collectManifestFiles(result.manifest.files);
   const fileCount = fileEntries.filter(Boolean).length;
   exportResult.textContent = `Wrote ${fileCount} files to ${result.output_dir}`;
@@ -1605,6 +1799,7 @@ async function exportSelectedAsset(): Promise<void> {
       generatedFiles: fileEntries.filter(Boolean).join(', '),
       sourceAssetId: result.manifest.source.catalog_asset_id,
       sourceLabel: result.manifest.source.catalog_label || result.manifest.source.catalog_asset_id,
+      selectedEdgeId: exportAction?.selectedEdgeId,
     },
   });
 }

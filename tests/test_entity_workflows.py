@@ -17,7 +17,7 @@ class EntityWorkflowTests(unittest.TestCase):
                     "stats": {
                         "semantic_layout": "scene_runtime_layout_partial",
                         "reconnaissance": {
-                            "sampled_objects": [
+                            "objects": [
                                 {
                                     "index": 1,
                                     "flags": 0x884,
@@ -84,7 +84,7 @@ class EntityWorkflowTests(unittest.TestCase):
                     "stats": {
                         "semantic_layout": "scene_runtime_layout_partial",
                         "reconnaissance": {
-                            "sampled_objects": [
+                            "objects": [
                                 {
                                     "index": 0,
                                     "flags": 0x800,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import hashlib
 import json
 import mimetypes
@@ -11,6 +12,7 @@ import threading
 import urllib.parse
 import webbrowser
 import zlib
+from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -19,12 +21,16 @@ from . import lba_hqr
 from .animation import parse_lba2_animation_records, playback_frame_indices
 from .catalog_graph import (
     build_catalog_graph,
+    catalog_node_selection_projection,
     catalog_scene_object_relationship_projection,
     catalog_selection_projection,
+    query_edges,
     query_asset_usage_records,
     query_animation_operation_compatibility,
     query_compatible,
     query_export_context,
+    query_selection,
+    query_usages,
 )
 from .entities import (
     build_asset_entity_workflow,
@@ -71,6 +77,25 @@ from .viewer import (
 DEFAULT_BROWSER_EXPORT_ROOT = Path("exports")
 DEFAULT_PORT_REPO_ROOT = Path(r"D:\repos\reverse\littlebigreversing")
 PROMOTABLE_PACKET_STATUSES = {"live_positive", "approved_exception"}
+SCENE_BACKGROUND_PREVIEW_CACHE_LIMIT = 8
+DEFAULT_COMPACT_CATALOG_LIMIT = 260
+MAX_QUERY_LIMIT = 500
+
+
+def bounded_limit(value: Any, default: int = DEFAULT_COMPACT_CATALOG_LIMIT) -> int:
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        limit = default
+    return max(0, min(MAX_QUERY_LIMIT, limit))
+
+
+def bounded_offset(value: Any) -> int:
+    try:
+        offset = int(value)
+    except (TypeError, ValueError):
+        offset = 0
+    return max(0, offset)
 
 
 def default_browser_export_directory(asset_id: str) -> Path:
@@ -179,6 +204,262 @@ def png_chunk(kind: bytes, data: bytes) -> bytes:
     )
 
 
+def compact_catalog(catalog: dict[str, Any], *, offset: int = 0, limit: int = DEFAULT_COMPACT_CATALOG_LIMIT) -> dict[str, Any]:
+    assets = catalog.get("assets") if isinstance(catalog.get("assets"), list) else []
+    compact_assets = [compact_catalog_asset(asset) for asset in assets if isinstance(asset, dict)]
+    rows = compact_assets[offset : offset + limit] if limit else []
+    return {
+        "schema": "viewer-compact-catalog-v1",
+        "asset_root": catalog.get("asset_root", ""),
+        "source_mode": catalog.get("source_mode"),
+        "selected_files": catalog.get("selected_files"),
+        "output_root": catalog.get("output_root"),
+        "summary": deepcopy(catalog.get("summary") or {}),
+        "hqr_files": deepcopy(catalog.get("hqr_files") or []),
+        "metadata": compact_catalog_metadata(catalog.get("metadata")),
+        "assets": rows,
+        "page": {
+            "offset": offset,
+            "limit": limit,
+            "count": len(rows),
+            "total": len(compact_assets),
+        },
+        "capabilities": {
+            "search": "/api/catalog/search",
+            "assetDetail": "/api/catalog/asset",
+            "graphSelection": "/api/catalog-graph/selection",
+            "graphEdges": "/api/catalog-graph/edges",
+            "graphUsages": "/api/catalog-graph/usages",
+            "graphCompatible": "/api/catalog-graph/compatible",
+        },
+    }
+
+
+def compact_catalog_metadata(metadata: Any) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+    keep = {
+        "file3d_animation_labels",
+        "sprite_runtime_model",
+        "scene_runtime_links",
+        "scene_script_links",
+        "scene_text_links",
+        "holomap_text_links",
+        "scene_sample_links",
+        "scene_video_links",
+        "scene_grm_links",
+    }
+    return {key: deepcopy(value) for key, value in metadata.items() if key in keep}
+
+
+def compact_catalog_asset(asset: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "id": asset.get("id"),
+        "kind": asset.get("kind"),
+        "label": asset.get("label"),
+        "entry_type": asset.get("entry_type"),
+        "animation_state": asset.get("animation_state"),
+        "relative_path": asset.get("relative_path"),
+        "decoded_bytes": asset.get("decoded_bytes"),
+        "decoded_sha256": asset.get("decoded_sha256"),
+        "source": deepcopy(asset.get("source") or {}),
+        "stats": compact_asset_stats(asset),
+    }
+    if asset.get("animation_metadata") is not None:
+        compact["animation_metadata"] = compact_animation_metadata(asset.get("animation_metadata"))
+    return {key: value for key, value in compact.items() if value is not None}
+
+
+def compact_animation_metadata(metadata: Any) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+    keep = {"labels", "generic_ids", "generic_names", "compatible_body_ids"}
+    return {key: deepcopy(value) for key, value in metadata.items() if key in keep}
+
+
+def compact_asset_stats(asset: dict[str, Any]) -> dict[str, Any]:
+    stats = asset.get("stats")
+    if not isinstance(stats, dict):
+        return {}
+    kind = asset.get("kind")
+    common_keys = {
+        "parse_status",
+        "decode_status",
+        "decode_note",
+        "semantic_layout",
+        "source_provenance",
+        "runtime_reference_status",
+    }
+    if kind == "model":
+        keys = common_keys | {
+            "vertices",
+            "polygons",
+            "bones",
+            "lines",
+            "spheres",
+            "uv_groups",
+            "direct_reference_count",
+        }
+    elif kind == "animation":
+        keys = common_keys | {
+            "keyframes",
+            "boneframes",
+            "loop_frame",
+            "total_duration",
+            "can_fall",
+            "translated_boneframes",
+            "header_word_count",
+            "header_words",
+            "parse_error",
+        }
+    elif kind == "sprite":
+        keys = common_keys | {
+            "width",
+            "height",
+            "offset_x",
+            "offset_y",
+            "opaque_pixels",
+            "transparent_pixels",
+            "color_count",
+            "encoded_bytes_consumed",
+            "trailing_bytes",
+            "anim3ds_info",
+            "runtime",
+            "sprite_backend",
+        }
+    elif kind == "scene":
+        result = {key: deepcopy(stats[key]) for key in common_keys if key in stats}
+        compact_recon = compact_scene_reconnaissance(stats.get("reconnaissance"))
+        if compact_recon:
+            result["reconnaissance"] = compact_recon
+        return result
+    elif kind == "resource":
+        keys = common_keys | {
+            "width",
+            "height",
+            "offset_x",
+            "offset_y",
+            "color_count",
+            "opaque_pixels",
+            "transparent_pixels",
+            "record_count",
+            "entry_count",
+            "object_count",
+            "body_reference_count",
+            "animation_reference_count",
+            "backend",
+            "bkg_entry_role",
+            "bkg_relative_index",
+            "language",
+            "text_file_name",
+            "preview_codepage",
+            "sample_runtime_index",
+            "audio_format",
+            "sample_frames",
+            "duration_ms",
+            "chunk_ids",
+            "depth",
+            "record_bytes",
+            "offset_table_bytes",
+            "type_counts",
+            "runtime_table_name",
+            "runtime_buffer",
+            "runtime_purpose",
+            "holomap_name",
+            "screen_name",
+            "acf_name",
+        }
+    else:
+        keys = common_keys
+    return {key: deepcopy(stats[key]) for key in keys if key in stats}
+
+
+def compact_scene_reconnaissance(reconnaissance: Any) -> dict[str, Any]:
+    if not isinstance(reconnaissance, dict):
+        return {}
+    keep = {
+        "object_count",
+        "sprite_object_count",
+        "anim3ds_object_count",
+        "zone_count",
+        "zone_type_counts",
+        "track_count",
+        "patch_count",
+        "patch_size_counts",
+        "patch_target_counts",
+        "grm_fragment_link_counts",
+        "background",
+        "world",
+        "ambience",
+    }
+    return {key: deepcopy(value) for key, value in reconnaissance.items() if key in keep}
+
+
+def catalog_search_rows(
+    catalog: dict[str, Any],
+    *,
+    query: str = "",
+    kind: str = "all",
+    offset: int = 0,
+    limit: int = DEFAULT_COMPACT_CATALOG_LIMIT,
+) -> dict[str, Any]:
+    normalized_query = query.strip().lower()
+    compact_assets = [
+        compact_catalog_asset(asset)
+        for asset in catalog.get("assets", [])
+        if isinstance(asset, dict)
+    ]
+    matches = [
+        asset
+        for asset in compact_assets
+        if (kind == "all" or asset.get("kind") == kind)
+        and (not normalized_query or normalized_query in compact_asset_search_text(asset))
+    ]
+    matches.sort(key=lambda asset: compact_asset_sort_key(asset, normalized_query))
+    rows = matches[offset : offset + limit] if limit else []
+    return {
+        "schema": "viewer.catalog_search.v0",
+        "q": query,
+        "kind": kind,
+        "offset": offset,
+        "limit": limit,
+        "total": len(matches),
+        "assets": rows,
+    }
+
+
+def compact_asset_search_text(asset: dict[str, Any]) -> str:
+    source = asset.get("source") if isinstance(asset.get("source"), dict) else {}
+    stats = asset.get("stats") if isinstance(asset.get("stats"), dict) else {}
+    metadata = asset.get("animation_metadata") if isinstance(asset.get("animation_metadata"), dict) else {}
+    values = [
+        asset.get("id"),
+        asset.get("kind"),
+        asset.get("label"),
+        asset.get("entry_type"),
+        asset.get("animation_state"),
+        source.get("hqr"),
+        source.get("entry_index"),
+        *stats.values(),
+        *metadata.values(),
+    ]
+    return " ".join(str(value) for value in values if value is not None).lower()
+
+
+def compact_asset_sort_key(asset: dict[str, Any], query: str) -> tuple[int, str]:
+    score = 0
+    label = str(asset.get("label") or "").lower()
+    asset_id = str(asset.get("id") or "").lower()
+    if asset.get("kind") == "model":
+        score -= 1000
+    if query and query in label:
+        score -= 500
+    if query and query in asset_id:
+        score -= 260
+    source = asset.get("source") if isinstance(asset.get("source"), dict) else {}
+    return (score, f"{asset.get('kind')}:{source.get('hqr')}:{source.get('entry_index')}:{label}")
+
+
 class ViewerServer:
     def __init__(self, initial_path: Path | None, asset_root: Path | None) -> None:
         self.initial_path = initial_path
@@ -189,6 +470,7 @@ class ViewerServer:
         self.catalog_graph = None
         self.palette: list[int] | None = None
         self.texture_atlas: dict[str, Any] | None = None
+        self.scene_background_preview_cache: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
         self.decode_progress = DecodeProgress()
         if asset_root is not None:
             self.set_asset_root(asset_root)
@@ -203,6 +485,7 @@ class ViewerServer:
         self.catalog_graph = None
         self.palette = None
         self.texture_atlas = None
+        self.scene_background_preview_cache.clear()
 
     def set_asset_root(self, asset_root: Path) -> dict[str, Any]:
         with self.operation_lock:
@@ -212,13 +495,13 @@ class ViewerServer:
             self.asset_root = resolved
             try:
                 self.catalog = build_catalog(resolved, self.decode_progress)
-                self.attach_catalog_graph_projection()
+                self.ensure_catalog_graph()
                 self.decode_progress.update(
                     label="Loading palette and texture atlas", phase="finalizing"
                 )
                 self.load_visual_assets(resolved)
                 self.decode_progress.finish(self.catalog.get("summary", {}))
-                return self.catalog
+                return self.compact_catalog_response()
             except Exception as exc:
                 self.decode_progress.fail(str(exc))
                 raise
@@ -234,13 +517,13 @@ class ViewerServer:
             self.asset_root = resolved_root
             try:
                 self.catalog = build_catalog(resolved_root, self.decode_progress, files)
-                self.attach_catalog_graph_projection()
+                self.ensure_catalog_graph()
                 self.decode_progress.update(
                     label="Loading palette and texture atlas", phase="finalizing"
                 )
                 self.load_visual_assets(resolved_root)
                 self.decode_progress.finish(self.catalog.get("summary", {}))
-                return self.catalog
+                return self.compact_catalog_response()
             except Exception as exc:
                 self.decode_progress.fail(str(exc))
                 raise
@@ -255,9 +538,16 @@ class ViewerServer:
             self.palette = None
             self.texture_atlas = None
 
-    def attach_catalog_graph_projection(self) -> None:
+    def ensure_catalog_graph(self) -> None:
         if self.catalog is None:
             self.catalog_graph = None
+            return
+        if self.catalog_graph is None:
+            self.catalog_graph = build_catalog_graph(self.catalog)
+
+    def attach_catalog_graph_projection(self) -> None:
+        self.ensure_catalog_graph()
+        if self.catalog is None or self.catalog_graph is None:
             return
         self.catalog_graph = build_catalog_graph(self.catalog)
         compatibility_by_model: dict[str, list[dict[str, Any]]] = {}
@@ -283,10 +573,120 @@ class ViewerServer:
             "schema": "catalog_graph.catalog_projection.v0",
             "indexes": {
                 "compatibleAnimationsByModelId": self.catalog_graph.indexes.get("compatibleAnimationsByModelId", {}),
+                "sceneZonesBySceneId": self.catalog_graph.indexes.get("sceneZonesBySceneId", {}),
+                "waypointsBySceneId": self.catalog_graph.indexes.get("waypointsBySceneId", {}),
+                "selectionByNodeId": self.catalog_graph.indexes.get("selectionByNodeId", {}),
+                "missingTargetsByStableId": self.catalog_graph.indexes.get("missingTargetsByStableId", {}),
             },
             "compatibilityByModelId": compatibility_by_model,
             "selectionByAssetId": catalog_selection_projection(self.catalog_graph),
+            "selectionByStableId": catalog_node_selection_projection(self.catalog_graph),
             "sceneObjectRelationshipsByStableId": catalog_scene_object_relationship_projection(self.catalog_graph),
+        }
+
+    def compact_catalog_response(self, *, offset: int = 0, limit: int = DEFAULT_COMPACT_CATALOG_LIMIT) -> dict[str, Any]:
+        if self.catalog is None:
+            raise Lm2Error("no catalog loaded")
+        return compact_catalog(self.catalog, offset=offset, limit=limit)
+
+    def catalog_search_response(self, request: dict[str, Any]) -> dict[str, Any]:
+        if self.catalog is None:
+            raise Lm2Error("no catalog loaded")
+        return catalog_search_rows(
+            self.catalog,
+            query=str(request.get("q") or ""),
+            kind=str(request.get("kind") or "all"),
+            offset=bounded_offset(request.get("offset")),
+            limit=bounded_limit(request.get("limit")),
+        )
+
+    def catalog_asset_detail(self, asset_id: str) -> dict[str, Any]:
+        return {
+            "schema": "viewer.catalog_asset_detail.v0",
+            "asset": deepcopy(self.find_catalog_asset(asset_id)),
+        }
+
+    def catalog_graph_selection(self, stable_id: str) -> dict[str, Any]:
+        if self.catalog is None:
+            raise Lm2Error("no catalog loaded")
+        self.ensure_catalog_graph()
+        result = query_selection(self.catalog_graph, stable_id)
+        if not result.get("found"):
+            raise Lm2Error(f"catalog graph selection not found: {stable_id}")
+        return result
+
+    def catalog_graph_edges(self, request: dict[str, Any]) -> dict[str, Any]:
+        if self.catalog is None:
+            raise Lm2Error("no catalog loaded")
+        self.ensure_catalog_graph()
+        offset = bounded_offset(request.get("offset"))
+        limit = bounded_limit(request.get("limit"))
+        result = query_edges(
+            self.catalog_graph,
+            str(request.get("id") or request.get("stable_id") or ""),
+            str(request.get("direction") or "both"),
+            str(request["proof_scope"]) if request.get("proof_scope") else None,
+            str(request["evidence_status"]) if request.get("evidence_status") else None,
+        )
+        edges = result.get("edges") or []
+        result["total"] = len(edges)
+        result["offset"] = offset
+        result["limit"] = limit
+        result["edges"] = edges[offset : offset + limit] if limit else []
+        return result
+
+    def catalog_graph_usages(self, request: dict[str, Any]) -> dict[str, Any]:
+        if self.catalog is None:
+            raise Lm2Error("no catalog loaded")
+        self.ensure_catalog_graph()
+        offset = bounded_offset(request.get("offset"))
+        limit = bounded_limit(request.get("limit"))
+        result = query_usages(
+            self.catalog_graph,
+            str(request.get("id") or request.get("stable_id") or ""),
+            str(request["proof_scope"]) if request.get("proof_scope") else None,
+            str(request["evidence_status"]) if request.get("evidence_status") else None,
+        )
+        edges = result.get("edges") or []
+        result["total"] = len(edges)
+        result["offset"] = offset
+        result["limit"] = limit
+        result["edges"] = edges[offset : offset + limit] if limit else []
+        return result
+
+    def catalog_graph_compatible_compact(self, model_id: str) -> dict[str, Any]:
+        compatible = self.catalog_graph_compatible(model_id)
+        assets_by_id = {
+            str(asset.get("id")): asset
+            for asset in (self.catalog or {}).get("assets", [])
+            if isinstance(asset, dict)
+        }
+        edges_by_animation = {
+            str(edge.get("from", "")).removeprefix("asset:"): edge
+            for edge in compatible.get("edges") or []
+        }
+        animation_ids = compatible.get("compatibleAnimationIds") or []
+        return {
+            "schema": "catalog_graph.compatible_summary.v0",
+            "modelId": model_id,
+            "compatibleAnimationIds": animation_ids,
+            "animations": [
+                compact_catalog_asset(assets_by_id[animation_id])
+                for animation_id in animation_ids
+                if animation_id in assets_by_id
+            ],
+            "compatibility": [
+                {
+                    "animationId": animation_id,
+                    "compatibilityReason": (edges_by_animation.get(animation_id) or {}).get("compatibilityReason"),
+                    "proofScope": (edges_by_animation.get(animation_id) or {}).get("proofScope"),
+                    "evidenceStatus": (edges_by_animation.get(animation_id) or {}).get("evidenceStatus"),
+                    "sourceRule": (edges_by_animation.get(animation_id) or {}).get("sourceRule"),
+                    "sourceField": (edges_by_animation.get(animation_id) or {}).get("sourceField"),
+                    "indexRule": (edges_by_animation.get(animation_id) or {}).get("indexRule"),
+                }
+                for animation_id in compatible.get("compatibleAnimationIds") or []
+            ],
         }
 
     def load_catalog_palette(self) -> list[int] | None:
@@ -363,8 +763,7 @@ class ViewerServer:
     def asset_entity_workflow(self, asset_id: str) -> dict[str, Any]:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
-        if self.catalog_graph is None:
-            self.attach_catalog_graph_projection()
+        self.ensure_catalog_graph()
         workflow = build_asset_entity_workflow(self.catalog, asset_id, self.catalog_graph)
         if workflow.get("resolved_asset") is None:
             raise Lm2Error(f"catalog asset not found: {asset_id}")
@@ -375,8 +774,7 @@ class ViewerServer:
     ) -> dict[str, Any]:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
-        if self.catalog_graph is None:
-            self.attach_catalog_graph_projection()
+        self.ensure_catalog_graph()
         workflow = build_scene_object_entity_workflow(
             self.catalog, scene_asset_id, object_index, self.catalog_graph
         )
@@ -387,16 +785,14 @@ class ViewerServer:
     def runtime_sprite_entity_workflow(self, request: dict[str, Any]) -> dict[str, Any]:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
-        if self.catalog_graph is None:
-            self.attach_catalog_graph_projection()
+        self.ensure_catalog_graph()
         state = self.resolve_runtime_sprite_object(request)
         return build_runtime_sprite_entity_workflow(self.catalog, state, self.catalog_graph)
 
     def catalog_graph_compatible(self, model_id: str) -> dict[str, Any]:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
-        if self.catalog_graph is None:
-            self.attach_catalog_graph_projection()
+        self.ensure_catalog_graph()
         return query_compatible(self.catalog_graph, model_id)
 
     def ensure_animation_operation_compatible(
@@ -407,8 +803,7 @@ class ViewerServer:
     ) -> None:
         if self.catalog is None:
             raise Lm2Error("no catalog loaded")
-        if self.catalog_graph is None:
-            self.attach_catalog_graph_projection()
+        self.ensure_catalog_graph()
         result = query_animation_operation_compatibility(
             self.catalog_graph,
             str(body_asset.get("id")),
@@ -421,11 +816,19 @@ class ViewerServer:
             )
 
     def export_evidence_context(
-        self, asset: dict[str, Any], proof_scope: str
+        self, asset: dict[str, Any], proof_scope: str, selected_edge_id: str | None = None
     ) -> dict[str, Any]:
-        if self.catalog_graph is None:
-            self.attach_catalog_graph_projection()
-        graph_context = query_export_context(self.catalog_graph, str(asset.get("id")), proof_scope)
+        self.ensure_catalog_graph()
+        graph_context = query_export_context(
+            self.catalog_graph,
+            str(asset.get("id")),
+            proof_scope,
+            selected_edge_id=selected_edge_id,
+        )
+        if selected_edge_id and selected_edge_id not in graph_context.get("selected_edge_ids", []):
+            raise Lm2Error(
+                f"selected graph edge {selected_edge_id} is not export evidence for {asset.get('id')}"
+            )
         packet_links = self.export_promotion_packet_links(asset)
         return {
             "stable_id": asset.get("id"),
@@ -440,15 +843,16 @@ class ViewerServer:
             "source_rules": graph_context["source_rules"],
             "source_fields": graph_context["source_fields"],
             "index_rules": graph_context["index_rules"],
+            "selected_edge_ids": graph_context.get("selected_edge_ids", []),
             "runtime_contract_ids": packet_links["runtime_contract_ids"],
             "promotion_packet_ids": packet_links["promotion_packet_ids"],
             "promotion_packet_source": packet_links["promotion_packet_source"],
         }
 
     def export_evidence_source_fields(
-        self, asset: dict[str, Any], proof_scope: str
+        self, asset: dict[str, Any], proof_scope: str, selected_edge_id: str | None = None
     ) -> dict[str, Any]:
-        context = self.export_evidence_context(asset, proof_scope)
+        context = self.export_evidence_context(asset, proof_scope, selected_edge_id)
         return {
             "evidence_status": context["evidence_status"],
             "proof_scope": context["proof_scope"],
@@ -461,6 +865,7 @@ class ViewerServer:
             "source_rules": context["source_rules"],
             "source_fields": context["source_fields"],
             "index_rules": context["index_rules"],
+            "selected_edge_ids": context["selected_edge_ids"],
             "runtime_contract_ids": context["runtime_contract_ids"],
             "promotion_packet_ids": context["promotion_packet_ids"],
             "promotion_packet_source": context["promotion_packet_source"],
@@ -514,8 +919,7 @@ class ViewerServer:
 
     def export_scene_indices_for_graph_asset(self, asset: dict[str, Any]) -> set[int]:
         indices = self.export_scene_indices_for_asset(asset)
-        if self.catalog_graph is None:
-            self.attach_catalog_graph_projection()
+        self.ensure_catalog_graph()
         usage_records = query_asset_usage_records(self.catalog_graph, str(asset.get("id")))["usageRecords"]
         for usage in usage_records:
             if not isinstance(usage, dict):
@@ -546,7 +950,11 @@ class ViewerServer:
         return "unknown"
 
     def export_catalog_asset(
-        self, asset_id: str, output_dir: Path, polygon_mode: str = "original"
+        self,
+        asset_id: str,
+        output_dir: Path,
+        polygon_mode: str = "original",
+        selected_edge_id: str | None = None,
     ) -> dict[str, Any]:
         from .exports import export_model_probe
 
@@ -602,6 +1010,7 @@ class ViewerServer:
                 **self.export_evidence_source_fields(
                     asset,
                     "decoded model geometry and generated OBJ/texture evidence; not live runtime gameplay proof",
+                    selected_edge_id,
                 ),
             }
             manifest = export_model_probe(
@@ -1720,6 +2129,11 @@ class ViewerServer:
         bll_entry = background.get("resolved_bll_entry")
         if type(bll_entry) is not int:
             raise Lm2Error("scene is missing resolved background BLL link")
+        cache_key = self.scene_background_preview_cache_key(asset)
+        cached_frames = self.scene_background_preview_cache.get(cache_key)
+        if cached_frames is not None:
+            self.scene_background_preview_cache.move_to_end(cache_key)
+            return deepcopy(cached_frames)
         _base_composition, variants = self.scene_background_variant_compositions(asset)
         frames: list[dict[str, Any]] = []
         for index, variant in enumerate(variants):
@@ -1752,7 +2166,25 @@ class ViewerServer:
                 }
             )
             frames.append(preview)
+        self.scene_background_preview_cache[cache_key] = deepcopy(frames)
+        while len(self.scene_background_preview_cache) > SCENE_BACKGROUND_PREVIEW_CACHE_LIMIT:
+            self.scene_background_preview_cache.popitem(last=False)
         return frames
+
+    @staticmethod
+    def scene_background_preview_cache_key(asset: dict[str, Any]) -> str:
+        stats = asset.get("stats") or {}
+        reconnaissance = stats.get("reconnaissance") or {}
+        return json.dumps(
+            {
+                "id": asset.get("id"),
+                "source": asset.get("source"),
+                "background": reconnaissance.get("background") or {},
+                "grm_fragment_links": reconnaissance.get("grm_fragment_links") or [],
+            },
+            sort_keys=True,
+            default=str,
+        )
 
     def bkg_header_fields(self) -> dict[str, Any]:
         if self.catalog is None:
@@ -2065,9 +2497,11 @@ class ViewerServer:
                     }
                     self.send_json(payload)
                 elif parsed.path == "/catalog.json":
-                    payload = server_state.catalog or {
-                        "error": "No catalog loaded yet."
-                    }
+                    payload = (
+                        server_state.compact_catalog_response()
+                        if server_state.catalog is not None
+                        else {"error": "No catalog loaded yet."}
+                    )
                     self.send_json(payload)
                 elif parsed.path == "/api/decode/progress":
                     self.send_json(server_state.decode_progress.snapshot())
@@ -2084,10 +2518,15 @@ class ViewerServer:
                     "/api/upload": self.handle_upload,
                     "/api/path": self.handle_path,
                     "/api/catalog/build": self.handle_catalog_build,
+                    "/api/catalog/search": self.handle_catalog_search,
+                    "/api/catalog/asset": self.handle_catalog_asset,
                     "/api/catalog/pick": self.handle_catalog_pick,
                     "/api/catalog/pick-files": self.handle_catalog_pick_files,
                     "/api/catalog/load": self.handle_catalog_load,
                     "/api/catalog/export": self.handle_catalog_export,
+                    "/api/catalog-graph/selection": self.handle_catalog_graph_selection,
+                    "/api/catalog-graph/edges": self.handle_catalog_graph_edges,
+                    "/api/catalog-graph/usages": self.handle_catalog_graph_usages,
                     "/api/catalog-graph/compatible": self.handle_catalog_graph_compatible,
                     "/api/animation/pose": self.handle_animation_pose,
                     "/api/animation/sequence": self.handle_animation_sequence,
@@ -2138,6 +2577,13 @@ class ViewerServer:
             def handle_catalog_build(self) -> dict[str, Any]:
                 request = self.read_json_body()
                 return server_state.set_asset_root(Path(request["asset_root"]).expanduser())
+
+            def handle_catalog_search(self) -> dict[str, Any]:
+                return server_state.catalog_search_response(self.read_json_body())
+
+            def handle_catalog_asset(self) -> dict[str, Any]:
+                request = self.read_json_body()
+                return server_state.catalog_asset_detail(str(request["id"]))
 
             def handle_catalog_pick(self) -> dict[str, Any]:
                 with server_state.operation_lock:
@@ -2378,11 +2824,24 @@ class ViewerServer:
                     str(request["id"]),
                     output_dir,
                     str(request.get("polygon_mode") or "original"),
+                    str(request["selected_edge_id"]) if request.get("selected_edge_id") else None,
                 )
 
             def handle_catalog_graph_compatible(self) -> dict[str, Any]:
                 request = self.read_json_body()
-                return server_state.catalog_graph_compatible(str(request["model_id"]))
+                return server_state.catalog_graph_compatible_compact(str(request["model_id"]))
+
+            def handle_catalog_graph_selection(self) -> dict[str, Any]:
+                request = self.read_json_body()
+                return server_state.catalog_graph_selection(
+                    str(request.get("id") or request.get("stable_id") or "")
+                )
+
+            def handle_catalog_graph_edges(self) -> dict[str, Any]:
+                return server_state.catalog_graph_edges(self.read_json_body())
+
+            def handle_catalog_graph_usages(self) -> dict[str, Any]:
+                return server_state.catalog_graph_usages(self.read_json_body())
 
             def handle_animation_pose(self) -> dict[str, Any]:
                 request = self.read_json_body()

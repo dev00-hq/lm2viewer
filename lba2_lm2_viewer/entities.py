@@ -265,7 +265,7 @@ def find_scene_object(scene_asset: dict[str, Any], object_index: Any) -> dict[st
         hero.setdefault("index", 0)
         hero.setdefault("position", hero.get("start"))
         return hero
-    for scene_object in recon.get("sampled_objects") or []:
+    for scene_object in recon.get("objects") or []:
         if scene_object.get("index") == object_index:
             return scene_object
     return None

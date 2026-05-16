@@ -1,177 +1,104 @@
-# Task: Complete the Graph-Backed Evidence Workbench
+# Task: Scene Mechanics Graph v1
 
 ## 0. Metadata
 
 - Owner: project maintainer
-- Created: 2026-05-07
-- Consolidated: 2026-05-10
-- Source files consolidated: historical `TASK.md`, `TASK_GPT.md`, audit findings,
-  and agent-browser validation notes
-- Current state: Complete
-- Current milestone: M16 - completion hardening
+- Created: 2026-05-10
+- Source: GPT Pro architecture review of
+  `temp/gpt-pro-evidence/lba2-lm2-viewer-gpt-pro-evidence.zip`
+- Current state: M17 implementation completed after critical-sparring audit;
+  formerly significant graph cardinality, edge-selection, relationship-export,
+  edge-vocabulary, query-surface, and resource-record selection gaps are now
+  implemented and validated
+- Current milestone: M17 - Scene Mechanics Graph v1
 
 ## 1. North Star
 
-The app is becoming an evidence graph workbench, not a collection of decoded
-asset panels.
-
-Every visible thing should answer:
-
-1. What is this?
-   - A canonical catalog/graph identity, not a guessed archive/index label.
-2. Why do we believe that?
-   - A graph-backed proof path to source evidence: scene object state, File3D
-     resolution, script reference, runtime table, palette/source payload, export
-     context, or explicit negative/missing-target evidence.
-3. What can I safely do with it?
-   - Inspect, navigate, export, compare, or promote it only when the backend
-     graph and server operation contract agree that the action is valid.
-
-The durable contract is:
+Keep the app on the current backend-owned evidence graph path:
 
 ```text
 catalog graph -> selection projection -> inspector route -> export/proof context
 ```
 
-The frontend should render backend graph projections and local visual state. It
-must not become a second source of graph relationship, exportability, routing,
-workspace, or owner truth.
+The next work should be a scene mechanics graph slice, not a broad runtime
+interpreter, general asset browser, or port-contract layer.
 
-## 2. Mission
+The highest-risk gap is relationship occurrence identity. Before promoting many
+new node types, graph edges and frontend relationship selections need stable
+edge/occurrence identities so repeated references, relationship-row exports,
+usage strips, and proof contexts cannot collapse distinct facts.
 
-Finish and stabilize the graph-backed app decision migration so selection,
-routing, Inspector, workspace, export, Explorer/search summaries, relationship
-views, and validation evidence use the backend catalog graph as their canonical
-authority.
+## 2. Hard Constraints
 
-The original milestone slice is complete for animation compatibility,
-model/resource asset selection, graph-backed Inspector routing, and one
-scene-object relationship table view. The follow-up slice is also substantively
-complete for export provenance, entity usage selection, Explorer/search
-relationship summaries, graph export actions, derived selection export
-inheritance, and removal of reverse `asset.scene_usages` as app-facing
-authority.
-
-The completion-hardening slice is now closed: tests, stale-state guards,
-durable browser evidence, and final cleanup have been applied and validated.
-
-## 3. Hard Constraints
-
-- One canonical current-state implementation. Do not add compatibility bridges,
-  migration shims, fallback paths, old local-state support, or dual behavior
-  unless the user explicitly asks for that support.
-- Keep graph semantics in backend Python. Frontend TypeScript may consume graph
-  projections but must not define graph relationship rules.
-- Migration is replacement, not coexistence. When a decision moves to the
-  graph, remove the superseded local authority in the same milestone unless a
-  documented risk explicitly defers removal.
-- The app remains a local evidence/falsification workbench for original LBA2
-  assets and port compatibility, not an editor, converter, plugin host, remake
-  workflow, or replacement-asset authoring tool.
-- Do not commit retail assets, decoded retail payloads, real texture exports,
-  real animation exports, or generated evidence bundles from retail assets.
+- Keep one canonical current-state implementation.
+- Do not add compatibility bridges, migration shims, dual old/new paths, or
+  silent fallbacks.
+- Backend Python owns graph semantics, exportability, routing, workspace
+  ownership, and operation eligibility.
+- Frontend TypeScript may render graph projections and local visual state, but
+  must not rediscover graph relationship truth.
+- The catalog graph describes decoded initial state, source-backed rules,
+  resolver contracts, and potential effects. It must not claim live runtime
+  state unless a separate runtime/event evidence source exists.
+- Missing, unknown, unresolved, and intentionally deferred facts must stay
+  explicit evidence.
 - Use `agent-browser` for visible UI changes and record validation notes under
   `docs/`.
 - If a surprising project trap appears, alert the developer and update
   `ISSUES.md`.
 
-## 4. Canonical Authority Rules
+## 3. Recommended Promotion Order
 
-If any visible app decision can disagree with the catalog graph, it is a bug.
+1. Relationship occurrence identity and edge selection.
+2. `SceneZone`.
+3. `Waypoint`.
+4. Limited script occurrence / `ScriptInstruction` layer for selectable and
+   queryable facts.
+5. `RuntimeStateField` and `PatchRecord` as static decoded evidence, not live
+   runtime state.
+6. Defer full `EvidenceSource` and `PortContract` nodes until graph-selected
+   node/edge exports are stable.
 
-Graph-backed authority owns:
+Do not put dynamic runtime behavior into the existing catalog graph. Add a
+separate runtime/event graph later for observations, simulations, live
+confirmations, or trace-derived state transitions.
 
-- selection identity and stable parent/owner identity for migrated surfaces;
-- workspace suggestion for migrated selections;
-- Inspector route selection for catalog graph selections;
-- exportability and export action availability;
-- export provenance and graph usage context;
-- scene/entity/resource relationship evidence for migrated rows;
-- Explorer/search relationship summaries and graph relationship ranking;
-- operation eligibility such as animation pose/playback compatibility.
-
-Local decoded data may still own:
-
-- byte decoding and payload parsing;
-- renderer mechanics and preview payload shape;
-- source-classification display;
-- scene-local facts not yet graph-modeled, such as zones, waypoints, GRM links,
-  patches, sampled object flags/positions, and opcode-level script rows;
-- low-level loader branching needed to decode or draw a payload.
-
-Rule of thumb: `asset.kind` and `stats.semantic_layout` may classify bytes for
-loading/rendering, but they must not independently decide relationship truth,
-exportability, graph route authority, or migrated selection ownership.
-
-## 5. Completed Scope
-
-The following surfaces are implemented as graph-backed or graph-consuming
-decisions:
-
-| Surface | Completed authority |
-| --- | --- |
-| Animation pose/playback eligibility | `catalog_graph.animation_operation_compatibility.v0` |
-| Model/resource asset selection | `graph.selectionByAssetId` |
-| Catalog asset workspace/route/export metadata | `catalog_graph.selection_projection.v0` |
-| Scene object relationship table cells | `graph.sceneObjectRelationshipsByStableId` |
-| Entity workflow usage selection | `query_asset_usage_records()` / graph `sceneUsagesByAssetId` |
-| Entity linked visuals | `sceneObjectRelationshipsByStableId.visualLinks` |
-| Export evidence context | `query_export_context()` |
-| Standalone export probe metadata | graph export context |
-| Frontend export gating | graph `exportCapability` / `exportActions` |
-| Resource-record export actions | parent asset graph selection projection |
-| Derived sprite/model/animation export actions | parent asset graph selection projection |
-| Frontend scene usage strip | graph selection links |
-| Inspector relationship sections | graph selection links and facets |
-| Explorer/search relationship summaries | graph selection links and facets |
-| Selection parent/owner identity | explicit selection evidence or typed facets |
-
-Important completed decisions:
-
-- Canonical graph builds no longer materialize reverse `asset.scene_usages`
-  arrays into indexed usage edges.
-- The stale reverse-usage materializer was removed from `catalog_graph.py`.
-- Promotion packet links ignore stale reverse usage arrays and join through
-  graph-derived scene usage records or explicit scene asset source identity.
-- Frontend app-decision reads of `stableId.split('#')` were removed for
-  migrated owner/highlight decisions.
-- Graph-projected catalog selections fail closed when their graph
-  `inspectorRoute` is missing or unknown instead of falling back to local
-  `asset.kind + semantic_layout` route inference.
-- `bkg_brick_graphic` resources are inspectable background resources but are not
-  graph-exportable until `ViewerServer.export_catalog_asset()` has a matching
-  export branch and test.
-- `TASK_DS.md` is historical comparison material, not current scope.
-
-## 6. Current Remaining Work
-
-These completion-hardening items are complete.
-
-### M16.1 - Lock graph/server exportability parity
+## 4. M17.1 - Relationship Occurrence Identity
 
 Goal:
 
-- Prevent graph export actions from drifting away from actual server export
-  routes.
+- Make every selectable graph relationship addressable by a stable edge and
+  occurrence identity.
+- Stop relationship-row UI and export behavior from joining by stable-id string
+  heuristics or fallback metadata.
+
+Add to selectable edge projections where applicable:
+
+- `edgeId`
+- `sourceEvidenceId`
+- `occurrenceOrdinal`
+- `ownerNodeId`
+- `sourcePath`
+- `sourceOffset`
+- `rawReference`
+- `targetStableId`
+- `resolverKind`
 
 Actions:
 
-- [x] Add a server-level negative test proving
-  `ViewerServer.export_catalog_asset()` rejects a `bkg_brick_graphic` resource.
-- [x] Add or document a parity test/table that compares graph-exportable
-  semantic layouts with supported server export branches.
-- [x] Keep `bkg_brick_graphic` inspectable via background route but
-  non-exportable until the server route exists.
-
-Result:
-
-- `tests/test_export_probe.py` includes a server-level negative test for
-  `bkg_brick_graphic`.
-- Graph exportability remains aligned with actual
-  `ViewerServer.export_catalog_asset()` branches; `bkg_brick_graphic` is
-  inspectable through the background route and non-exportable.
-- `lba2_lm2_viewer.exportability` is the single route table used by both graph
-  selection exportability and server export routing.
+- [ ] Audit current edge creation in `catalog_graph.py` for relationship
+      families that can repeat with the same type/from/to/proof/source fields.
+- [ ] Add source occurrence identity to graph edge construction without
+      collapsing repeated same-target script/resource references.
+- [ ] Carry `edgeId` and `sourceEvidenceId` into:
+      `selectionByAssetId.links`, usage records, scene-object relationship
+      projections, export context, and graph export JSON.
+- [ ] Make relationship-row selections edge selections, not reconstructed
+      `scene#object` or target-asset selections.
+- [ ] Make scene usage strip selection edge-id based and fail closed when the
+      edge record is missing.
+- [ ] Ensure subgraph export and relationship-row export can preserve selected
+      edge identity.
 
 Validation:
 
@@ -179,237 +106,1045 @@ Validation:
 uv run python -m unittest tests.test_catalog_graph tests.test_export_probe
 ```
 
-### M16.2 - Close stale Inspector clearing edges
+New/updated tests:
+
+- [ ] `test_script_reference_occurrences_do_not_collapse`
+- [ ] `test_relationship_row_selection_uses_edge_id`
+- [ ] `test_subgraph_export_includes_selected_edge_identity`
+- [ ] `test_export_from_relationship_row_records_selected_edge_id`
+
+## 5. M17.2 - Promote SceneZone
 
 Goal:
 
-- No active selection should leave stale Inspector details visible when the
-  current selection cannot produce sections.
+- Promote decoded scene zones to first-class graph nodes with precise,
+  source-backed contract evidence where known.
+
+Minimal node:
+
+```text
+Node type: SceneZone
+Stable id: SCENE.HQR:<entry>#zone:<zeroBasedZoneIndex>
+Core attrs:
+  sceneAssetId
+  zoneIndex
+  zoneType
+  zoneNum / value
+  bounds: x0,y0,z0,x1,y1,z1
+  serializedInfo: Info0..Info7
+  loadState: normalized post-load fields where source-backed
+  contractKinds:
+    change_cube | camera | scenario | grm | giver | message |
+    hit | ladder | escalator | rail
+```
+
+Minimal edges:
+
+```text
+Scene             -HAS_ZONE->                 SceneZone
+SceneZone         -USES_TEXT->                ResourceRecord | Asset | MissingTarget
+SceneZone         -APPLIES_GRM_FRAGMENT->     Asset | MissingTarget
+SceneZone         -CHANGES_CUBE_TO->          ResourceRecord | MissingTarget
+SceneZone         -REFERENCES_ZONE->          SceneZone
+ScriptInstruction -CONTROLS_ZONE->            SceneZone
+SceneZone         -DECLARES_RUNTIME_CONTRACT-> contract facet or summary
+```
 
 Actions:
 
-- [x] Clear Inspector when `renderSelectionInspector()` cannot resolve the
-  selected catalog asset.
-- [x] Add a final clear fallback for selections that produce zero sections.
-- [x] Harden unexpected graph projection kinds so they fail closed visibly.
-- [x] Decide whether `palette_context` should inherit parent graph export
-  capability or stay intentionally local/non-exportable.
-
-Result:
-
-- `renderSelectionInspector()` now clears the Inspector on unresolved assets,
-  unsupported selection kinds, and zero-section results.
-- Switching from a model UV selection to a non-model selection returns the
-  Inspector to `Details` and hides stale UV/stat output.
-- `palette_context` inherits parent graph export capability through the parent
-  graph selection projection.
+- [ ] Materialize `SceneZone` nodes from decoded `SCENE.HQR` zone records.
+- [ ] Preserve serialized fields separately from source-backed load-normalized
+      fields.
+- [ ] Add precise zone relationships for text/message, GRM fragment, change
+      cube, camera/message gates, hit, ladder, escalator, rail, scenario, and
+      giver evidence where already decoded.
+- [ ] Keep unknown zone fields as unknown descriptors until evidence supports
+      promotion.
+- [ ] Add Inspector/query projections for selected scene zones.
+- [ ] Update `docs/catalog-graph-model.md` so `SceneZone` is no longer listed
+      as merely a future candidate.
 
 Validation:
 
-```powershell
-fnm use 24.15.0; npm run build
-```
+- [ ] `test_scene_zones_materialized_with_contract_edges`
+- [ ] Agent-browser validation for selecting a zone relationship or query
+      result and seeing graph-backed Inspector evidence.
 
-Add a focused frontend/browser regression if a test harness exists; otherwise
-validate with agent-browser.
-
-### M16.3 - Decide derived relationship evidence inheritance
+## 6. M17.3 - Promote Waypoint
 
 Goal:
 
-- Avoid a half-migrated state where derived selections inherit export actions
-  but lose graph relationship evidence.
+- Promote decoded scene waypoints as addressable graph nodes and connect
+  movement/script references without implying executed movement paths.
+
+Minimal node:
+
+```text
+Node type: Waypoint
+Stable id: SCENE.HQR:<entry>#waypoint:<zeroBasedWaypointIndex>
+Core attrs:
+  sceneAssetId
+  waypointIndex
+  position: x,y,z
+  evidenceStatus: decoded_only or source_backed when referenced by rule
+```
+
+Minimal edges:
+
+```text
+Scene             -HAS_WAYPOINT->          Waypoint
+SceneObject       -MOVEMENT_TARGETS->      Waypoint
+ScriptInstruction -REFERENCES_WAYPOINT->   Waypoint
+ScriptInstruction -TRACK_LABEL_TARGETS->   Waypoint
+```
 
 Actions:
 
-- [x] Decide whether derived selections (`model_surface`, `sprite_frame`,
-  `animation_sample`, `animation_pose`, `resource_record`) should inherit graph
-  `links`, not only `graphNodeId` and `relationshipLinkCount`.
-- [x] If yes, copy or project only the relationship evidence needed by Inspector
-  and usage strips.
-- [x] If no, document why derived selections are intentionally scoped to parent
-  export action and local evidence.
-
-Result:
-
-- Derived selections inherit the parent graph relationship links needed by
-  Inspector and usage strips, deduplicated with the parent asset link.
+- [ ] Materialize `Waypoint` nodes from decoded `T_TRACK` coordinate records.
+- [ ] Connect source-backed scene-object movement references such as
+      `MOVE_CIRCLE` and `MOVE_CIRCLE2`.
+- [ ] Connect script references only when operand semantics support the
+      relationship.
+- [ ] Do not claim pathfinding, route traversal, or execution semantics from
+      waypoint references.
+- [ ] Add Inspector/query projections for selected waypoints.
 
 Validation:
 
-- Inspector graph usage evidence for a graph-linked parent and a derived
-  selection must either show relationship links or clearly explain that the
-  derived selection delegates relationship evidence to its parent asset.
-- Agent-browser replay for `BODY.HQR:26` confirmed that a graph usage strip click
-  selects a real `scene_usage` record and renders both Scene Usage details and
-  Graph Usage Evidence.
-- Graph usage strip clicks now fail closed when a projected link has no matching
-  usage record; they no longer fabricate partial `scene_usage` selections.
-- Catalog-backed selections now fail closed when the loaded catalog graph lacks
-  a selection projection, instead of falling through to local selection
-  inference for animations, sprites, or scenes.
-- Usage strips resolve parent graph usage from derived selection evidence for
-  model surfaces, animation samples/poses, resource records, palette contexts,
-  and sprite frames.
+- [ ] `test_waypoints_materialized_and_script_refs_resolve`
+- [ ] Search/query validation for scene waypoint references.
 
-### M16.4 - Produce clean post-fix browser evidence
+## 7. M17.4 - Script Occurrence Layer
 
 Goal:
 
-- Replace the current weak browser artifact where a saved screenshot predates
-  the stale UV/details fix.
+- Represent script structure and selectable/queryable script occurrences
+  without pretending the app has a full interpreter.
+
+Promote graph facts that are structural, addressable, or source-backed:
+
+- decoded script block and instruction identity;
+- instruction byte offsets;
+- resolved same-script control-flow targets;
+- resolved cross-script targets;
+- asset/resource references;
+- object/zone/waypoint local references;
+- patch target instruction/field links;
+- source-backed execution contracts;
+- runtime-mutable operand fields.
+
+Keep decoded-local:
+
+- raw full script listings;
+- preview tables and aggregate opcode/category counts;
+- condition function/comparator count summaries;
+- raw operands that are not selected/queryable;
+- large local analysis payloads used only by scene detail rendering.
+
+Reserve for runtime/event or symbolic layers:
+
+- branch execution;
+- current behavior/comportment;
+- current body/animation/sprite after script mutation;
+- actual sample playback;
+- actual GRM on/off state;
+- actual cube transition success;
+- live animation frame, loop, or timer state;
+- final dynamic render ordering with runtime lists.
+
+Minimal nodes:
+
+```text
+Node type: ScriptBlock
+Stable id: SCENE.HQR:<entry>#object:<idx>#script:<track|life>
+
+Node type: ScriptInstruction
+Stable id: SCENE.HQR:<entry>#object:<idx>#script:<track|life>#offset:<byteOffset>
+Core attrs:
+  opcode
+  mnemonic
+  byteLength
+  operandHex
+  behaviorCategory
+  decodedOperandSemantics subset
+```
+
+Minimal edges:
+
+```text
+SceneObject       -HAS_SCRIPT->                  ScriptBlock
+ScriptBlock       -HAS_INSTRUCTION->             ScriptInstruction
+ScriptInstruction -CONTROL_FLOW_TO->             ScriptInstruction
+ScriptInstruction -REFERENCES_OBJECT->           SceneObject | MissingTarget
+ScriptInstruction -REFERENCES_WAYPOINT->         Waypoint | MissingTarget
+ScriptInstruction -CONTROLS_ZONE->               SceneZone | MissingTarget
+ScriptInstruction -SCRIPT_REFERENCES->           Asset | ResourceRecord | MissingTarget
+ScriptInstruction -DECLARES_EXECUTION_CONTRACT-> contract facet or summary
+```
 
 Actions:
 
-- [x] Start a fresh viewer from this checkout and confirm the listener is not
-  stale.
-- [x] Use agent-browser to select a graph-linked model surface and activate UV
-  stats.
-- [x] Select `LBA_BKG.HQR:197`.
-- [x] Assert active selection is non-exportable.
-- [x] Assert Inspector tab is `Details`.
-- [x] Assert stale UV stats are cleared/hidden.
-- [x] Capture a post-fix screenshot and record a validation note under `docs/`.
+- [ ] Add a new proof scope such as `script_structure` for decoded layout,
+      local control-flow, cross-script targets, and targetable instruction
+      facts.
+- [ ] Keep `script_reference` for asset/resource references.
+- [ ] Keep `classic_source_rule` for source-backed opcode effects.
+- [ ] Start with selectable/queryable instruction occurrences instead of
+      materializing every possible display row.
+- [ ] Measure graph size after instruction promotion.
 
-Evidence:
+Validation:
 
-- `docs/validation-task-final-agent-browser-2026-05-10.md`
-- `docs/validation-task-final-agent-browser-2026-05-10.jpg`
-- `docs/validation-task-final-usage-strip-agent-browser-2026-05-10.md`
-- `docs/validation-task-final-usage-strip-agent-browser-2026-05-10.png`
-- `docs/validation-task-final-derived-usage-strip-agent-browser-2026-05-10.md`
-- `docs/validation-task-final-derived-usage-strip-agent-browser-2026-05-10.png`
+- [ ] `test_script_reference_occurrences_do_not_collapse`
+- [ ] `test_search_returns_edges_and_nodes`
+- [ ] Graph-size audit against the full retail asset root.
 
-Validation note should include URL, asset root, selected ids, expected state,
-observed state, screenshot path, and validation commands.
+## 8. M17.5 - PatchRecord And RuntimeStateField
 
-### M16.5 - Final cleanup
+Goal:
+
+- Promote patch and runtime-mutable field evidence as static decoded/catalog
+  facts, not live state.
+
+Minimal nodes:
+
+```text
+Node type: PatchRecord
+Stable id: SCENE.HQR:<entry>#patch:<idx>
+
+Node type: RuntimeStateField
+Stable id:
+  SCENE.HQR:<entry>#object:<idx>#script:<track|life>#offset:<byteOffset>#field:<fieldName>
+Core attrs:
+  fieldName
+  operandOffset
+  size
+  initialValue / initialHex
+  source
+  mutableByRuntime: true
+```
+
+Minimal edges:
+
+```text
+Scene             -HAS_PATCH->              PatchRecord
+PatchRecord       -PATCHES_INSTRUCTION->    ScriptInstruction | MissingTarget
+PatchRecord       -PATCHES_FIELD->          RuntimeStateField | MissingTarget
+ScriptInstruction -OWNS_RUNTIME_FIELD->     RuntimeStateField
+ScriptInstruction -MAY_MUTATE_FIELD->       RuntimeStateField
+```
 
 Actions:
 
-- [x] Remove obsolete task files and stale references.
-- [x] Keep historical validation artifact filenames if useful, but make clear
-  that this `TASK.md` is the only current task source.
-- [x] Run final validation:
+- [ ] Materialize patch records only where decoded scene payload supports them.
+- [ ] Preserve unknown/non-instruction patch targets as explicit
+      `MissingTarget` or `UnknownEvidence`.
+- [ ] Do not add a broad `RuntimeState` catalog node.
+- [ ] Add Inspector/query surfaces only for selected/queryable patch and field
+      evidence.
+
+Validation:
+
+- [ ] `test_patch_record_targets_runtime_state_field`
+
+## 9. Selection Identity Contract
+
+Goal:
+
+- Adopt one selection envelope across catalog graph selections, future runtime
+  event selections, and frontend-local visual facets.
+
+Recommended selection fields:
+
+```text
+selectionId
+authority: catalog_graph | runtime_event_graph | local_visual
+kind
+nodeId?
+edgeId?
+stableId
+ownerNodeId?
+parentSelectionId?
+source
+proofScope
+evidenceStatus
+links
+unknowns
+inspectorRoute
+workspaceSuggestion
+exportActions
+inheritedFrom?
+uiStatus?
+```
+
+Rules:
+
+- Catalog asset selections use backend graph node identity and backend
+  projected route/workspace/export actions.
+- Scene object selections use `SceneObject` node identity and incident graph
+  relationships.
+- Scene usage and relationship-row selections use graph edge identity.
+- Resource record selections should use `ResourceRecord` node identity, not
+  locally fabricated selection truth.
+- Model surface, animation pose, palette context, and similar visual facets are
+  local visual selections. They may show inherited parent graph links, but must
+  label inherited evidence/actions explicitly.
+- Runtime sprite resolution should eventually return a runtime/event selection
+  projection from the backend, anchored to catalog evidence.
+- UI statuses such as preview/live badges must stay separate from graph
+  evidence statuses.
+
+Frontend hardening actions:
+
+- [ ] Fail closed for all graph-migrated assets when an expected selection
+      projection is missing.
+- [ ] Stop deriving ANIM3DS ranges in the frontend; consume graph indexes or a
+      backend projection.
+- [ ] Make resource-record selection graph-projected through `selectionByNodeId`
+      or equivalent.
+- [ ] Move runtime sprite resolution selection to a backend runtime/event
+      projection before treating it as evidence.
+- [ ] Separate `uiStatus` from graph `evidenceStatus`.
+- [ ] Update entity facets to consume graph relationships once zones,
+      waypoints, runtime-state fields, and edge identity are modeled.
+- [ ] Prefer graph export actions as the single export authority instead of
+      independently routing through asset kind/layout.
+
+Validation:
+
+- [ ] `test_graph_projected_asset_missing_selection_fails_closed_for_all_kinds`
+- [ ] `test_derived_visual_selection_does_not_inherit_export_action_implicitly`
+- [ ] `test_resource_record_selection_comes_from_graph_node`
+- [ ] `test_runtime_resolution_selection_is_event_projection`
+- [ ] `test_export_route_comes_from_graph_action`
+- [ ] Agent-browser regression for selection, Inspector clearing, relationship
+      row selection, and resource-record selection.
+
+## 10. Runtime/Event Graph Direction
+
+Goal:
+
+- Keep catalog evidence pure while leaving a clear path for runtime/live proof.
+
+Do not emit `live_confirmed` from the catalog graph. The catalog graph may say:
+
+- a zone may apply a GRM fragment;
+- an instruction may mutate `OBJ_BACKGROUND`;
+- a scene object initially uses a body/animation/sprite;
+- an animation is operation-compatible with a model;
+- a sample/text/video target is referenced.
+
+A future runtime/event graph should say:
+
+- a GRM toggle happened;
+- a sample played with parameters;
+- an object flag changed;
+- a cube transition was attempted and succeeded/failed;
+- an animation advanced to a frame/loop state;
+- a runtime sprite resolver request resolved to a target.
+
+Future runtime/event node candidates:
+
+```text
+RuntimeSession
+RuntimeEvent
+RuntimeStateSnapshot
+RuntimeResolutionEvent
+RuntimeMutationEvent
+RuntimePlaybackEvent
+```
+
+Future runtime/event edges:
+
+```text
+RuntimeEvent -ANCHORS_TO-> CatalogGraph node/edge
+RuntimeEvent -RESOLVES_TO-> Asset | MissingTarget
+RuntimeEvent -MUTATES_FIELD-> RuntimeStateField
+RuntimeEvent -APPLIES_GRM-> SceneZone / background resource
+RuntimeEvent -CHANGES_CUBE-> SceneZone / background cube evidence
+RuntimeEvent -PLAYS_SAMPLE-> Asset | MissingTarget
+RuntimeEvent -ADVANCES_ANIMATION-> Asset pair / animation pose
+```
+
+Validation for this milestone:
+
+- [ ] `test_catalog_graph_never_emits_live_confirmed_without_event_graph`
+- [ ] No catalog graph test should require live runtime observations.
+
+Deferred runtime/event tests:
+
+- [ ] `test_runtime_event_anchors_to_catalog_nodes`
+- [ ] `test_grm_toggle_event_does_not_mutate_catalog_zone`
+
+## 11. MissingTarget And UnknownEvidence Policy
+
+Goal:
+
+- Distinguish unavailable addressable targets from unknown semantics.
+
+`MissingTarget` means an addressable target was referenced, but the resolver
+could not produce an available graph target.
+
+Use `UnknownEvidence` or unknown descriptors for field/semantic meaning that is
+not yet understood.
+
+Recommended `MissingTarget` fields:
+
+```text
+targetStableId
+targetKind:
+  asset | resource_record | scene_object | scene_zone | waypoint |
+  script_instruction | background_resource | sample | text | video
+resolutionState:
+  outside_table
+  empty_archive_slot
+  undecoded_slot
+  unresolved_name
+  ambiguous_generic_resolver
+  owner_missing
+  outside_script
+  not_loaded_archive
+  backend_unresolved
+  intentionally_deferred_target
+rawReference
+ownerNodeId
+sourceEvidenceId
+resolverKind
+candidateTargets[]
+absenceEvidenceStatus
+missingReason
+```
+
+Policy:
+
+- Outside-table ids become `MissingTarget` with
+  `resolutionState=outside_table`.
+- Empty HQR slots become `MissingTarget` with
+  `resolutionState=empty_archive_slot`.
+- Undecoded slots become `MissingTarget` only when an addressable target exists;
+  otherwise use `UnknownEvidence`.
+- Unresolved names preserve raw name and resolver source.
+- Ambiguous generic resolver outputs preserve candidates and must never guess.
+- Outside-script targets use `targetKind=script_instruction` with source offset.
+- Intentionally deferred semantics are `UnknownEvidence` unless they name a
+  target.
+- Missing `COMPATIBLE_WITH` means operation not eligible.
+- Missing usage edges mean only no known decoded/source-backed usage, not
+  unused.
+
+Validation:
+
+- [ ] `test_missing_target_taxonomy`
+- [ ] `test_multiple_occurrences_share_missing_target_but_keep_distinct_edges`
+- [ ] `test_empty_sample_slot_is_not_decode_failure`
+
+## 12. Query And Search UX
+
+Goal:
+
+- Let users search graph facts, not just assets, while keeping graph logic in
+  the backend.
+
+Recommended backend query surfaces:
+
+```text
+catalog-graph search
+catalog-graph explain
+catalog-graph edges
+catalog-graph usages
+catalog-graph relationship
+catalog-graph scene-object
+catalog-graph zone
+catalog-graph waypoint
+catalog-graph script-instruction
+catalog-graph missing-targets
+catalog-graph subgraph
+catalog-graph prove
+catalog-graph operation
+catalog-graph selection
+```
+
+Recommended search request shape:
+
+```json
+{
+  "q": "LM_SET_GRM",
+  "nodeTypes": ["SceneZone", "ScriptInstruction", "Asset", "MissingTarget"],
+  "edgeTypes": ["APPLIES_GRM_FRAGMENT", "CONTROLS_ZONE", "USES_RESOURCE"],
+  "proofScopes": ["classic_source_rule", "script_structure"],
+  "evidenceStatuses": ["source_backed", "unknown"],
+  "targetAvailability": "available|missing|both",
+  "owner": "SCENE.HQR:126",
+  "includeEdges": true,
+  "limit": 50,
+  "cursor": null
+}
+```
+
+Search results should return:
+
+```text
+nodeId / edgeId
+stableId
+label
+nodeType / edgeType
+proofScope
+evidenceStatus
+sourceRule
+sourceField
+indexRule
+sourceEvidenceId
+targetAvailable
+snippet
+selectionProjection
+```
+
+Actions:
+
+- [ ] Add proof/evidence filters to backend search/query responses.
+- [ ] Return edge results as first-class selectable rows.
+- [ ] Add missing-target query surface.
+- [ ] Add subgraph export rooted at selected node or edge.
+- [ ] Frontend renders filters/results only; it must not compute eligibility,
+      exportability, workspace, route, compatibility, or relationship truth.
+
+Validation:
+
+- [ ] `test_search_filters_proof_and_evidence_status`
+- [ ] `test_search_returns_edges_and_nodes`
+- [ ] `test_subgraph_export_includes_selected_edge_identity`
+
+## 13. Export And Port Contract Boundary
+
+Goal:
+
+- Stabilize graph-selected export context before adding full port-contract
+  nodes.
+
+Stable port-facing contract data should include:
+
+- graph node id / edge id;
+- source archive/index/hash;
+- decoded geometry, animation, resource facts;
+- scene object initial state;
+- File3D resolver evidence;
+- zone, waypoint, and script structural facts;
+- source-backed execution contracts;
+- `MissingTarget` / `UnknownEvidence` records;
+- export manifest ids;
+- no-guessed-live-state policy.
+
+Viewer-only data should stay out of stable port contracts:
+
+- `workspaceSuggestion`;
+- `inspectorRoute`;
+- preview actions;
+- canvas/UI facet state;
+- `searchText`;
+- render-only preview screenshots unless exported as evidence artifacts;
+- frontend local selection fallbacks.
+
+Actions:
+
+- [ ] Make export manifests launched from relationship rows carry selected
+      graph edge id, source/target node ids, and proof/evidence fields.
+- [ ] Clarify `query_export_context(graph, stable_id, proof_scope)`: either
+      rename the argument if it is a proof statement or actually filter
+      relationship evidence by proof scope.
+- [ ] Keep promotion packet links graph-derived and extend stale reverse-usage
+      tests to zone/waypoint/script evidence.
+- [ ] Defer `PortContract` graph nodes until selected node/edge export context
+      is stable.
+
+Validation:
+
+- [ ] `test_export_context_proof_scope_not_ambiguous`
+- [ ] `test_export_from_relationship_row_records_selected_edge_id`
+- [ ] `test_promotion_packet_links_use_only_graph_scene_evidence`
+
+## 14. Documentation Work
+
+Actions:
+
+- [ ] Update `docs/catalog-graph-model.md` after `SceneZone` and `Waypoint`
+      promotion decisions.
+- [ ] Document the new `script_structure` proof scope if added.
+- [ ] Document the `MissingTarget` taxonomy and `UnknownEvidence` distinction.
+- [ ] Document that root-level `viewer.py` and `lba_hqr.py` remain explicit
+      compatibility-wrapper exceptions, not a pattern to extend.
+- [ ] Keep `docs/plans.md` and `TASK.md` as current planning authority when
+      older architecture summaries disagree.
+- [ ] Add validation notes and screenshots under `docs/` for any visible UI
+      changes validated with agent-browser.
+
+## 15. Known Risks
+
+- Edge occurrence identity is the highest-risk gap. Without it, repeated script
+  references, relationship-row exports, and frontend joins can become subtly
+  wrong.
+- `query_export_context` currently has ambiguous naming/semantics around
+  `proof_scope`.
+- Promoting all script instructions may add many graph nodes. Start with
+  selectable/queryable instruction occurrences and measure full-catalog graph
+  size.
+- Runtime proof source is not defined yet. Do not introduce `live_confirmed`
+  without runtime trace, emulator hook, port fixture, or deterministic
+  simulation provenance.
+- Confirmed empty archive slots are stronger than unknown unresolved names, but
+  both still target unavailable evidence. Keep `targetAvailable=false`,
+  `resolutionState`, and `absenceEvidenceStatus` distinct.
+
+## 16. Suggested Milestone Exit Criteria
+
+M17 is complete when:
+
+- selectable graph edges have stable occurrence identity;
+- relationship-row selection and export use edge ids;
+- `SceneZone` and `Waypoint` nodes are graph materialized and queryable;
+- the first limited `ScriptInstruction` relationships are graph-backed where
+  selectable/queryable;
+- `MissingTarget` taxonomy is implemented for new scene mechanics links;
+- frontend graph-migrated selections fail closed instead of rediscovering
+  authority locally;
+- tests cover graph promotion, edge identity, missing-target taxonomy, query
+  filters, and export context;
+- agent-browser validation covers any visible UI changes.
+
+## 17. Partial Implementation Notes
+
+Implemented and validated as a focused slice on 2026-05-10. The older
+unchecked checklist items above are historical planning detail; use this
+section, the validation notes, and the current tests as the M17 completion
+record:
+
+- Stable selectable edge occurrence identity is now part of graph edges and is
+  projected through usage records, scene-object relationship projections,
+  selection links, subgraph export, and export context.
+- Scene usage strip matching now uses graph edge ids and fails closed when an
+  edge-linked usage record is missing.
+- `SceneZone`, `Waypoint`, `ScriptBlock`, `ScriptInstruction`,
+  `PatchRecord`, and `RuntimeStateField` are materialized from the currently
+  catalog-projected scene mechanics evidence.
+- Zone text/camera/GRM and runtime-contract evidence, waypoint movement and
+  script references, structural control-flow links, runtime-mutable fields, and
+  patch instruction/field links are graph-backed where decoded evidence
+  supports them.
+- `MissingTarget` records now carry target kind, resolution state, resolver,
+  owner, raw reference, absence status, and missing reason fields.
+- Backend graph search returns selectable node and edge results with
+  proof/evidence filters; missing-target and edge-rooted subgraph query
+  surfaces exist.
+- `query_export_context` now distinguishes the export proof statement from an
+  optional graph relationship proof filter and reports selected edge ids.
+- `docs/catalog-graph-model.md` documents the promoted node/edge vocabulary,
+  `script_structure`, edge occurrence identity, and missing-target taxonomy.
+- Agent-browser validation notes and screenshot were added under `docs/`.
+
+Validation completed:
 
 ```powershell
-uv run python -m unittest tests.test_catalog_graph tests.test_export_probe tests.test_entities
 uv run python -m unittest discover -s tests
-Set-Location frontend; fnm use 24.15.0; npm run build; Set-Location ..
-git diff --check
+npm run build
 ```
 
-- [x] Commit only after the current task state and validation evidence are
-  coherent.
+Agent-browser validation:
 
-Result:
+- Opened `http://127.0.0.1:5173`.
+- Indexed the local LBA2 asset root.
+- Selected graph-linked `BODY.HQR:29`.
+- Confirmed the Scene Usages strip renders graph-backed relationship rows.
+- Clicked a usage row and confirmed active usage selection is keyed by the
+  graph edge id.
 
-- `TASK_GPT.md` was removed during consolidation. `TASK_DS.md` remains
-  discarded historical comparison material.
-- Historical validation filenames are retained as evidence, while this
-  `TASK.md` is the only current task authority.
-- Generated `exports/` evidence bundles are not tracked.
+Critical-sparring gaps addressed in the continuation pass:
 
-## 7. Validation Strategy
+- Scene mechanics graph materialization now consumes canonical uncapped decoded
+  `objects`, `zones`, `tracks`, and `patches` arrays. `sampled_*` fields remain
+  bounded preview/UI data and are not graph authority.
+- Relationship-row export is wired through the real `/api/catalog/export` path
+  for edge-backed model exports. The selected graph edge id is validated against
+  the exported asset and recorded in the export manifest evidence.
+- Frontend usage-strip clicks now create first-class `graph_edge` selections
+  with `stableId == edgeId`, sourced from backend edge projections in
+  `graph.selectionByStableId` instead of locally reconstructing export
+  authority.
+- Resource-record selection no longer inherits parent resource authority; it
+  consumes backend `ResourceRecord` node selection projections by stable id.
+- `CHANGES_CUBE_TO` and `DECLARES_EXECUTION_CONTRACT` are graph-backed where
+  decoded/source-backed evidence supports them. `TRACK_LABEL_TARGETS` remains
+  intentionally out of scope until decoded evidence maps track labels to
+  waypoint records.
+- Dedicated CLI/backend query surfaces now exist for `zone`, `waypoint`,
+  `script-instruction`, `selection`, and animation `operation`.
+- Zone/waypoint/patch rows in the scene local table are selectable graph-node
+  selections and show graph-backed inspector evidence.
 
-Use the strongest practical validation available after each milestone.
+Validation added in the continuation pass:
 
-Primary commands:
+- `test_scene_mechanics_graph_uses_full_decoded_lists_not_samples`
+- `test_scene_mechanics_graph_requires_canonical_decoded_lists`
+- `test_export_from_relationship_row_records_selected_edge_id`
+- `test_resource_record_selection_comes_from_graph_node`
+- query-surface tests for zone, waypoint, script instruction, selection, and
+  operation
+- existing full test discovery: `uv run python -m unittest discover -s tests`
+  passed with 179 tests
+- frontend build: `npm run build` passed with the existing Vite chunk-size
+  warning
+- final agent-browser gap check confirmed graph-edge usage selection,
+  backend-projected edge export action visibility, and graph-projected
+  resource-record selection; see
+  `docs/validation-m17-scene-mechanics-graph-2026-05-10.md`
 
-```powershell
-uv run python -m unittest tests.test_catalog_graph tests.test_export_probe tests.test_entities
-uv run python -m unittest discover -s tests
-fnm use 24.15.0; npm run build
-git diff --check
-```
+Deferred beyond this partial slice:
 
-Graph CLI probes:
+- A separate runtime/event graph for live observations and runtime resolver
+  selections.
+- Full `PortContract` and `EvidenceSource` graph nodes.
+- Runtime/event graph evidence for live observations.
+- `TRACK_LABEL_TARGETS` until decoded track-label-to-waypoint evidence exists.
 
-```powershell
-uv run python -m lba2_lm2_viewer catalog-graph --asset-root <root> build --output temp/catalog-graph.json
-uv run python -m lba2_lm2_viewer catalog-graph --graph-json temp/catalog-graph.json scene-object SCENE.HQR:2 2 --json
-uv run python -m lba2_lm2_viewer catalog-graph --graph-json temp/catalog-graph.json prove BODY.HQR:2 ANIM.HQR:2 --json
-uv run python -m lba2_lm2_viewer catalog-graph --graph-json temp/catalog-graph.json usages BODY.HQR:29 --proof-scope scene_object_state --evidence-status source_backed --json
-```
+## 17.9. M17.9 - Catalog Payload Boundary And Query Surface
 
-Browser validation:
+Immediate next milestone before M18:
 
-```powershell
-uv run python -m lba2_lm2_viewer --host 127.0.0.1 --port <port> --no-browser
-```
+- Status: completed on 2026-05-15. Validation record:
+  `docs/validation-m17-9-catalog-payload-boundary-2026-05-15.md`.
+- Fix the full-retail startup scaling failure before building the Model Port
+  Asset Contract.
+- Treat this as a boundary correction for the Remaster Evidence Pipeline, not
+  as a cosmetic performance pass.
 
-- Confirm the server process belongs to this checkout before trusting evidence.
-- Use agent-browser for visible UI changes.
-- Record validation under `docs/`.
-- Do not treat DOM-only evidence as complete if a screenshot is required and
-  screenshot capture fails; record the failure and rerun if the visual proof is
-  material.
+Problem statement:
 
-## 8. Known Validation Evidence
+- Full retail asset-root startup can decode successfully while the frontend
+  still shows no assets because `/catalog.json` serializes the backend's
+  internal catalog plus full graph projections.
+- On 2026-05-15, `D:\LBA2_cdrom\LBA2` decoded in about 55s, but
+  `/catalog.json` was 2,156,373,462 bytes.
+- The architectural mistake is that `server_state.catalog` is both the
+  backend's canonical decoded working set and the browser startup API payload.
 
-Recent validation reported:
+Decision:
 
-- `uv run python -m unittest tests.test_catalog_graph tests.test_export_probe tests.test_entities`
-  passed with 42 tests.
-- `uv run python -m unittest discover -s tests` passed with 156 tests.
-- `fnm use 24.15.0; npm run build` passed, with the existing Vite large chunk
-  warning.
-- `git diff --check` passed, with only CRLF normalization warnings.
-- Agent-browser validated representative graph-backed flows for Explorer/search,
-  graph usage strip, resource-record export action, `bkg_brick_graphic`
-  non-exportability, and derived model-surface export inheritance.
+- The canonical HTTP catalog must become a compact Explorer index with hard
+  payload budgets.
+- Backend Python still owns the full decoded catalog and catalog graph in
+  memory.
+- Graph truth must be exposed through bounded query/detail/selection/export
+  context endpoints, not embedded wholesale in the startup catalog.
+- Full graph export remains an explicit offline artifact, not browser startup
+  state.
+- Frontend code must not rediscover graph relationships, exportability, proof
+  status, or selection authority from compact catalog fields.
 
-Evidence note:
+Required API direction:
 
-- Older `validation-task-gpt-*` files are historical. The current post-fix
-  browser evidence is `docs/validation-task-final-agent-browser-2026-05-10.md`
-  plus `docs/validation-task-final-agent-browser-2026-05-10.jpg`.
+- `GET /catalog.json` returns only a compact catalog shell: summary, HQR
+  summaries, compact asset rows or first page, source identity, and capability
+  hints. It must not include full `graph`, deep scene/script `stats`, or
+  all graph selections.
+- `POST /api/catalog/build` returns the same compact shape as `/catalog.json`.
+- `POST /api/catalog/search` returns bounded compact Explorer rows with
+  `q`, `kind`, `offset`, and `limit`.
+- `POST /api/catalog/asset` returns full detail for one asset id.
+- `POST /api/catalog-graph/selection` returns one backend-owned graph selection
+  projection by asset/node/edge stable id.
+- `POST /api/catalog-graph/edges` and `/api/catalog-graph/usages` return
+  bounded graph relationship rows.
+- `POST /api/catalog-graph/compatible` returns compact compatible-animation
+  summaries for one model.
+- `/api/catalog/load` remains the workspace payload endpoint for opening a
+  selected asset.
 
-## 9. Risk Register
+Implementation sequencing constraints:
 
-| Risk | Likelihood | Impact | Mitigation | Status |
-| --- | ---: | ---: | --- | --- |
-| Graph exportability drifts from server export routes. | Low | High | Server negative test plus scene GRI/BLL parity coverage. | Closed |
-| Inspector still shows stale details after a failed or zero-section selection. | Low | Medium | Clear on unresolved assets and add final fallback. | Closed |
-| Derived selections inherit export action but not relationship evidence. | Low | Medium | Derived selections inherit graph relationship links, including sprite frames. | Closed |
-| Browser validation hits stale server or stale bundle. | Low | Medium | Verify listener/process, rebuild, and record URL/asset root. | Closed |
-| Graph projection size grows too quickly. | Medium | Medium | Prefer narrow operation projections and measure before broadening. | Monitoring |
-| Future agents treat all `semantic_layout` reads as migration bugs. | Medium | Medium | Keep decoder/render boundary documented here and in graph docs. | Monitoring |
-| Script evidence expectations exceed graph vocabulary. | Medium | Medium | Keep opcode-level rows local until graph explicitly models instructions. | Monitoring |
+- Do not simply add `/catalog-compact.json` beside the current full
+  `/catalog.json`; keep one canonical current startup catalog.
+- Introduce an explicit response DTO/builder for the compact catalog. Do not
+  serialize `server_state.catalog` directly as public API state.
+- Stop mutating the canonical catalog with full graph projections during
+  startup. Add an `ensure_catalog_graph()`-style boundary that can build/cache
+  graph state without writing `catalog["graph"]` into the startup payload.
+- Move frontend selection to explicit async hydration: fetch asset detail and
+  graph selection before committing `selectionStore.set()`.
+- Move Explorer search/paging server-side or through a bounded compact search
+  document.
+- Preserve backend graph authority. Compact catalog fields are display/search
+  hints, not proof of relationships, exportability, or selection authority.
 
-## 10. Decision Log
+Tempting non-solutions:
 
-| Date | Decision | Reason |
-| --- | --- | --- |
-| 2026-05-07 | Treat the catalog graph as the app decision substrate. | Reduces duplicate truth paths across UI, backend, exports, CLI, and port-facing probes. |
-| 2026-05-07 | Keep detailed graph vocabulary in graph docs, not duplicated in design/task docs. | Avoids drift and lowers review burden. |
-| 2026-05-07 | Use operation-specific graph projections instead of vague relationship labels for actions. | A relationship may prove evidence without proving an operation is allowed. |
-| 2026-05-09 | Explorer/search is in scope. | Search ranking and summaries are app-facing decisions. |
-| 2026-05-09 | Keep scene-local zones, waypoints, GRM links, patches, and opcode rows local. | They are decoded scene facts, not fully graph-modeled relationship authority. |
-| 2026-05-09 | `TASK_DS.md` is discarded as current scope. | It is broader historical comparison material and can make completed work look incomplete. |
-| 2026-05-10 | Consolidate `TASK_GPT.md` into `TASK.md` and remove the extra task file. | One canonical task file reduces ambiguity for future agents. |
+- gzip, streaming JSON, larger browser timeouts, or chunked `/catalog.json`;
+  these move the giant payload faster but still force browser parse/heap
+  failure.
+- Sampling/truncating canonical graph evidence to fit the startup payload.
+- Moving graph truth into frontend inference from compact fields.
+- Introducing a database before proving memory/query requirements demand one.
+- Letting M18 contracts depend on Explorer payload shape instead of backend
+  graph/detail APIs.
 
-## 11. Operating Rules
+Validation:
 
-1. Treat this file as the canonical task source.
-2. Work one milestone at a time.
-3. Prefer code, tests, browser evidence, and graph docs over inherited plan
-   claims.
-4. After each milestone, update this file before continuing.
-5. If implementation evidence contradicts the plan, revise the plan.
-6. If a change affects hard constraints, public APIs, data compatibility,
-   security, privacy, performance budgets, release process, or user-visible
-   product scope, stop and ask for approval.
-7. Use subagents for independent reading, critique, and validation planning;
-   the main agent owns edits and integration.
-8. Use agent-browser for visible UI validation.
-9. Update `ISSUES.md` for surprising project traps.
-10. Do not leave migrated decisions with both graph-backed and local authority
-    paths.
+- Add payload-budget tests for startup catalog, search results, asset detail,
+  graph selection, usage/edge queries, and export context.
+- Assert `/catalog.json` and `/api/catalog/build` exclude
+  `graph.selectionByAssetId`, `graph.selectionByStableId`, and
+  `graph.sceneObjectRelationshipsByStableId`.
+- Assert compacting the HTTP payload does not remove canonical graph evidence
+  needed by graph queries, exports, entity workflows, or future contracts.
+- Add an E2E UI validation: startup renders compact Explorer rows, selecting one
+  exportable model hydrates asset detail and graph selection, then Active
+  Selection, Inspector, compatible-animation summary, and Export still work.
 
-## 12. Historical Notes
+M17.9 is complete when:
 
-The old `TASK.md` M0-M6 milestone history and `TASK_GPT.md` follow-up history
-were consolidated here on 2026-05-10. Historical validation notes under `docs/`
-may keep their original filenames, including `validation-task-gpt-*`, but they
-are artifacts, not task authority.
+- Full retail startup no longer requires the browser to fetch or parse a
+  multi-GB catalog payload.
+- Graph-migrated selections still fail closed when detail/projection endpoints
+  are unavailable.
+- Existing export/entity/graph evidence paths continue to use backend graph
+  authority.
+- M18 can build `Model Port Asset Contract v0` from backend detail/graph
+  context rather than from Explorer startup state.
+
+## 18. M18 - Model Port Asset Contract v0
+
+Goal:
+
+- Turn the viewer's model evidence into the first stable port-facing contract
+  slice.
+- Prove the contract boundary with a downstream consumer harness before building
+  creative tooling such as Blender import.
+
+Domain terms:
+
+- **Remaster Evidence Pipeline**: the project role targeted by this milestone.
+- **Model Port Asset Contract**: the stable contract artifact emitted for
+  `BODY.HQR` and `OBJFIX.HQR` model assets.
+- **Contract Consumer Harness**: the first downstream consumer; it lives in this
+  repository but must not import viewer parser, server, or catalog-graph
+  internals.
+- **Blender Remaster Adapter**: deferred creative consumer that depends on the
+  contract after the harness proves it.
+
+Hard constraints:
+
+- Keep evidence exports and contracts separate. OBJ/PNG/manifest exports are
+  linked artifacts, not the contract body.
+- Contract data must come from backend-owned decoded structures and catalog
+  graph context, not frontend selection state.
+- The contract must preserve proof scopes, evidence statuses, missing targets,
+  unknowns, and explicit non-claims.
+- The consumer harness must fail if the contract is insufficient and must not
+  repair gaps by calling viewer internals.
+
+### M18.1 - Contract Producer
+
+Deliverable:
+
+- Add `lba2-lm2-viewer port-contract model ...`.
+- Emit `model_port_asset_contract.v0` JSON for one `BODY.HQR` or `OBJFIX.HQR`
+  model asset.
+- Reject non-model assets and unsupported schema/version requests.
+
+Required contract sections:
+
+- `schema_version`
+- `contract_id`
+- `source`
+- `graph_identity`
+- `geometry`
+- `render`
+- `materials`
+- `animation_compatibility`
+- `scene_usage_context`
+- `export_artifacts`
+- `missing_targets`
+- `unknowns`
+- `non_claims`
+
+Required `non_claims`:
+
+- The contract does not prove final in-game renderer parity.
+- The contract does not prove live runtime state.
+- The contract does not prove collision semantics beyond explicitly included
+  decoded/source-backed facts.
+- The contract does not prove attachment points unless they are decoded and
+  explicitly carried later.
+- The contract does not prove animation compatibility except through graph
+  `COMPATIBLE_WITH` evidence.
+- The contract does not include remastered art decisions.
+- The contract does not promise Blender import fidelity beyond linked evidence
+  artifacts and consumer validation.
+
+### M18.2 - Graph Context
+
+Deliverable:
+
+- Include graph node id, stable asset id, selected edge ids where applicable,
+  incoming scene usage edges, File3D resolver evidence, compatible animation
+  edges, proof scopes, evidence statuses, source rules, source fields, and index
+  rules.
+- Preserve missing or unavailable targets as explicit contract records.
+- Do not emit `live_confirmed`; runtime proof belongs to a future runtime/event
+  graph.
+
+### M18.3 - Evidence Artifact Links
+
+Deliverable:
+
+- Link existing model export probe outputs by manifest path and artifact hashes
+  when the contract command is asked to produce or attach evidence artifacts.
+- Keep OBJ, MTL, PNG, and probe manifest payloads outside the contract body.
+- Record artifact generation options and git/tool provenance.
+
+### M18.4 - Contract Consumer Harness
+
+Deliverable:
+
+- Add a minimal downstream consumer that reads `model_port_asset_contract.v0`
+  without importing viewer internals.
+- Validate schema/version and reject unknown fields.
+- Resolve linked evidence artifacts from contract paths.
+- Reconstruct a deterministic render/import-facing model summary from contract
+  data.
+- Write `consumer_report.json` with the facts a port/remaster consumer can rely
+  on and the explicit non-claims it must honor.
+
+### M18.5 - E2E Gate
+
+Validation:
+
+- Produce a model contract from a synthetic HQR fixture.
+- Consume that contract with the harness.
+- Assert the consumer report proves the contract boundary without calling
+  `viewer.build_catalog()`, parser internals, server code, or catalog graph
+  builder code.
+- Run targeted contract tests plus full test discovery before considering M18
+  complete.
+
+Suggested tests:
+
+- `test_model_port_contract_emits_graph_backed_context`
+- `test_model_port_contract_links_export_artifacts_without_embedding_payloads`
+- `test_contract_consumer_harness_rejects_unknown_fields`
+- `test_contract_consumer_harness_uses_no_viewer_internals`
+- `test_model_port_contract_e2e_producer_to_consumer_report`
+
+### M18.6 - Blender Remaster Adapter Spike
+
+Deferred until the harness passes:
+
+- Design a Blender adapter that consumes the same contract and linked evidence
+  artifacts.
+- Keep Blender out of the first contract-completeness proof so failures remain
+  attributable to the contract boundary.
+
+## 19. Pipeline Roadmap After M18
+
+Roadmap principle:
+
+- Build contract slices around consumer obligations, not around parser novelty.
+- Static asset contracts come before scene runtime contracts.
+- Runtime/event proof comes before any contract emits live behavior claims.
+- Blender follows the contract harness; it is the first creative consumer, not
+  the first proof of contract completeness.
+
+### M19 - Sprite, Image, Audio, Text, And Video Evidence Contracts
+
+Goal:
+
+- Promote already exportable resource families into stable evidence contracts.
+
+Candidate contract slices:
+
+- sprite frame and ANIM3DS range contracts;
+- indexed image contracts for `RESS.HQR`, `SCREEN.HQR`, and `HOLOMAP.HQR`;
+- sample audio contracts;
+- text payload contracts;
+- Smacker container passthrough contracts.
+
+Non-goals:
+
+- no live runtime state;
+- no final remastered art decisions;
+- no codec/frame decode claim for Smacker unless implemented and validated.
+
+### M20 - Scene Background Contract
+
+Goal:
+
+- Promote background grid/composition evidence into a stable contract slice.
+
+Scope:
+
+- `LBA_BKG.HQR` GRI/BLL/BRK/GRM evidence;
+- scene background cube links;
+- exported base and GRM-on variants;
+- preview artifact links with explicit renderer-parity non-claims.
+
+Non-goals:
+
+- no final object/decor overdraw parity claim;
+- no live dynamic draw-source ordering claim beyond source-backed requirements.
+
+### M21 - Runtime/Event Evidence Graph
+
+Goal:
+
+- Add the separate evidence layer needed for live observations, deterministic
+  simulation provenance, runtime resolver events, and eventual
+  `live_confirmed` facts.
+
+Scope:
+
+- event anchors back to catalog graph nodes and edges;
+- runtime resolver requests and outputs;
+- emulator/runtime trace observations when available;
+- deterministic simulation fixtures when trustworthy;
+- explicit distinction between decoded initial state, source-backed rule, and
+  observed runtime event.
+
+Non-goals:
+
+- do not retrofit live evidence into the catalog graph;
+- do not emit `live_confirmed` without runtime/event provenance.
+
+### M22 - Scene Runtime Contract
+
+Goal:
+
+- Promote scene object, zone, script, patch, and dynamic draw-source obligations
+  into port-facing contracts after runtime/event evidence exists.
+
+Scope:
+
+- decoded initial scene state;
+- source-backed object/zone/script contracts;
+- graph-backed missing targets and unknowns;
+- runtime/event proof where available;
+- explicit render, behavior, and live-state non-claims where proof is absent.
+
+Non-goals:
+
+- no broad interpreter hidden inside the contract producer;
+- no guessed final renderer parity.
+
+### M23 - Blender Remaster Adapter
+
+Goal:
+
+- Build the first creative consumer for actual remastering workflows.
+
+Scope:
+
+- consume `Model Port Asset Contract` and linked evidence artifacts first;
+- import geometry/material evidence into Blender;
+- preserve contract provenance in Blender-side metadata where practical;
+- report adapter gaps separately from contract gaps.
+
+Non-goals:
+
+- Blender is not the schema-completeness oracle;
+- Blender output is not automatically a final shippable asset package.

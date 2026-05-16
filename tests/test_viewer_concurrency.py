@@ -44,6 +44,41 @@ class ViewerServerConcurrencyTests(unittest.TestCase):
         self.assertIsNone(observed["palette"])
         self.assertIsNone(observed["texture_atlas"])
 
+    def test_catalog_build_returns_compact_public_payload(self) -> None:
+        viewer_server = server.ViewerServer(None, None)
+
+        def fake_build_catalog(
+            asset_root: Path,
+            progress: viewer.DecodeProgress | None = None,
+            selected_files: list[Path] | None = None,
+        ) -> dict[str, object]:
+            return {
+                "asset_root": str(asset_root),
+                "summary": {"assets": 1},
+                "hqr_files": [{"path": "BODY.HQR", "entry_count": 1}],
+                "assets": [
+                    {
+                        "id": "BODY.HQR:1",
+                        "kind": "model",
+                        "label": "Test model",
+                        "entry_type": "body",
+                        "source": {"hqr": "BODY.HQR", "entry_index": 1},
+                        "stats": {"vertices": 3, "polygons": 1, "bones": 1},
+                    }
+                ],
+            }
+
+        with (
+            patch.object(server, "build_catalog", side_effect=fake_build_catalog),
+            patch.object(server.ViewerServer, "load_visual_assets", return_value=None),
+        ):
+            public_payload = viewer_server.set_asset_root(Path("next"))
+
+        self.assertEqual(public_payload["schema"], "viewer-compact-catalog-v1")
+        self.assertNotIn("graph", public_payload)
+        self.assertNotIn("graph", viewer_server.catalog or {})
+        self.assertEqual(public_payload["assets"][0]["stats"]["vertices"], 3)
+
     def test_catalog_build_operations_do_not_overlap(self) -> None:
         viewer_server = server.ViewerServer(None, None)
         events: list[tuple[str, str]] = []

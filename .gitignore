@@ -12,3 +12,5 @@ frontend/PLAN.md
 agent-browser-*.png
 work-*
 temp/
+.codex-run/
+.codex/environments/

@@ -414,6 +414,57 @@ class ExportProbeTests(unittest.TestCase):
             )
             self.assertTrue((output_dir / "manifest.json").exists())
 
+    def test_export_from_relationship_row_records_selected_edge_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "assets"
+            root.mkdir()
+            (root / "BODY.HQR").write_bytes(
+                classic_hqr([resource_entry(textured_triangle_lm2())])
+            )
+            viewer_server = server.ViewerServer(None, None)
+            viewer_server.set_asset_root(root)
+            assert viewer_server.catalog is not None
+            viewer_server.catalog["assets"].append(
+                {
+                    "id": "SCENE.HQR:3",
+                    "kind": "scene",
+                    "label": "Scene 3",
+                    "entry_type": "scene",
+                    "source": {"hqr": "SCENE.HQR", "entry_index": 3},
+                    "stats": {
+                        "semantic_layout": "scene_runtime_layout_partial",
+                        "reconnaissance": {
+                            "objects": [
+                                {
+                                    "index": 1,
+                                    "links": {
+                                        "body": {
+                                            "asset_id": "BODY.HQR:1",
+                                            "asset_available": True,
+                                            "resolution_rule": "synthetic relationship-row export evidence",
+                                        }
+                                    },
+                                }
+                            ]
+                        },
+                    },
+                }
+            )
+            viewer_server.catalog_graph = build_catalog_graph(viewer_server.catalog)
+            edge_id = viewer_server.catalog_graph.indexes["sceneUsagesByAssetId"]["BODY.HQR:1"][0]
+            output_dir = Path(temp_dir) / "server-export"
+
+            response = viewer_server.export_catalog_asset(
+                "BODY.HQR:1",
+                output_dir,
+                selected_edge_id=edge_id,
+            )
+
+            evidence = response["manifest"]["evidence"]
+            self.assertEqual(evidence["selected_edge_ids"], [edge_id])
+            self.assertEqual(evidence["relationship_link_count"], 1)
+            self.assertTrue((output_dir / "manifest.json").exists())
+
     def test_viewer_server_export_manifest_ignores_stale_reverse_usage_packets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "assets"
@@ -478,7 +529,7 @@ class ExportProbeTests(unittest.TestCase):
                     "stats": {
                         "semantic_layout": "scene_runtime_layout_partial",
                         "reconnaissance": {
-                            "sampled_objects": [
+                            "objects": [
                                 {
                                     "index": 1,
                                     "links": {
@@ -1007,6 +1058,55 @@ class ExportProbeTests(unittest.TestCase):
             self.assertEqual(grm_variant["grm_link"]["resolved_grm_entry"], 2)
             self.assertEqual(grm_variant["applied_grm_stats"]["changed_cells"], 1)
             self.assertEqual(variants[1]["changed_cells"], 1)
+
+    def test_viewer_server_caches_scene_background_preview_frames(self) -> None:
+        viewer_server = server.ViewerServer(None, None)
+        scene_asset = {
+            "id": "SCENE.HQR:1",
+            "kind": "scene",
+            "source": {"hqr": "SCENE.HQR", "entry_index": 1},
+            "stats": {
+                "semantic_layout": "scene_runtime_layout_partial",
+                "reconnaissance": {
+                    "background": {
+                        "runtime_cube": 0,
+                        "resolved_gri_entry": 1,
+                        "resolved_bll_entry": 3,
+                        "resolved_grm_entry": 2,
+                    },
+                    "grm_fragment_links": [],
+                },
+            },
+        }
+        variants = (
+            {"flat_block_refs": [1], "flat_cell_slots_or_codes": [2]},
+            [
+                {
+                    "variant": "base",
+                    "label": "Base",
+                    "block_refs": [1],
+                    "slots": [2],
+                    "source_provenance": "test preview",
+                }
+            ],
+        )
+
+        with (
+            patch.object(viewer_server, "scene_background_variant_compositions", return_value=variants)
+            as variant_compositions,
+            patch.object(
+                viewer_server,
+                "render_bkg_composition_preview",
+                return_value={"format": "bkg_grid_preview", "rgba": [1, 2, 3, 4]},
+            ) as render_preview,
+        ):
+            first = viewer_server.render_scene_background_preview_frames(scene_asset)
+            first[0]["variant"] = "mutated-by-caller"
+            second = viewer_server.render_scene_background_preview_frames(scene_asset)
+
+        self.assertEqual(variant_compositions.call_count, 1)
+        self.assertEqual(render_preview.call_count, 1)
+        self.assertEqual(second[0]["variant"], "base")
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ def export_catalog_asset_probe(
     asset_id: str,
     output_dir: Path,
     polygon_mode: PolygonMode = "original",
+    selected_edge_id: str | None = None,
 ) -> dict[str, Any]:
     from lba2_lm2_viewer import viewer
     from lba2_lm2_viewer.catalog_graph import build_catalog_graph, query_export_context
@@ -52,7 +53,16 @@ def export_catalog_asset_probe(
         warnings.append(str(exc))
 
     proof_scope = "decoded model geometry and generated OBJ/texture evidence; not live runtime gameplay proof"
-    graph_context = query_export_context(graph, asset["id"], proof_scope)
+    graph_context = query_export_context(
+        graph,
+        asset["id"],
+        proof_scope,
+        selected_edge_id=selected_edge_id,
+    )
+    if selected_edge_id and selected_edge_id not in graph_context.get("selected_edge_ids", []):
+        raise viewer.Lm2Error(
+            f"selected graph edge {selected_edge_id} is not export evidence for {asset['id']}"
+        )
     source = {
         "asset_root": str(resolved_root),
         "catalog_asset_id": asset["id"],
@@ -78,6 +88,7 @@ def export_catalog_asset_probe(
         "source_rules": graph_context["source_rules"],
         "source_fields": graph_context["source_fields"],
         "index_rules": graph_context["index_rules"],
+        "selected_edge_ids": graph_context.get("selected_edge_ids", []),
         "runtime_contract_ids": [],
         "promotion_packet_ids": [],
         "promotion_packet_source": "not_scene_linked",
@@ -418,6 +429,7 @@ def _evidence_context_from_source(source: dict[str, Any], *, default_scope: str)
         "source_rules": list(source.get("source_rules") or []),
         "source_fields": list(source.get("source_fields") or []),
         "index_rules": list(source.get("index_rules") or []),
+        "selected_edge_ids": list(source.get("selected_edge_ids") or []),
         "runtime_contract_ids": list(source.get("runtime_contract_ids") or []),
         "promotion_packet_ids": list(source.get("promotion_packet_ids") or []),
         "promotion_packet_source": source.get("promotion_packet_source") or "not_scene_linked",

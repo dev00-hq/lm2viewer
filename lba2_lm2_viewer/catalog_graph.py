@@ -64,33 +64,18 @@ class CatalogGraph:
         return normalized
 
     def add_edge(self, edge: dict[str, Any]) -> dict[str, Any]:
-        edge_key = (
-            str(edge["type"]),
-            str(edge["from"]),
-            str(edge["to"]),
-            str(edge.get("proofScope") or "unknown"),
-            str(edge.get("sourceField") or ""),
-            str(edge.get("sourceRule") or ""),
-        )
-        if edge_key in self._known_edge_keys:
-            return self.edges_by_id[
-                stable_edge_id("|".join(edge_key), 1)
-            ]
-        self._known_edge_keys.add(edge_key)
-        base = "|".join(
-            [
-                edge_key[0],
-                edge_key[1],
-                edge_key[2],
-                edge_key[3],
-                edge_key[4],
-                edge_key[5],
-            ]
-        )
+        base = stable_edge_base(edge)
         self._edge_counts[base] += 1
         edge_id = stable_edge_id(base, self._edge_counts[base])
+        occurrence_ordinal = edge.get("occurrenceOrdinal")
+        if not isinstance(occurrence_ordinal, int) or isinstance(occurrence_ordinal, bool):
+            occurrence_ordinal = self._edge_counts[base] - 1
+        target_stable_id = edge.get("targetStableId")
+        if target_stable_id is None:
+            target_stable_id = stable_id_from_node_id(str(edge.get("to")))
         normalized = {
             "id": edge_id,
+            "edgeId": edge_id,
             "relationship": edge.get("relationship") or str(edge["type"]).lower(),
             "inverse": edge.get("inverse"),
             "cardinalityFromSource": edge.get("cardinalityFromSource"),
@@ -104,8 +89,17 @@ class CatalogGraph:
             "derivedInFrontend": bool(edge.get("derivedInFrontend", False)),
             "selectable": bool(edge.get("selectable", False)),
             "participatesInSearch": bool(edge.get("participatesInSearch", True)),
+            "sourceEvidenceId": edge.get("sourceEvidenceId") or f"{edge_id}#source",
+            "occurrenceOrdinal": occurrence_ordinal,
+            "ownerNodeId": edge.get("ownerNodeId") or edge.get("from"),
+            "sourcePath": edge.get("sourcePath"),
+            "sourceOffset": edge.get("sourceOffset"),
+            "rawReference": edge.get("rawReference"),
+            "targetStableId": target_stable_id,
+            "resolverKind": edge.get("resolverKind") or str(edge.get("type")).lower(),
             **edge,
             "id": edge_id,
+            "edgeId": edge_id,
         }
         normalized.setdefault("searchText", search_text(normalized))
         self.edges_by_id[edge_id] = normalized
@@ -143,6 +137,10 @@ def build_catalog_graph(catalog: dict[str, Any]) -> CatalogGraph:
         "compatibleAnimationsByModelId": defaultdict(list),
         "compatibleModelsByAnimationId": defaultdict(list),
         "sceneUsagesByAssetId": defaultdict(list),
+        "sceneZonesBySceneId": defaultdict(list),
+        "waypointsBySceneId": defaultdict(list),
+        "selectionByNodeId": {},
+        "missingTargetsByStableId": {},
         "searchTextByNodeId": {},
     }
 
@@ -387,8 +385,8 @@ def add_scene_projection(graph: CatalogGraph, assets_by_id: dict[str, dict[str, 
                     "cardinalityFromTarget": "1",
                     "proofScope": "decoded_payload",
                     "evidenceStatus": "decoded_only",
-                    "sourceRule": "scene_catalog_stats sampled scene object records",
-                    "sourceField": "SceneStats.reconnaissance.sampled_objects",
+                    "sourceRule": "scene_catalog_stats decoded scene object records",
+                    "sourceField": "SceneStats.reconnaissance.objects",
                     "indexRule": "Scene object index is zero-based runtime object index.",
                     "selectable": True,
                 }
@@ -399,6 +397,7 @@ def add_scene_projection(graph: CatalogGraph, assets_by_id: dict[str, dict[str, 
                 if isinstance(link, dict):
                     add_scene_usage_edge(graph, asset, scene_object, link_kind, link, "scene_object_state")
             add_scene_script_reference_edges(graph, asset, scene_object)
+        add_scene_mechanics_projection(graph, asset)
 
 
 def add_scene_usage_edge(
@@ -421,20 +420,12 @@ def add_scene_usage_edge(
     target_node_id = asset_node_id_for(str(target_asset_id))
     if link.get("asset_available") is False:
         target_node_id = missing_node_id_for(str(target_asset_id))
-        graph.add_node(
-            {
-                "id": target_node_id,
-                "type": "MissingTarget",
-                "label": f"Missing {target_asset_id}",
-                "stableId": str(target_asset_id),
-                "source": {"asset_id": target_asset_id, "link": link},
-                "evidenceStatus": "unknown",
-            }
-        )
+        graph.add_node(missing_target_node(str(target_asset_id), link, target_kind_for_usage(link_kind), owner_node_id=object_node_id))
     file3d_node_id = add_file3d_record_if_present(graph, scene_asset, scene_object, link)
     edge_type = USAGE_EDGE_TYPES.get(link_kind, "USES_RESOURCE")
     if link.get("script_kind"):
         reference_node_id = script_reference_node_id_for(scene_id, scene_object.get("index"), link)
+        source_offset = link.get("source_offset") if isinstance(link.get("source_offset"), int) else link.get("offset")
         graph.add_node(
             {
                 "id": reference_node_id,
@@ -447,6 +438,8 @@ def add_scene_usage_edge(
                     "script_kind": link.get("script_kind"),
                     "reference_key": link.get("reference_key"),
                     "reference_value": link.get("reference_value"),
+                    "source_offset": source_offset,
+                    "occurrence_index": link.get("occurrence_index"),
                 },
                 "evidenceStatus": "source_backed",
             }
@@ -466,6 +459,11 @@ def add_scene_usage_edge(
                 "sourceField": "track_script_analysis.asset_links/life_script_analysis.asset_links",
                 "indexRule": link.get("index_rule"),
                 "selectable": True,
+                "ownerNodeId": object_node_id,
+                "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].{link.get('script_kind')}",
+                "sourceOffset": source_offset,
+                "rawReference": link.get("reference_value"),
+                "resolverKind": "script_reference_container",
             }
         )
         graph.add_edge(
@@ -484,6 +482,11 @@ def add_scene_usage_edge(
                 "indexRule": link.get("index_rule"),
                 "selectable": True,
                 "usageKind": link_kind,
+                "ownerNodeId": object_node_id,
+                "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].{link.get('script_kind')}",
+                "sourceOffset": source_offset,
+                "rawReference": link.get("reference_value"),
+                "resolverKind": f"script_{link_kind}",
             }
         )
         return
@@ -505,6 +508,11 @@ def add_scene_usage_edge(
             "indexRule": link.get("index_rule") or index_rule_for_usage(link_kind, link),
             "selectable": True,
             "usageKind": link_kind,
+            "ownerNodeId": object_node_id,
+            "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].links.{link_kind}",
+            "sourceOffset": link.get("source_offset") if isinstance(link.get("source_offset"), int) else None,
+            "rawReference": link.get("reference_value", link.get("asset_id") or link.get("target_asset_id")),
+            "resolverKind": f"scene_{link_kind}",
         }
     )
     if file3d_node_id and link_kind in {"body", "animation"}:
@@ -533,7 +541,7 @@ def add_scene_script_reference_edges(
     for script_key in ("track_script_analysis", "life_script_analysis"):
         script = scene_object.get(script_key) or {}
         script_kind = "track" if script_key.startswith("track_") else "life"
-        for link in script.get("asset_links") or []:
+        for occurrence_index, link in enumerate(script.get("asset_links") or []):
             if not isinstance(link, dict):
                 continue
             add_scene_usage_edge(
@@ -541,10 +549,10 @@ def add_scene_script_reference_edges(
                 scene_asset,
                 scene_object,
                 str(link.get("kind") or "resource"),
-                {**link, "script_kind": script_kind},
+                {**link, "script_kind": script_kind, "occurrence_index": occurrence_index},
                 "script_reference",
             )
-        for missing_link in script.get("missing_sample_links") or []:
+        for occurrence_index, missing_link in enumerate(script.get("missing_sample_links") or []):
             if not isinstance(missing_link, dict):
                 continue
             add_scene_usage_edge(
@@ -559,9 +567,660 @@ def add_scene_script_reference_edges(
                     "script_kind": script_kind,
                     "resolution_rule": missing_link.get("reason") or missing_link.get("status"),
                     "index_rule": "Runtime sample id maps to SAMPLES.HQR table slot sample id + 1.",
+                    "occurrence_index": occurrence_index,
                 },
                 "script_reference",
             )
+
+
+def add_scene_mechanics_projection(graph: CatalogGraph, scene_asset: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    scene_node_id = scene_node_id_for(scene_id)
+    recon = ((scene_asset.get("stats") or {}).get("reconnaissance") or {})
+    if not isinstance(recon, dict):
+        return
+    for zone in recon.get("zones") or []:
+        if not isinstance(zone, dict):
+            continue
+        zone_node_id = scene_zone_node_id_for(scene_id, zone.get("index"))
+        graph.add_node(scene_zone_node(scene_asset, zone))
+        graph.add_edge(
+            {
+                "type": "HAS_ZONE",
+                "from": scene_node_id,
+                "to": zone_node_id,
+                "relationship": "has zone",
+                "inverse": "zone of scene",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "1",
+                "proofScope": "decoded_payload",
+                "evidenceStatus": "decoded_only",
+                "sourceRule": "SCENE.HQR zone table decoded from scene payload",
+                "sourceField": "SceneStats.reconnaissance.zones",
+                "indexRule": "Scene zone index is zero-based within the scene zone table.",
+                "selectable": True,
+                "ownerNodeId": scene_node_id,
+                "sourcePath": f"{scene_id}.zones[{zone.get('index')}]",
+                "sourceOffset": zone.get("offset") if isinstance(zone.get("offset"), int) else None,
+                "rawReference": zone.get("index"),
+                "resolverKind": "scene_zone_table",
+            }
+        )
+        add_scene_zone_contract_edges(graph, scene_asset, zone)
+    add_scene_zone_relationship_edges(graph, scene_asset)
+    for waypoint in recon.get("tracks") or []:
+        if not isinstance(waypoint, dict):
+            continue
+        waypoint_node_id = waypoint_node_id_for(scene_id, waypoint.get("index"))
+        graph.add_node(waypoint_node(scene_asset, waypoint))
+        graph.add_edge(
+            {
+                "type": "HAS_WAYPOINT",
+                "from": scene_node_id,
+                "to": waypoint_node_id,
+                "relationship": "has waypoint",
+                "inverse": "waypoint of scene",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "1",
+                "proofScope": "decoded_payload",
+                "evidenceStatus": "decoded_only",
+                "sourceRule": "SCENE.HQR T_TRACK coordinate table decoded from scene payload",
+                "sourceField": "SceneStats.reconnaissance.tracks",
+                "indexRule": "Waypoint index is zero-based within the scene T_TRACK table.",
+                "selectable": True,
+                "ownerNodeId": scene_node_id,
+                "sourcePath": f"{scene_id}.waypoints[{waypoint.get('index')}]",
+                "sourceOffset": waypoint.get("offset") if isinstance(waypoint.get("offset"), int) else None,
+                "rawReference": waypoint.get("index"),
+                "resolverKind": "scene_track_table",
+            }
+        )
+    owners = list(iter_scene_script_owners(scene_asset))
+    for scene_object in owners:
+        add_script_structure_projection(graph, scene_asset, scene_object)
+        add_scene_object_movement_edges(graph, scene_asset, scene_object)
+    for scene_object in owners:
+        add_scene_script_local_reference_edges(graph, scene_asset, scene_object)
+        add_scene_script_control_flow_edges(graph, scene_asset, scene_object)
+        add_runtime_state_field_edges(graph, scene_asset, scene_object)
+    add_scene_patch_edges(graph, scene_asset)
+
+
+def add_scene_zone_contract_edges(graph: CatalogGraph, scene_asset: dict[str, Any], zone: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    zone_node_id = scene_zone_node_id_for(scene_id, zone.get("index"))
+    runtime = zone.get("runtime") if isinstance(zone.get("runtime"), dict) else {}
+    fields = runtime.get("fields") if isinstance(runtime.get("fields"), dict) else {}
+    for field, value in sorted(runtime.items()):
+        if not field.endswith("_application") or value is None:
+            continue
+        graph.add_edge(
+            {
+                "type": "DECLARES_RUNTIME_CONTRACT",
+                "from": zone_node_id,
+                "to": zone_node_id,
+                "relationship": "declares runtime contract",
+                "inverse": "runtime contract declared by zone",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "0..n",
+                "proofScope": "classic_source_rule",
+                "evidenceStatus": "source_backed",
+                "sourceRule": runtime.get("source") or "classic source zone runtime contract evidence",
+                "sourceField": f"SceneZone.runtime.{field}",
+                "indexRule": "Zone type and Info fields select a classic source contract; this is not live runtime state.",
+                "selectable": True,
+                "ownerNodeId": zone_node_id,
+                "sourcePath": f"{scene_id}.zones[{zone.get('index')}].runtime.{field}",
+                "sourceOffset": zone.get("offset") if isinstance(zone.get("offset"), int) else None,
+                "rawReference": field,
+                "resolverKind": "zone_runtime_contract",
+            }
+        )
+    target_cube = fields.get("target_cube")
+    if runtime.get("effect") != "change_cube" or not isinstance(target_cube, int) or isinstance(target_cube, bool):
+        return
+    target_stable_id = f"LBA_BKG.HQR#runtime-cube:{target_cube}"
+    target_node_id = missing_node_id_for(target_stable_id)
+    graph.add_node(
+        missing_target_node(
+            target_stable_id,
+            {
+                "kind": "background_resource",
+                "reference_value": target_cube,
+                "reason": "change-cube target cube resolver is intentionally deferred until background cube records are graph-addressable",
+            },
+            "background_resource",
+            owner_node_id=zone_node_id,
+            resolution_state="intentionally_deferred_target",
+        )
+    )
+    graph.add_edge(
+        {
+            "type": "CHANGES_CUBE_TO",
+            "from": zone_node_id,
+            "to": target_node_id,
+            "relationship": "changes cube to",
+            "inverse": "target cube of change-cube zone",
+            "cardinalityFromSource": "0..1",
+            "cardinalityFromTarget": "0..n",
+            "proofScope": "classic_source_rule",
+            "evidenceStatus": "source_backed",
+            "sourceRule": runtime.get("source") or "OBJECT.CPP::GereZoneChangeCube sets NewCube from zone.Num.",
+            "sourceField": "SceneZone.runtime.fields.target_cube",
+            "indexRule": "Change-cube zone Num is the runtime cube id; the graph does not yet materialize background cube records as addressable targets.",
+            "selectable": True,
+            "ownerNodeId": zone_node_id,
+            "sourcePath": f"{scene_id}.zones[{zone.get('index')}].runtime.fields.target_cube",
+            "sourceOffset": zone.get("offset") if isinstance(zone.get("offset"), int) else None,
+            "rawReference": target_cube,
+            "targetStableId": target_stable_id,
+            "resolverKind": "zone_change_cube_target",
+        }
+    )
+
+
+def add_scene_zone_relationship_edges(graph: CatalogGraph, scene_asset: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    recon = ((scene_asset.get("stats") or {}).get("reconnaissance") or {})
+    for occurrence_index, link in enumerate(recon.get("text_zone_links") or []):
+        if not isinstance(link, dict):
+            continue
+        zone_node_id = scene_zone_node_id_for(scene_id, link.get("zone_index"))
+        if zone_node_id not in graph.nodes_by_id:
+            continue
+        target_asset_id = link.get("asset_id") or missing_target_stable_id_for_link("zone_text", {**link, "asset_available": False})
+        if not target_asset_id:
+            continue
+        target_node_id = asset_node_id_for(str(target_asset_id))
+        if link.get("asset_available") is False or target_node_id not in graph.nodes_by_id:
+            target_node_id = missing_node_id_for(str(target_asset_id))
+            graph.add_node(missing_target_node(str(target_asset_id), {**link, "asset_available": False}, "text", owner_node_id=zone_node_id))
+        graph.add_edge(
+            {
+                "type": "USES_TEXT",
+                "from": zone_node_id,
+                "to": target_node_id,
+                "relationship": "zone uses text",
+                "inverse": "text used by zone",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "0..n",
+                "proofScope": "classic_source_rule",
+                "evidenceStatus": "source_backed" if target_node_id in graph.nodes_by_id and not target_node_id.startswith("missing:") else "unknown",
+                "sourceRule": link.get("resolution_rule") or "Scene message zone resolves logical text record",
+                "sourceField": "SceneStats.reconnaissance.text_zone_links",
+                "indexRule": "Zone message value resolves through scene text file and payload-local text record index.",
+                "selectable": True,
+                "usageKind": "zone_text",
+                "ownerNodeId": zone_node_id,
+                "sourcePath": f"{scene_id}.text_zone_links[{occurrence_index}]",
+                "rawReference": link.get("text_id", link.get("reference_value")),
+                "resolverKind": "zone_text",
+            }
+        )
+    for occurrence_index, link in enumerate(recon.get("grm_fragment_links") or []):
+        if not isinstance(link, dict):
+            continue
+        zone_node_id = scene_zone_node_id_for(scene_id, link.get("zone_index"))
+        if zone_node_id not in graph.nodes_by_id:
+            continue
+        target_asset_id = link.get("asset_id") or f"LBA_BKG.HQR:grm:{link.get('resolved_grm_entry')}"
+        target_node_id = asset_node_id_for(str(target_asset_id))
+        if link.get("asset_available") is False or target_node_id not in graph.nodes_by_id:
+            target_node_id = missing_node_id_for(str(target_asset_id))
+            graph.add_node(missing_target_node(str(target_asset_id), {**link, "asset_available": False}, "background_resource", owner_node_id=zone_node_id))
+        graph.add_edge(
+            {
+                "type": "APPLIES_GRM_FRAGMENT",
+                "from": zone_node_id,
+                "to": target_node_id,
+                "relationship": "applies GRM fragment",
+                "inverse": "GRM fragment applied by zone",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "0..n",
+                "proofScope": "classic_source_rule",
+                "evidenceStatus": "source_backed" if not target_node_id.startswith("missing:") else "unknown",
+                "sourceRule": link.get("source_provenance") or "Scene GRM zone resolves background GRM fragment",
+                "sourceField": "SceneStats.reconnaissance.grm_fragment_links",
+                "indexRule": "GRM fragment entry is resolved from background GRM base plus zone value.",
+                "selectable": True,
+                "usageKind": "grm_fragment",
+                "ownerNodeId": zone_node_id,
+                "sourcePath": f"{scene_id}.grm_fragment_links[{occurrence_index}]",
+                "rawReference": link.get("zone_value"),
+                "resolverKind": "zone_grm_fragment",
+            }
+        )
+    for occurrence_index, link in enumerate(recon.get("message_camera_links") or []):
+        if not isinstance(link, dict):
+            continue
+        zone_node_id = scene_zone_node_id_for(scene_id, link.get("zone_index"))
+        if zone_node_id not in graph.nodes_by_id:
+            continue
+        target_zone_index = link.get("target_zone_index")
+        target_node_id = scene_zone_node_id_for(scene_id, target_zone_index)
+        if not link.get("target_available") or target_node_id not in graph.nodes_by_id:
+            missing_id = f"{scene_id}#zone:{target_zone_index if target_zone_index is not None else link.get('associated_camera_zone')}"
+            target_node_id = missing_node_id_for(missing_id)
+            graph.add_node(missing_target_node(missing_id, link, "scene_zone", owner_node_id=zone_node_id, resolution_state="outside_table"))
+        graph.add_edge(
+            {
+                "type": "REFERENCES_ZONE",
+                "from": zone_node_id,
+                "to": target_node_id,
+                "relationship": "references zone",
+                "inverse": "zone referenced by zone",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "0..n",
+                "proofScope": "classic_source_rule",
+                "evidenceStatus": "source_backed" if link.get("target_available") else "unknown",
+                "sourceRule": link.get("source_provenance") or "Message zone camera lookup references a camera zone by Num.",
+                "sourceField": "SceneStats.reconnaissance.message_camera_links",
+                "indexRule": "Message Info1 references the camera zone Num, resolved to a zone table row.",
+                "selectable": True,
+                "ownerNodeId": zone_node_id,
+                "sourcePath": f"{scene_id}.message_camera_links[{occurrence_index}]",
+                "rawReference": link.get("associated_camera_zone"),
+                "resolverKind": "zone_camera_reference",
+            }
+        )
+
+
+def add_scene_object_movement_edges(graph: CatalogGraph, scene_asset: dict[str, Any], scene_object: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    object_node_id = scene_object_node_id_for(scene_id, scene_object.get("index"))
+    movement = ((scene_object.get("runtime") or {}).get("movement") or {})
+    for occurrence_index, reference in enumerate(movement.get("references") or []):
+        if not isinstance(reference, dict) or reference.get("kind") != "waypoint":
+            continue
+        waypoint_index = reference.get("value")
+        target_node_id = waypoint_node_id_for(scene_id, waypoint_index)
+        if not graph.nodes_by_id.get(target_node_id):
+            target_node_id = missing_node_id_for(f"{scene_id}#waypoint:{waypoint_index}")
+            graph.add_node(
+                missing_target_node(
+                    f"{scene_id}#waypoint:{waypoint_index}",
+                    reference,
+                    "waypoint",
+                    owner_node_id=object_node_id,
+                    resolution_state="outside_table",
+                )
+            )
+        graph.add_edge(
+            {
+                "type": "MOVEMENT_TARGETS",
+                "from": object_node_id,
+                "to": target_node_id,
+                "relationship": "movement targets waypoint",
+                "inverse": "waypoint targeted by movement",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "0..n",
+                "proofScope": "classic_source_rule",
+                "evidenceStatus": "source_backed" if reference.get("target_found") else "unknown",
+                "sourceRule": reference.get("source") or "scene object movement Info fields reference waypoint records",
+                "sourceField": reference.get("field") or "SceneObject.runtime.movement.references",
+                "indexRule": "Movement reference value addresses a zero-based T_TRACK waypoint index.",
+                "selectable": True,
+                "ownerNodeId": object_node_id,
+                "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].movement.references[{occurrence_index}]",
+                "rawReference": waypoint_index,
+                "resolverKind": "scene_object_movement",
+            }
+        )
+
+
+def add_script_structure_projection(graph: CatalogGraph, scene_asset: dict[str, Any], scene_object: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    object_node_id = scene_object_node_id_for(scene_id, scene_object.get("index"))
+    for script_kind, analysis in scene_object_scripts(scene_object):
+        block_node_id = script_block_node_id_for(scene_id, scene_object.get("index"), script_kind)
+        graph.add_node(script_block_node(scene_asset, scene_object, script_kind, analysis))
+        graph.add_edge(
+            {
+                "type": "HAS_SCRIPT",
+                "from": object_node_id,
+                "to": block_node_id,
+                "relationship": f"has {script_kind} script",
+                "inverse": "script of scene object",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "1",
+                "proofScope": "script_structure",
+                "evidenceStatus": "decoded_only",
+                "sourceRule": "SCENE.HQR embedded track/life script byte layout decoded",
+                "sourceField": f"SceneObject.{script_kind}_script_analysis",
+                "indexRule": "Script block belongs to a scene object and script kind.",
+                "selectable": True,
+                "ownerNodeId": object_node_id,
+                "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].script.{script_kind}",
+                "sourceOffset": scene_object.get(f"{script_kind}_script_offset") if isinstance(scene_object.get(f"{script_kind}_script_offset"), int) else None,
+                "resolverKind": "scene_script_block",
+            }
+        )
+        for instruction in analysis.get("first_instructions") or []:
+            if not isinstance(instruction, dict):
+                continue
+            add_script_instruction_node_and_edge(graph, scene_asset, scene_object, script_kind, instruction)
+        add_script_execution_contract_edges(graph, scene_asset, scene_object, script_kind, analysis)
+
+
+def add_script_execution_contract_edges(
+    graph: CatalogGraph,
+    scene_asset: dict[str, Any],
+    scene_object: dict[str, Any],
+    script_kind: str,
+    analysis: dict[str, Any],
+) -> None:
+    scene_id = str(scene_asset.get("id"))
+    instructions = [item for item in analysis.get("first_instructions") or [] if isinstance(item, dict)]
+    for contract_index, contract in enumerate(analysis.get("execution_contracts") or []):
+        if not isinstance(contract, dict):
+            continue
+        mnemonics = {str(value) for value in contract.get("mnemonics") or []}
+        if not mnemonics:
+            continue
+        for instruction in instructions:
+            mnemonic = str(instruction.get("mnemonic") or "")
+            if mnemonic not in mnemonics:
+                continue
+            instruction_node_id = script_instruction_node_id_for(
+                scene_id,
+                scene_object.get("index"),
+                script_kind,
+                instruction.get("offset"),
+            )
+            if instruction_node_id not in graph.nodes_by_id:
+                graph.add_node(script_instruction_node(scene_asset, scene_object, script_kind, instruction))
+            graph.add_edge(
+                {
+                    "type": "DECLARES_EXECUTION_CONTRACT",
+                    "from": instruction_node_id,
+                    "to": instruction_node_id,
+                    "relationship": "declares execution contract",
+                    "inverse": "execution contract declared by instruction",
+                    "cardinalityFromSource": "0..n",
+                    "cardinalityFromTarget": "0..n",
+                    "proofScope": "classic_source_rule",
+                    "evidenceStatus": "source_backed",
+                    "sourceRule": contract.get("source") or "classic source script execution contract evidence",
+                    "sourceField": f"ScriptAnalysis.execution_contracts.{contract.get('contract')}",
+                    "indexRule": "Execution contracts are static source-backed opcode effects; this edge does not imply the instruction executed.",
+                    "selectable": True,
+                    "ownerNodeId": instruction_node_id,
+                    "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].script.{script_kind}.execution_contracts[{contract_index}]",
+                    "sourceOffset": instruction.get("offset") if isinstance(instruction.get("offset"), int) else None,
+                    "rawReference": contract.get("contract"),
+                    "resolverKind": "script_execution_contract",
+                    "executionContract": contract.get("contract"),
+                    "executionEffect": contract.get("effect"),
+                    "executionContractCount": contract.get("count"),
+                }
+            )
+
+
+def add_script_instruction_node_and_edge(
+    graph: CatalogGraph,
+    scene_asset: dict[str, Any],
+    scene_object: dict[str, Any],
+    script_kind: str,
+    instruction: dict[str, Any],
+) -> str:
+    scene_id = str(scene_asset.get("id"))
+    block_node_id = script_block_node_id_for(scene_id, scene_object.get("index"), script_kind)
+    instruction_node_id = script_instruction_node_id_for(scene_id, scene_object.get("index"), script_kind, instruction.get("offset"))
+    graph.add_node(script_instruction_node(scene_asset, scene_object, script_kind, instruction))
+    graph.add_edge(
+        {
+            "type": "HAS_INSTRUCTION",
+            "from": block_node_id,
+            "to": instruction_node_id,
+            "relationship": "has script instruction",
+            "inverse": "instruction of script",
+            "cardinalityFromSource": "0..n",
+            "cardinalityFromTarget": "1",
+            "proofScope": "script_structure",
+            "evidenceStatus": "decoded_only",
+            "sourceRule": "Script bytecode decoder produced an instruction boundary",
+            "sourceField": "ScriptAnalysis.first_instructions",
+            "indexRule": "Instruction stable id uses byte offset inside the owning script.",
+            "selectable": True,
+            "ownerNodeId": block_node_id,
+            "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].script.{script_kind}.offset[{instruction.get('offset')}]",
+            "sourceOffset": instruction.get("offset") if isinstance(instruction.get("offset"), int) else None,
+            "rawReference": instruction.get("operand_hex"),
+            "resolverKind": "script_instruction",
+        }
+    )
+    return instruction_node_id
+
+
+def add_scene_script_local_reference_edges(graph: CatalogGraph, scene_asset: dict[str, Any], scene_object: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    for script_kind, analysis in scene_object_scripts(scene_object):
+        instruction_by_reference = script_instructions_by_local_reference(analysis)
+        for occurrence_index, link in enumerate(analysis.get("local_links") or []):
+            if not isinstance(link, dict):
+                continue
+            reference_key = str(link.get("reference_key") or link.get("kind") or "")
+            reference_value = link.get("reference_value")
+            instruction = instruction_by_reference.get((reference_key, reference_value))
+            if instruction is None:
+                instruction = first_instruction_for_reference_value(analysis, reference_value)
+            source_node_id = script_instruction_node_id_for(
+                scene_id,
+                scene_object.get("index"),
+                script_kind,
+                instruction.get("offset") if isinstance(instruction, dict) else f"local:{occurrence_index}",
+            )
+            if source_node_id not in graph.nodes_by_id:
+                graph.add_node(script_instruction_node(scene_asset, scene_object, script_kind, instruction or {"offset": f"local:{occurrence_index}", "mnemonic": "UNKNOWN"}))
+            target_kind = str(link.get("kind") or "")
+            edge_type = "REFERENCES_OBJECT"
+            target_node_id = scene_object_node_id_for(scene_id, link.get("object_index", reference_value))
+            if target_kind == "waypoint":
+                edge_type = "REFERENCES_WAYPOINT"
+                target_node_id = waypoint_node_id_for(scene_id, link.get("waypoint_index", reference_value))
+            elif target_kind == "zone":
+                edge_type = "CONTROLS_ZONE"
+                target_node_id = scene_zone_node_id_for(scene_id, link.get("zone_index", reference_value))
+            if target_node_id not in graph.nodes_by_id:
+                missing_id = f"{scene_id}#{target_kind or 'local'}:{reference_value}"
+                target_node_id = missing_node_id_for(missing_id)
+                graph.add_node(missing_target_node(missing_id, link, target_kind or "script_local", owner_node_id=source_node_id, resolution_state="outside_table"))
+            graph.add_edge(
+                {
+                    "type": edge_type,
+                    "from": source_node_id,
+                    "to": target_node_id,
+                    "relationship": edge_type.lower().replace("_", " "),
+                    "inverse": "referenced by script instruction",
+                    "cardinalityFromSource": "0..n",
+                    "cardinalityFromTarget": "0..n",
+                    "proofScope": "script_structure",
+                    "evidenceStatus": "source_backed" if link.get("target_available") else "unknown",
+                    "sourceRule": "Script operand semantics reference scene-local object, zone, or waypoint evidence.",
+                    "sourceField": f"ScriptAnalysis.local_links.{reference_key}",
+                    "indexRule": "Scene-local operands address zero-based object, zone, or T_TRACK waypoint indexes.",
+                    "selectable": True,
+                    "ownerNodeId": source_node_id,
+                    "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].script.{script_kind}.local_links[{occurrence_index}]",
+                    "sourceOffset": instruction.get("offset") if isinstance(instruction, dict) and isinstance(instruction.get("offset"), int) else None,
+                    "rawReference": reference_value,
+                    "resolverKind": f"script_local_{target_kind}",
+                }
+            )
+
+
+def add_scene_script_control_flow_edges(graph: CatalogGraph, scene_asset: dict[str, Any], scene_object: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    for script_kind, analysis in scene_object_scripts(scene_object):
+        for occurrence_index, link in enumerate(analysis.get("control_flow_links") or []):
+            if not isinstance(link, dict):
+                continue
+            source_offset = link.get("source_offset")
+            target_offset = link.get("target_offset")
+            source_node_id = script_instruction_node_id_for(scene_id, scene_object.get("index"), script_kind, source_offset)
+            if source_node_id not in graph.nodes_by_id:
+                graph.add_node(script_instruction_node(scene_asset, scene_object, script_kind, instruction_from_control_link(link, source=True)))
+            target_node_id = script_instruction_node_id_for(scene_id, scene_object.get("index"), script_kind, target_offset)
+            if not link.get("target_found"):
+                missing_id = f"{scene_id}#object:{scene_object.get('index')}#script:{script_kind}#offset:{target_offset}"
+                target_node_id = missing_node_id_for(missing_id)
+                graph.add_node(missing_target_node(missing_id, link, "script_instruction", owner_node_id=source_node_id, resolution_state="outside_script"))
+            elif target_node_id not in graph.nodes_by_id:
+                graph.add_node(script_instruction_node(scene_asset, scene_object, script_kind, instruction_from_control_link(link, source=False)))
+            graph.add_edge(
+                {
+                    "type": "CONTROL_FLOW_TO",
+                    "from": source_node_id,
+                    "to": target_node_id,
+                    "relationship": "control flow to",
+                    "inverse": "control flow from",
+                    "cardinalityFromSource": "0..n",
+                    "cardinalityFromTarget": "0..n",
+                    "proofScope": "script_structure",
+                    "evidenceStatus": "decoded_only" if link.get("target_found") else "unknown",
+                    "sourceRule": "Script operand branch/target offset decoded structurally; no execution path is implied.",
+                    "sourceField": f"ScriptAnalysis.control_flow_links.{link.get('target_field')}",
+                    "indexRule": "Control-flow target offsets are byte offsets inside the same decoded script.",
+                    "selectable": True,
+                    "ownerNodeId": source_node_id,
+                    "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].script.{script_kind}.control_flow_links[{occurrence_index}]",
+                    "sourceOffset": source_offset if isinstance(source_offset, int) else None,
+                    "rawReference": target_offset,
+                    "resolverKind": "script_control_flow",
+                }
+            )
+
+
+def add_runtime_state_field_edges(graph: CatalogGraph, scene_asset: dict[str, Any], scene_object: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    for script_kind, analysis in scene_object_scripts(scene_object):
+        for occurrence_index, field in enumerate(analysis.get("runtime_state_fields") or []):
+            if not isinstance(field, dict):
+                continue
+            source_offset = field.get("source_offset")
+            instruction_node_id = script_instruction_node_id_for(scene_id, scene_object.get("index"), script_kind, source_offset)
+            if instruction_node_id not in graph.nodes_by_id:
+                graph.add_node(script_instruction_node(scene_asset, scene_object, script_kind, instruction_from_runtime_field(field)))
+            field_node_id = runtime_state_field_node_id_for(scene_id, scene_object.get("index"), script_kind, source_offset, field.get("field"))
+            graph.add_node(runtime_state_field_node(scene_asset, scene_object, script_kind, field))
+            for edge_type, relationship in (("OWNS_RUNTIME_FIELD", "owns runtime field"), ("MAY_MUTATE_FIELD", "may mutate field")):
+                graph.add_edge(
+                    {
+                        "type": edge_type,
+                        "from": instruction_node_id,
+                        "to": field_node_id,
+                        "relationship": relationship,
+                        "inverse": "runtime field of instruction",
+                        "cardinalityFromSource": "0..n",
+                        "cardinalityFromTarget": "1",
+                        "proofScope": "script_structure",
+                        "evidenceStatus": "source_backed",
+                        "sourceRule": field.get("source") or "classic script runtime operand field evidence",
+                        "sourceField": f"ScriptAnalysis.runtime_state_fields.{field.get('field')}",
+                        "indexRule": "Runtime-mutable field stable id uses owner script, instruction offset, and field name.",
+                        "selectable": True,
+                        "ownerNodeId": instruction_node_id,
+                        "sourcePath": f"{scene_id}.object[{scene_object.get('index')}].script.{script_kind}.runtime_state_fields[{occurrence_index}]",
+                        "sourceOffset": source_offset if isinstance(source_offset, int) else None,
+                        "rawReference": field.get("initial_hex", field.get("initial_value")),
+                        "resolverKind": "runtime_state_field",
+                    }
+                )
+
+
+def add_scene_patch_edges(graph: CatalogGraph, scene_asset: dict[str, Any]) -> None:
+    scene_id = str(scene_asset.get("id"))
+    scene_node_id = scene_node_id_for(scene_id)
+    recon = ((scene_asset.get("stats") or {}).get("reconnaissance") or {})
+    for patch in recon.get("patches") or []:
+        if not isinstance(patch, dict):
+            continue
+        patch_node_id = patch_record_node_id_for(scene_id, patch.get("index"))
+        graph.add_node(patch_record_node(scene_asset, patch))
+        graph.add_edge(
+            {
+                "type": "HAS_PATCH",
+                "from": scene_node_id,
+                "to": patch_node_id,
+                "relationship": "has patch record",
+                "inverse": "patch of scene",
+                "cardinalityFromSource": "0..n",
+                "cardinalityFromTarget": "1",
+                "proofScope": "decoded_payload",
+                "evidenceStatus": "decoded_only",
+                "sourceRule": "SCENE.HQR patch table decoded from scene payload",
+                "sourceField": "SceneStats.reconnaissance.patches",
+                "indexRule": "Patch index is zero-based within the scene patch table.",
+                "selectable": True,
+                "ownerNodeId": scene_node_id,
+                "sourcePath": f"{scene_id}.patches[{patch.get('index')}]",
+                "sourceOffset": patch.get("offset") if isinstance(patch.get("offset"), int) else None,
+                "rawReference": patch.get("target_offset"),
+                "resolverKind": "scene_patch_table",
+            }
+        )
+        target = patch.get("target") if isinstance(patch.get("target"), dict) else {}
+        object_index = object_index_from_owner(target.get("owner"))
+        script_kind = str(target.get("kind") or "unknown")
+        instruction_offset = target.get("instruction_offset")
+        if object_index is None or not isinstance(instruction_offset, int):
+            missing_id = f"{scene_id}#patch:{patch.get('index')}#target:{patch.get('target_offset')}"
+            instruction_node_id = missing_node_id_for(missing_id)
+            graph.add_node(missing_target_node(missing_id, patch, "script_instruction", owner_node_id=patch_node_id, resolution_state="outside_script"))
+        else:
+            instruction_node_id = script_instruction_node_id_for(scene_id, object_index, script_kind, instruction_offset)
+            if instruction_node_id not in graph.nodes_by_id:
+                graph.add_node(script_instruction_node(scene_asset, {"index": object_index}, script_kind, instruction_from_patch_target(target)))
+        graph.add_edge(
+            {
+                "type": "PATCHES_INSTRUCTION",
+                "from": patch_node_id,
+                "to": instruction_node_id,
+                "relationship": "patches instruction",
+                "inverse": "instruction patched by",
+                "cardinalityFromSource": "0..1",
+                "cardinalityFromTarget": "0..n",
+                "proofScope": "script_structure",
+                "evidenceStatus": "decoded_only" if target.get("instruction_found") else "unknown",
+                "sourceRule": "Patch target offset resolved to containing script instruction where possible.",
+                "sourceField": "ScenePatch.target_offset",
+                "indexRule": "Patch target offset is absolute inside the SCENE.HQR payload and is mapped to script-relative offset.",
+                "selectable": True,
+                "ownerNodeId": patch_node_id,
+                "sourcePath": f"{scene_id}.patches[{patch.get('index')}].target",
+                "sourceOffset": patch.get("offset") if isinstance(patch.get("offset"), int) else None,
+                "rawReference": patch.get("target_offset"),
+                "resolverKind": "scene_patch_instruction",
+            }
+        )
+        field_name = target.get("patched_field")
+        if object_index is None or not field_name:
+            continue
+        field_node_id = runtime_state_field_node_id_for(scene_id, object_index, script_kind, instruction_offset, field_name)
+        if field_node_id not in graph.nodes_by_id:
+            graph.add_node(runtime_state_field_node(scene_asset, {"index": object_index}, script_kind, runtime_field_from_patch_target(target)))
+        graph.add_edge(
+            {
+                "type": "PATCHES_FIELD",
+                "from": patch_node_id,
+                "to": field_node_id,
+                "relationship": "patches field",
+                "inverse": "field patched by",
+                "cardinalityFromSource": "0..1",
+                "cardinalityFromTarget": "0..n",
+                "proofScope": "script_structure",
+                "evidenceStatus": "source_backed",
+                "sourceRule": "Patch target byte maps to opcode or decoded operand field.",
+                "sourceField": f"ScenePatch.target.{field_name}",
+                "indexRule": "Patched field identity uses containing instruction and decoded operand field span.",
+                "selectable": True,
+                "ownerNodeId": patch_node_id,
+                "sourcePath": f"{scene_id}.patches[{patch.get('index')}].field",
+                "sourceOffset": patch.get("offset") if isinstance(patch.get("offset"), int) else None,
+                "rawReference": patch.get("target_offset"),
+                "resolverKind": "scene_patch_field",
+            }
+        )
 
 
 def add_file3d_record_if_present(
@@ -588,10 +1247,15 @@ def add_file3d_record_if_present(
             "evidenceStatus": "source_backed" if link.get("resolution_rule") else "decoded_only",
         }
     )
+    object_node_id = scene_object_node_id_for(str(scene_asset.get("id")), scene_object.get("index"))
+    for edge_id in graph.outgoing_by_node_id.get(object_node_id, []):
+        edge = graph.edges_by_id.get(edge_id, {})
+        if edge.get("type") == "HAS_FILE3D_RECORD" and edge.get("to") == node_id:
+            return node_id
     graph.add_edge(
         {
             "type": "HAS_FILE3D_RECORD",
-            "from": scene_object_node_id_for(str(scene_asset.get("id")), scene_object.get("index")),
+            "from": object_node_id,
             "to": node_id,
             "relationship": "uses File3D record",
             "inverse": "File3D record used by scene object",
@@ -656,14 +1320,12 @@ def add_anim3ds_ranges(graph: CatalogGraph, assets_by_id: dict[str, dict[str, An
             if frame_asset_id not in assets_by_id:
                 frame_node_id = missing_node_id_for(frame_asset_id)
                 graph.add_node(
-                    {
-                        "id": frame_node_id,
-                        "type": "MissingTarget",
-                        "label": f"Missing {frame_asset_id}",
-                        "stableId": frame_asset_id,
-                        "source": {"asset_id": frame_asset_id},
-                        "evidenceStatus": "unknown",
-                    }
+                    missing_target_node(
+                        frame_asset_id,
+                        {"asset_id": frame_asset_id, "status": "empty_or_undecoded_hqr_slot"},
+                        "asset",
+                        owner_node_id=range_node_id,
+                    )
                 )
             graph.add_edge(
                 {
@@ -838,12 +1500,26 @@ def finalize_indexes(graph: CatalogGraph) -> None:
             model_id = stable_id_from_node_id(str(edge.get("to")))
             indexes["compatibleAnimationsByModelId"][model_id].append(animation_id)
             indexes["compatibleModelsByAnimationId"][animation_id].append(model_id)
-        if edge.get("type") in set(USAGE_EDGE_TYPES.values()) | {"SCRIPT_REFERENCES"}:
+        if edge.get("type") in set(USAGE_EDGE_TYPES.values()) | {"SCRIPT_REFERENCES", "APPLIES_GRM_FRAGMENT"}:
             target_id = stable_id_from_node_id(str(edge.get("to")))
             indexes["sceneUsagesByAssetId"][target_id].append(edge["id"])
         if edge.get("type") == "RANGE_CONTAINS_FRAME":
             range_id = stable_id_from_node_id(str(edge.get("from")))
             indexes["spritesByRange"][range_id].append(stable_id_from_node_id(str(edge.get("to"))))
+    for node_id, node in graph.nodes_by_id.items():
+        stable_id = str(node.get("stableId") or stable_id_from_node_id(node_id))
+        if node.get("type") == "SceneZone":
+            scene_id = str(node.get("sceneAssetId") or "")
+            if scene_id:
+                indexes["sceneZonesBySceneId"][scene_id].append(stable_id)
+        elif node.get("type") == "Waypoint":
+            scene_id = str(node.get("sceneAssetId") or "")
+            if scene_id:
+                indexes["waypointsBySceneId"][scene_id].append(stable_id)
+        elif node.get("type") == "MissingTarget":
+            indexes["missingTargetsByStableId"][stable_id] = node_id
+        if node.get("selectable", True):
+            indexes["selectionByNodeId"][node_id] = stable_id
     for key, value in list(indexes.items()):
         if isinstance(value, defaultdict):
             indexes[key] = {inner_key: sorted(set(inner_value)) for inner_key, inner_value in sorted(value.items())}
@@ -929,60 +1605,95 @@ def query_asset_usage_records(graph: CatalogGraph, stable_id: str) -> dict[str, 
     }
 
 
-def query_export_context(graph: CatalogGraph, stable_id: str, proof_scope: str) -> dict[str, Any]:
+def query_export_context(
+    graph: CatalogGraph,
+    stable_id: str,
+    proof_scope: str,
+    selected_edge_id: str | None = None,
+) -> dict[str, Any]:
     usage_records = query_asset_usage_records(graph, stable_id)["usageRecords"]
-    direct_records = [record for record in usage_records if record.get("proofScope") == "scene_object_state"]
-    script_records = [record for record in usage_records if record.get("proofScope") == "script_reference"]
+    relationship_proof_filter = proof_scope if proof_scope in {
+        "decoded_payload",
+        "classic_source_rule",
+        "scene_object_state",
+        "script_reference",
+        "script_structure",
+        "frontend_compatibility_rule",
+        "runtime_live_proof",
+        "port_implication",
+        "export_manifest",
+        "unknown",
+    } else None
+    filtered_usage_records = [
+        record for record in usage_records if relationship_proof_filter is None or record.get("proofScope") == relationship_proof_filter
+    ]
+    if selected_edge_id:
+        filtered_usage_records = [
+            record
+            for record in filtered_usage_records
+            if record.get("graphEdgeId") == selected_edge_id or record.get("selectedEdgeId") == selected_edge_id
+        ]
+    direct_records = [record for record in filtered_usage_records if record.get("proofScope") == "scene_object_state"]
+    script_records = [record for record in filtered_usage_records if record.get("proofScope") == "script_reference"]
     scene_indices = sorted(
         {
             record["scene_index"]
-            for record in usage_records
+            for record in filtered_usage_records
             if isinstance(record.get("scene_index"), int)
         }
     )
     evidence_statuses = sorted(
         {
             str(record.get("evidenceStatus"))
-            for record in usage_records
+            for record in filtered_usage_records
             if record.get("evidenceStatus")
         }
     )
     source_rules = sorted(
         {
             str(record.get("sourceRule"))
-            for record in usage_records
+            for record in filtered_usage_records
             if record.get("sourceRule")
         }
     )
     source_fields = sorted(
         {
             str(record.get("sourceField"))
-            for record in usage_records
+            for record in filtered_usage_records
             if record.get("sourceField")
         }
     )
     index_rules = sorted(
         {
             str(record.get("indexRule"))
-            for record in usage_records
+            for record in filtered_usage_records
             if record.get("indexRule")
+        }
+    )
+    selected_edge_ids = sorted(
+        {
+            str(record.get("graphEdgeId") or record.get("selectedEdgeId"))
+            for record in filtered_usage_records
+            if record.get("graphEdgeId") or record.get("selectedEdgeId")
         }
     )
     return {
         "schema": "catalog_graph.export_context.v0",
         "stable_id": stable_id,
         "proof_scope": proof_scope,
+        "relationship_proof_filter": relationship_proof_filter,
         "scene_usage_count": len(direct_records),
-        "relationship_link_count": len(usage_records),
+        "relationship_link_count": len(filtered_usage_records),
         "direct_scene_object_usage_count": len(direct_records),
         "script_reference_count": len(script_records),
         "scene_indices": scene_indices,
-        "proof_scopes": sorted({str(record.get("proofScope")) for record in usage_records if record.get("proofScope")}),
+        "proof_scopes": sorted({str(record.get("proofScope")) for record in filtered_usage_records if record.get("proofScope")}),
         "evidence_statuses": evidence_statuses,
         "source_rules": source_rules,
         "source_fields": source_fields,
         "index_rules": index_rules,
-        "usage_records": usage_records,
+        "selected_edge_ids": selected_edge_ids,
+        "usage_records": filtered_usage_records,
     }
 
 
@@ -1013,6 +1724,15 @@ def usage_record_from_edge(graph: CatalogGraph, edge: dict[str, Any]) -> dict[st
     target = relationship_endpoint_projection(graph, str(edge.get("to")))
     object_source = scene_object.get("source") if isinstance(scene_object.get("source"), dict) else {}
     return {
+        "edgeId": edge.get("id"),
+        "sourceEvidenceId": edge.get("sourceEvidenceId"),
+        "occurrenceOrdinal": edge.get("occurrenceOrdinal"),
+        "ownerNodeId": edge.get("ownerNodeId"),
+        "sourcePath": edge.get("sourcePath"),
+        "sourceOffset": edge.get("sourceOffset"),
+        "rawReference": edge.get("rawReference"),
+        "targetStableId": edge.get("targetStableId"),
+        "resolverKind": edge.get("resolverKind"),
         "kind": kind,
         "scene_asset_id": scene_id,
         "scene_label": scene_node.get("label") or scene_id,
@@ -1030,6 +1750,8 @@ def usage_record_from_edge(graph: CatalogGraph, edge: dict[str, Any]) -> dict[st
         "target_type": target.get("type"),
         "target_available": target.get("type") != "MissingTarget",
         "graphLinkStableId": graph_link_node.get("stableId") or stable_id_from_node_id(str(edge.get("from"))),
+        "graphEdgeId": edge.get("id"),
+        "selectedEdgeId": edge.get("id"),
         "resolution_rule": edge.get("sourceRule"),
         "proofScope": edge.get("proofScope"),
         "evidenceStatus": edge.get("evidenceStatus"),
@@ -1048,6 +1770,73 @@ def query_scene_object(graph: CatalogGraph, scene_id: str, object_index: str) ->
         "node": graph.nodes_by_id.get(node_id),
         "edges": graph.node_edges(node_id, "both"),
         "consumerRoundTrip": consumer_round_trip_for_node(graph, node_id),
+    }
+
+
+def query_zone(graph: CatalogGraph, scene_id: str, zone_index: str) -> dict[str, Any]:
+    node_id = scene_zone_node_id_for(scene_id, parse_object_index(zone_index))
+    return {
+        "schema": "catalog_graph.zone.v0",
+        "sceneId": scene_id,
+        "zoneIndex": parse_object_index(zone_index),
+        "node": graph.nodes_by_id.get(node_id),
+        "edges": graph.node_edges(node_id, "both"),
+        "consumerRoundTrip": consumer_round_trip_for_node(graph, node_id),
+    }
+
+
+def query_waypoint(graph: CatalogGraph, scene_id: str, waypoint_index: str) -> dict[str, Any]:
+    node_id = waypoint_node_id_for(scene_id, parse_object_index(waypoint_index))
+    return {
+        "schema": "catalog_graph.waypoint.v0",
+        "sceneId": scene_id,
+        "waypointIndex": parse_object_index(waypoint_index),
+        "node": graph.nodes_by_id.get(node_id),
+        "edges": graph.node_edges(node_id, "both"),
+        "consumerRoundTrip": consumer_round_trip_for_node(graph, node_id),
+    }
+
+
+def query_script_instruction(
+    graph: CatalogGraph,
+    scene_id: str,
+    object_index: str,
+    script_kind: str,
+    offset: str,
+) -> dict[str, Any]:
+    node_id = script_instruction_node_id_for(
+        scene_id,
+        parse_object_index(object_index),
+        script_kind,
+        parse_object_index(offset),
+    )
+    return {
+        "schema": "catalog_graph.script_instruction.v0",
+        "sceneId": scene_id,
+        "objectIndex": parse_object_index(object_index),
+        "scriptKind": script_kind,
+        "offset": parse_object_index(offset),
+        "node": graph.nodes_by_id.get(node_id),
+        "edges": graph.node_edges(node_id, "both"),
+        "consumerRoundTrip": consumer_round_trip_for_node(graph, node_id),
+    }
+
+
+def query_selection(graph: CatalogGraph, stable_id: str) -> dict[str, Any]:
+    if stable_id in graph.edges_by_id:
+        return {
+            "schema": "catalog_graph.selection.v0",
+            "id": stable_id,
+            "found": True,
+            "selection": edge_selection_projection(graph, graph.edges_by_id[stable_id]),
+        }
+    node_id = resolve_node_id(graph, stable_id)
+    node = graph.nodes_by_id.get(node_id)
+    return {
+        "schema": "catalog_graph.selection.v0",
+        "id": stable_id,
+        "found": node is not None,
+        "selection": selection_projection_for_node(graph, node) if node is not None else None,
     }
 
 
@@ -1179,6 +1968,21 @@ def catalog_selection_projection(graph: CatalogGraph) -> dict[str, dict[str, Any
     return selections
 
 
+def catalog_node_selection_projection(graph: CatalogGraph) -> dict[str, dict[str, Any]]:
+    selections: dict[str, dict[str, Any]] = {}
+    for node in graph.sorted_nodes():
+        if not node.get("selectable", True):
+            continue
+        stable_id = str(node.get("stableId") or stable_id_from_node_id(str(node.get("id"))))
+        selections[stable_id] = selection_projection_for_node(graph, node)
+    for edge in graph.sorted_edges():
+        if not edge.get("selectable", False):
+            continue
+        edge_id = str(edge.get("id"))
+        selections[edge_id] = edge_selection_projection(graph, edge)
+    return selections
+
+
 def catalog_scene_object_relationship_projection(graph: CatalogGraph) -> dict[str, dict[str, Any]]:
     relationships: dict[str, dict[str, Any]] = {}
     for node in graph.sorted_nodes():
@@ -1213,6 +2017,7 @@ def scene_object_relationship_edge_projection(
     direction = "out" if from_node_id == owner_node_id else "in" if to_node_id == owner_node_id else "incident"
     return {
         "id": edge.get("id"),
+        "edgeId": edge.get("id"),
         "type": edge.get("type"),
         "relationship": edge.get("relationship"),
         "direction": direction,
@@ -1224,6 +2029,14 @@ def scene_object_relationship_edge_projection(
         "sourceField": edge.get("sourceField"),
         "indexRule": edge.get("indexRule"),
         "usageKind": edge.get("usageKind"),
+        "sourceEvidenceId": edge.get("sourceEvidenceId"),
+        "occurrenceOrdinal": edge.get("occurrenceOrdinal"),
+        "ownerNodeId": edge.get("ownerNodeId"),
+        "sourcePath": edge.get("sourcePath"),
+        "sourceOffset": edge.get("sourceOffset"),
+        "rawReference": edge.get("rawReference"),
+        "targetStableId": edge.get("targetStableId"),
+        "resolverKind": edge.get("resolverKind"),
     }
 
 
@@ -1254,6 +2067,7 @@ def scene_object_visual_links_from_edges(edges: list[dict[str, Any]]) -> list[di
         links.append(
             {
                 "role": role,
+                "edgeId": edge.get("edgeId") or edge.get("id"),
                 "stableId": target.get("stableId"),
                 "label": target.get("label") or target.get("stableId"),
                 "targetType": target.get("type"),
@@ -1263,6 +2077,8 @@ def scene_object_visual_links_from_edges(edges: list[dict[str, Any]]) -> list[di
                 "sourceRule": edge.get("sourceRule"),
                 "sourceField": edge.get("sourceField"),
                 "indexRule": edge.get("indexRule"),
+                "sourceEvidenceId": edge.get("sourceEvidenceId"),
+                "occurrenceOrdinal": edge.get("occurrenceOrdinal"),
             }
         )
     role_order = {"file3d": 0, "body": 1, "animation": 2, "sprite": 3}
@@ -1282,10 +2098,13 @@ def asset_selection_projection(graph: CatalogGraph, node: dict[str, Any]) -> dic
     )
     usage_records = query_asset_usage_records(graph, stable_id)["usageRecords"]
     visible_usage_link_ids = {str(link.get("stableId")) for link in usage_links[:48]}
+    visible_usage_edge_ids = {str(link.get("edgeId")) for link in usage_links[:48] if link.get("edgeId")}
     visible_usage_records = [
         record
         for record in usage_records
-        if str(record.get("graphLinkStableId")) in visible_usage_link_ids
+        if str(record.get("graphEdgeId")) in visible_usage_edge_ids
+        or str(record.get("selectedEdgeId")) in visible_usage_edge_ids
+        or str(record.get("graphLinkStableId")) in visible_usage_link_ids
         or f"{record.get('scene_asset_id')}#object:{record.get('object_index')}" in visible_usage_link_ids
     ]
     export_actions = []
@@ -1341,6 +2160,139 @@ def asset_selection_projection(graph: CatalogGraph, node: dict[str, Any]) -> dic
             "sceneUsageCount": direct_scene_usage_count,
             "relationshipLinkCount": len(usage_edge_ids),
             "graphNodeId": node.get("id"),
+        },
+    }
+
+
+def selection_projection_for_node(graph: CatalogGraph, node: dict[str, Any]) -> dict[str, Any]:
+    if node.get("type") == "Asset":
+        return asset_selection_projection(graph, node)
+    node_id = str(node.get("id"))
+    selection_kind_by_node_type = {
+        "ResourceRecord": "resource_record",
+        "SceneObject": "scene_object",
+        "SceneZone": "scene_zone",
+        "Waypoint": "waypoint",
+        "ScriptInstruction": "script_instruction",
+        "PatchRecord": "patch_record",
+        "RuntimeStateField": "runtime_state_field",
+    }
+    return {
+        "schema": "catalog_graph.selection_projection.v0",
+        "kind": selection_kind_by_node_type.get(str(node.get("type")), str(node.get("type") or "node").lower()),
+        "nodeId": node_id,
+        "stableId": node.get("stableId") or stable_id_from_node_id(node_id),
+        "label": node.get("label") or stable_id_from_node_id(node_id),
+        "source": node.get("source") or {},
+        "provenance": str((node.get("source") or {}).get("source") or node.get("type") or "catalog graph node"),
+        "evidenceStatus": node.get("evidenceStatus") or "unknown",
+        "links": [
+            {
+                "kind": "graph_edge",
+                "edgeId": edge.get("id"),
+                "stableId": edge.get("id"),
+                "label": edge.get("relationship") or edge.get("type"),
+                "proofScope": edge.get("proofScope"),
+                "evidenceStatus": edge.get("evidenceStatus"),
+                "sourceRule": edge.get("sourceRule"),
+                "sourceField": edge.get("sourceField"),
+                "indexRule": edge.get("indexRule"),
+            }
+            for edge in graph.node_edges(node_id, "both")[:12]
+        ],
+        "usageRecords": [],
+        "unknowns": [] if node.get("type") != "MissingTarget" else [str(node.get("missingReason") or node.get("resolutionState") or "missing target")],
+        "previewActions": [],
+        "exportActions": [],
+        "exportCapability": {"exportable": False, "source": "catalog_graph.selection_projection.v0"},
+        "inspectorRoute": inspector_route_for_graph_node(node),
+        "workspaceSuggestion": workspace_for_node(node),
+        "facets": {
+            "graphNodeId": node_id,
+            "nodeType": node.get("type"),
+            "sceneAssetId": node.get("sceneAssetId"),
+        },
+    }
+
+
+def edge_selection_projection(graph: CatalogGraph, edge: dict[str, Any]) -> dict[str, Any]:
+    edge_id = str(edge.get("id"))
+    source = relationship_endpoint_projection(graph, str(edge.get("from")))
+    target = relationship_endpoint_projection(graph, str(edge.get("to")))
+    target_node = graph.nodes_by_id.get(str(edge.get("to")), {})
+    target_asset_id = target.get("stableId") if target.get("type") == "Asset" else None
+    export_actions = []
+    export_capability = {"exportable": False, "source": "catalog_graph.edge_selection_projection.v0"}
+    if target_asset_id and is_exportable_asset_node(target_node):
+        export_actions.append(
+            {
+                "id": "export_catalog_graph_edge",
+                "label": "Export edge evidence bundle",
+                "targetAssetId": target_asset_id,
+                "selectedEdgeId": edge_id,
+            }
+        )
+        export_capability = {
+            "exportable": True,
+            "source": "catalog_graph.edge_selection_projection.v0",
+        }
+    return {
+        "schema": "catalog_graph.selection_projection.v0",
+        "kind": "graph_edge",
+        "edgeId": edge_id,
+        "nodeId": edge.get("ownerNodeId") or edge.get("from"),
+        "stableId": edge_id,
+        "label": edge.get("relationship") or edge.get("type") or edge_id,
+        "source": {
+            "sourcePath": edge.get("sourcePath"),
+            "sourceOffset": edge.get("sourceOffset"),
+        },
+        "provenance": edge.get("sourceRule") or edge.get("sourceEvidenceId") or edge_id,
+        "evidenceStatus": edge.get("evidenceStatus") or "unknown",
+        "links": [
+            {
+                "kind": "graph_node",
+                "edgeId": edge_id,
+                "stableId": endpoint.get("stableId"),
+                "label": endpoint.get("label"),
+                "proofScope": edge.get("proofScope"),
+                "evidenceStatus": edge.get("evidenceStatus"),
+                "sourceRule": edge.get("sourceRule"),
+                "sourceField": edge.get("sourceField"),
+                "indexRule": edge.get("indexRule"),
+                "sourceEvidenceId": edge.get("sourceEvidenceId"),
+                "occurrenceOrdinal": edge.get("occurrenceOrdinal"),
+                "ownerNodeId": edge.get("ownerNodeId"),
+                "sourcePath": edge.get("sourcePath"),
+                "sourceOffset": edge.get("sourceOffset"),
+                "rawReference": edge.get("rawReference"),
+                "targetStableId": edge.get("targetStableId"),
+                "resolverKind": edge.get("resolverKind"),
+            }
+            for endpoint in (source, target)
+        ],
+        "unknowns": [],
+        "previewActions": [],
+        "exportActions": export_actions,
+        "exportCapability": export_capability,
+        "inspectorRoute": None,
+        "workspaceSuggestion": "entity",
+        "facets": {
+            "graphEdgeId": edge_id,
+            "selectedEdgeId": edge_id,
+            "proofScope": edge.get("proofScope"),
+            "sourceRule": edge.get("sourceRule"),
+            "sourceField": edge.get("sourceField"),
+            "indexRule": edge.get("indexRule"),
+            "sourceEvidenceId": edge.get("sourceEvidenceId"),
+            "occurrenceOrdinal": edge.get("occurrenceOrdinal"),
+            "ownerNodeId": edge.get("ownerNodeId"),
+            "sourcePath": edge.get("sourcePath"),
+            "sourceOffset": edge.get("sourceOffset"),
+            "rawReference": edge.get("rawReference"),
+            "targetStableId": edge.get("targetStableId"),
+            "resolverKind": edge.get("resolverKind"),
+            "targetAssetId": target_asset_id,
         },
     }
 
@@ -1442,6 +2394,22 @@ def inspector_route_for_asset_node(node: dict[str, Any]) -> str | None:
     return None
 
 
+def inspector_route_for_graph_node(node: dict[str, Any]) -> str | None:
+    if node.get("type") == "SceneZone":
+        return "scene_zone"
+    if node.get("type") == "Waypoint":
+        return "waypoint"
+    if node.get("type") == "ScriptInstruction":
+        return "script_instruction"
+    if node.get("type") == "PatchRecord":
+        return "patch_record"
+    if node.get("type") == "RuntimeStateField":
+        return "runtime_state_field"
+    if node.get("type") == "SceneObject":
+        return "scene_object"
+    return inspector_route_for_asset_node(node) if node.get("type") == "Asset" else None
+
+
 def selection_links_for_usage_edges(graph: CatalogGraph, edge_ids: list[str]) -> list[dict[str, Any]]:
     links: list[dict[str, Any]] = []
     def edge_sort_key(edge_id: str) -> tuple[int, str]:
@@ -1460,6 +2428,7 @@ def selection_links_for_usage_edges(graph: CatalogGraph, edge_ids: list[str]) ->
         links.append(
             {
                 "kind": "scene_object" if node_type == "SceneObject" else "scene_usage",
+                "edgeId": edge.get("id"),
                 "stableId": stable_id,
                 "label": source_node.get("label") or stable_id,
                 "proofScope": edge.get("proofScope"),
@@ -1467,6 +2436,14 @@ def selection_links_for_usage_edges(graph: CatalogGraph, edge_ids: list[str]) ->
                 "sourceRule": edge.get("sourceRule"),
                 "sourceField": edge.get("sourceField"),
                 "indexRule": edge.get("indexRule"),
+                "sourceEvidenceId": edge.get("sourceEvidenceId"),
+                "occurrenceOrdinal": edge.get("occurrenceOrdinal"),
+                "ownerNodeId": edge.get("ownerNodeId"),
+                "sourcePath": edge.get("sourcePath"),
+                "sourceOffset": edge.get("sourceOffset"),
+                "rawReference": edge.get("rawReference"),
+                "targetStableId": edge.get("targetStableId"),
+                "resolverKind": edge.get("resolverKind"),
             }
         )
     return links
@@ -1475,6 +2452,21 @@ def selection_links_for_usage_edges(graph: CatalogGraph, edge_ids: list[str]) ->
 def query_export(graph: CatalogGraph, stable_id: str | None) -> dict[str, Any]:
     if not stable_id:
         return export_graph_document(graph)
+    if stable_id in graph.edges_by_id:
+        edge = graph.edges_by_id[stable_id]
+        node_ids = {str(edge.get("from")), str(edge.get("to"))}
+        edge_ids = {stable_id}
+        for node_id in list(node_ids):
+            for incident in graph.node_edges(node_id, "both"):
+                edge_ids.add(str(incident.get("id")))
+        return {
+            "schema": "catalog_graph.subgraph.v0",
+            "root": stable_id,
+            "rootKind": "edge",
+            "selectedEdgeId": stable_id,
+            "nodes": [graph.nodes_by_id[node_id] for node_id in sorted(node_ids) if node_id in graph.nodes_by_id],
+            "edges": [graph.edges_by_id[edge_id] for edge_id in sorted(edge_ids) if edge_id in graph.edges_by_id],
+        }
     node_id = resolve_node_id(graph, stable_id)
     node_ids = {node_id}
     edge_ids = {edge["id"] for edge in graph.node_edges(node_id, "both")}
@@ -1485,9 +2477,111 @@ def query_export(graph: CatalogGraph, stable_id: str | None) -> dict[str, Any]:
     return {
         "schema": "catalog_graph.subgraph.v0",
         "root": stable_id,
+        "rootKind": "node",
         "nodes": [graph.nodes_by_id[node_id] for node_id in sorted(node_ids) if node_id in graph.nodes_by_id],
         "edges": [graph.edges_by_id[edge_id] for edge_id in sorted(edge_ids)],
     }
+
+
+def query_search(
+    graph: CatalogGraph,
+    q: str,
+    node_types: list[str] | None = None,
+    edge_types: list[str] | None = None,
+    proof_scopes: list[str] | None = None,
+    evidence_statuses: list[str] | None = None,
+    include_edges: bool = True,
+    limit: int = 50,
+) -> dict[str, Any]:
+    needle = q.lower().strip()
+    node_type_set = set(node_types or [])
+    edge_type_set = set(edge_types or [])
+    proof_scope_set = set(proof_scopes or [])
+    evidence_status_set = set(evidence_statuses or [])
+    results: list[dict[str, Any]] = []
+    for node in graph.sorted_nodes():
+        if node_type_set and str(node.get("type")) not in node_type_set:
+            continue
+        if evidence_status_set and str(node.get("evidenceStatus")) not in evidence_status_set:
+            continue
+        text = str(node.get("searchText") or search_text(node))
+        if needle and needle not in text:
+            continue
+        results.append(search_node_result(graph, node))
+        if len(results) >= limit:
+            break
+    if include_edges and len(results) < limit:
+        for edge in graph.sorted_edges():
+            if edge_type_set and str(edge.get("type")) not in edge_type_set:
+                continue
+            if proof_scope_set and str(edge.get("proofScope")) not in proof_scope_set:
+                continue
+            if evidence_status_set and str(edge.get("evidenceStatus")) not in evidence_status_set:
+                continue
+            text = str(edge.get("searchText") or search_text(edge))
+            if needle and needle not in text:
+                continue
+            results.append(search_edge_result(graph, edge))
+            if len(results) >= limit:
+                break
+    return {
+        "schema": "catalog_graph.search.v0",
+        "query": {
+            "q": q,
+            "nodeTypes": node_types or [],
+            "edgeTypes": edge_types or [],
+            "proofScopes": proof_scopes or [],
+            "evidenceStatuses": evidence_statuses or [],
+            "includeEdges": include_edges,
+            "limit": limit,
+        },
+        "results": results,
+    }
+
+
+def search_node_result(graph: CatalogGraph, node: dict[str, Any]) -> dict[str, Any]:
+    node_id = str(node.get("id"))
+    return {
+        "kind": "node",
+        "nodeId": node_id,
+        "stableId": node.get("stableId") or stable_id_from_node_id(node_id),
+        "label": node.get("label") or stable_id_from_node_id(node_id),
+        "nodeType": node.get("type"),
+        "proofScope": None,
+        "evidenceStatus": node.get("evidenceStatus"),
+        "sourceRule": None,
+        "sourceField": None,
+        "indexRule": None,
+        "sourceEvidenceId": None,
+        "targetAvailable": node.get("type") != "MissingTarget",
+        "snippet": node.get("searchText") or search_text(node),
+        "selectionProjection": selection_projection_for_node(graph, node),
+    }
+
+
+def search_edge_result(graph: CatalogGraph, edge: dict[str, Any]) -> dict[str, Any]:
+    target = relationship_endpoint_projection(graph, str(edge.get("to")))
+    return {
+        "kind": "edge",
+        "edgeId": edge.get("id"),
+        "stableId": edge.get("id"),
+        "label": edge.get("relationship") or edge.get("type"),
+        "edgeType": edge.get("type"),
+        "proofScope": edge.get("proofScope"),
+        "evidenceStatus": edge.get("evidenceStatus"),
+        "sourceRule": edge.get("sourceRule"),
+        "sourceField": edge.get("sourceField"),
+        "indexRule": edge.get("indexRule"),
+        "sourceEvidenceId": edge.get("sourceEvidenceId"),
+        "targetAvailable": target.get("type") != "MissingTarget",
+        "snippet": edge.get("searchText") or search_text(edge),
+        "selectionProjection": edge_selection_projection(graph, edge),
+    }
+
+
+def query_missing_targets(graph: CatalogGraph) -> dict[str, Any]:
+    nodes = [node for node in graph.sorted_nodes() if node.get("type") == "MissingTarget"]
+    return {"schema": "catalog_graph.missing_targets.v0", "missingTargets": nodes}
 
 
 def filter_edges(
@@ -1547,6 +2641,8 @@ def consumer_round_trip_for_node(graph: CatalogGraph, node_id: str) -> dict[str,
 def workspace_for_node(node: dict[str, Any]) -> str | None:
     if node.get("type") == "SceneObject":
         return "entity"
+    if node.get("type") in {"SceneZone", "Waypoint", "ScriptBlock", "ScriptInstruction", "PatchRecord", "RuntimeStateField"}:
+        return "entity"
     if node.get("type") == "ResourceRecord":
         return "resource"
     if node.get("type") != "Asset":
@@ -1577,7 +2673,7 @@ def iter_scene_objects(scene_asset: dict[str, Any]) -> Iterable[dict[str, Any]]:
             "sprite": 0,
             "flags": 0,
         }
-    for scene_object in recon.get("sampled_objects") or []:
+    for scene_object in recon.get("objects") or []:
         if isinstance(scene_object, dict):
             yield scene_object
 
@@ -1603,6 +2699,381 @@ def scene_object_node(scene_asset: dict[str, Any], scene_object: dict[str, Any])
         },
         "evidenceStatus": "decoded_only",
     }
+
+
+def iter_scene_script_owners(scene_asset: dict[str, Any]) -> Iterable[dict[str, Any]]:
+    recon = ((scene_asset.get("stats") or {}).get("reconnaissance") or {})
+    hero = recon.get("hero") or {}
+    if hero:
+        yield {
+            **hero,
+            "index": 0,
+            "position": hero.get("start"),
+            "file3d_index": -1,
+            "gen_body": 0,
+            "gen_anim": 0,
+            "sprite": 0,
+            "flags": 0,
+        }
+    for scene_object in recon.get("objects") or []:
+        if isinstance(scene_object, dict):
+            yield scene_object
+
+
+def scene_object_scripts(scene_object: dict[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]:
+    for script_kind, script_key in (("track", "track_script_analysis"), ("life", "life_script_analysis")):
+        analysis = scene_object.get(script_key)
+        if isinstance(analysis, dict) and analysis.get("status") != "missing":
+            yield script_kind, analysis
+
+
+def scene_zone_node(scene_asset: dict[str, Any], zone: dict[str, Any]) -> dict[str, Any]:
+    scene_id = str(scene_asset.get("id"))
+    zone_index = zone.get("index")
+    runtime = zone.get("runtime") if isinstance(zone.get("runtime"), dict) else {}
+    info = list(zone.get("info") or [])
+    return {
+        "id": scene_zone_node_id_for(scene_id, zone_index),
+        "type": "SceneZone",
+        "label": f"{scene_asset.get('label') or scene_id} zone {zone_index} ({zone.get('type_name') or zone.get('type')})",
+        "stableId": f"{scene_id}#zone:{zone_index}",
+        "sceneAssetId": scene_id,
+        "zoneIndex": zone_index,
+        "zoneType": zone.get("type"),
+        "zoneTypeName": zone.get("type_name"),
+        "zoneNum": zone.get("value"),
+        "value": zone.get("value"),
+        "bounds": {"start": zone.get("start"), "end": zone.get("end")},
+        "serializedInfo": {f"Info{index}": value for index, value in enumerate(info)},
+        "loadState": zone.get("load_rules"),
+        "contractKinds": zone_contract_kinds(runtime),
+        "source": {
+            "scene_asset_id": scene_id,
+            "scene_entry_index": (scene_asset.get("source") or {}).get("entry_index"),
+            "zone_index": zone_index,
+            "offset": zone.get("offset"),
+        },
+        "evidenceStatus": "decoded_only",
+    }
+
+
+def waypoint_node(scene_asset: dict[str, Any], waypoint: dict[str, Any]) -> dict[str, Any]:
+    scene_id = str(scene_asset.get("id"))
+    waypoint_index = waypoint.get("index")
+    return {
+        "id": waypoint_node_id_for(scene_id, waypoint_index),
+        "type": "Waypoint",
+        "label": f"{scene_asset.get('label') or scene_id} waypoint {waypoint_index}",
+        "stableId": f"{scene_id}#waypoint:{waypoint_index}",
+        "sceneAssetId": scene_id,
+        "waypointIndex": waypoint_index,
+        "position": waypoint.get("position"),
+        "source": {
+            "scene_asset_id": scene_id,
+            "scene_entry_index": (scene_asset.get("source") or {}).get("entry_index"),
+            "waypoint_index": waypoint_index,
+            "offset": waypoint.get("offset"),
+        },
+        "evidenceStatus": "decoded_only",
+    }
+
+
+def script_block_node(
+    scene_asset: dict[str, Any],
+    scene_object: dict[str, Any],
+    script_kind: str,
+    analysis: dict[str, Any],
+) -> dict[str, Any]:
+    scene_id = str(scene_asset.get("id"))
+    object_index = scene_object.get("index")
+    return {
+        "id": script_block_node_id_for(scene_id, object_index, script_kind),
+        "type": "ScriptBlock",
+        "label": f"{scene_asset.get('label') or scene_id} object {object_index} {script_kind} script",
+        "stableId": f"{scene_id}#object:{object_index}#script:{script_kind}",
+        "sceneAssetId": scene_id,
+        "objectIndex": object_index,
+        "scriptKind": script_kind,
+        "byteLength": analysis.get("byte_length"),
+        "instructionCount": analysis.get("instruction_count"),
+        "decodedBytes": analysis.get("decoded_bytes"),
+        "sha256": analysis.get("sha256"),
+        "source": {
+            "scene_asset_id": scene_id,
+            "scene_entry_index": (scene_asset.get("source") or {}).get("entry_index"),
+            "object_index": object_index,
+            "script_kind": script_kind,
+            "script_offset": scene_object.get(f"{script_kind}_script_offset"),
+        },
+        "evidenceStatus": "decoded_only",
+    }
+
+
+def script_instruction_node(
+    scene_asset: dict[str, Any],
+    scene_object: dict[str, Any],
+    script_kind: str,
+    instruction: dict[str, Any],
+) -> dict[str, Any]:
+    scene_id = str(scene_asset.get("id"))
+    object_index = scene_object.get("index")
+    offset = instruction.get("offset")
+    return {
+        "id": script_instruction_node_id_for(scene_id, object_index, script_kind, offset),
+        "type": "ScriptInstruction",
+        "label": f"{scene_asset.get('label') or scene_id} object {object_index} {script_kind} @{offset} {instruction.get('mnemonic') or instruction.get('opcode') or 'UNKNOWN'}",
+        "stableId": f"{scene_id}#object:{object_index}#script:{script_kind}#offset:{offset}",
+        "sceneAssetId": scene_id,
+        "objectIndex": object_index,
+        "scriptKind": script_kind,
+        "offset": offset,
+        "opcode": instruction.get("opcode"),
+        "mnemonic": instruction.get("mnemonic") or instruction.get("source_opcode") or instruction.get("target_opcode"),
+        "byteLength": instruction.get("byte_length") or instruction.get("target_containing_byte_length"),
+        "operandHex": instruction.get("operand_hex"),
+        "behaviorCategory": instruction.get("behavior_category") or instruction.get("source_behavior_category") or instruction.get("target_behavior_category"),
+        "decodedOperandSemantics": instruction.get("operand_semantics"),
+        "source": {
+            "scene_asset_id": scene_id,
+            "scene_entry_index": (scene_asset.get("source") or {}).get("entry_index"),
+            "object_index": object_index,
+            "script_kind": script_kind,
+            "offset": offset,
+        },
+        "evidenceStatus": "decoded_only",
+    }
+
+
+def runtime_state_field_node(
+    scene_asset: dict[str, Any],
+    scene_object: dict[str, Any],
+    script_kind: str,
+    field: dict[str, Any],
+) -> dict[str, Any]:
+    scene_id = str(scene_asset.get("id"))
+    object_index = scene_object.get("index")
+    source_offset = field.get("source_offset")
+    field_name = field.get("field") or field.get("patched_field")
+    return {
+        "id": runtime_state_field_node_id_for(scene_id, object_index, script_kind, source_offset, field_name),
+        "type": "RuntimeStateField",
+        "label": f"{scene_id} object {object_index} {script_kind} @{source_offset} field {field_name}",
+        "stableId": f"{scene_id}#object:{object_index}#script:{script_kind}#offset:{source_offset}#field:{field_name}",
+        "sceneAssetId": scene_id,
+        "objectIndex": object_index,
+        "scriptKind": script_kind,
+        "fieldName": field_name,
+        "sourceOffset": source_offset,
+        "operandOffset": field.get("operand_offset"),
+        "size": field.get("size") or field.get("patched_field_size"),
+        "initialValue": field.get("initial_value"),
+        "initialHex": field.get("initial_hex"),
+        "fieldSource": field.get("source") or field.get("patched_field_source"),
+        "mutableByRuntime": True,
+        "source": {
+            "scene_asset_id": scene_id,
+            "scene_entry_index": (scene_asset.get("source") or {}).get("entry_index"),
+            "object_index": object_index,
+            "script_kind": script_kind,
+            "source_offset": source_offset,
+        },
+        "evidenceStatus": "source_backed",
+    }
+
+
+def patch_record_node(scene_asset: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    scene_id = str(scene_asset.get("id"))
+    patch_index = patch.get("index")
+    return {
+        "id": patch_record_node_id_for(scene_id, patch_index),
+        "type": "PatchRecord",
+        "label": f"{scene_asset.get('label') or scene_id} patch {patch_index}",
+        "stableId": f"{scene_id}#patch:{patch_index}",
+        "sceneAssetId": scene_id,
+        "patchIndex": patch_index,
+        "size": patch.get("size"),
+        "targetOffset": patch.get("target_offset"),
+        "target": patch.get("target"),
+        "source": {
+            "scene_asset_id": scene_id,
+            "scene_entry_index": (scene_asset.get("source") or {}).get("entry_index"),
+            "patch_index": patch_index,
+            "offset": patch.get("offset"),
+        },
+        "evidenceStatus": "decoded_only",
+    }
+
+
+def missing_target_node(
+    stable_id: str,
+    source: dict[str, Any],
+    target_kind: str,
+    *,
+    owner_node_id: str | None = None,
+    resolution_state: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": missing_node_id_for(stable_id),
+        "type": "MissingTarget",
+        "label": f"Missing {stable_id}",
+        "stableId": stable_id,
+        "targetStableId": stable_id,
+        "targetKind": target_kind,
+        "resolutionState": resolution_state or resolution_state_for_missing_source(source),
+        "rawReference": source.get("reference_value", source.get("sample_id", stable_id)),
+        "ownerNodeId": owner_node_id,
+        "resolverKind": source.get("kind") or target_kind,
+        "candidateTargets": source.get("candidate_targets") or [],
+        "absenceEvidenceStatus": absence_evidence_status_for_resolution_state(
+            resolution_state or resolution_state_for_missing_source(source)
+        ),
+        "missingReason": source.get("missing_reason") or source.get("reason") or source.get("status"),
+        "source": {"target": stable_id, "link": source},
+        "evidenceStatus": "unknown",
+    }
+
+
+def zone_contract_kinds(runtime: dict[str, Any]) -> list[str]:
+    kinds: list[str] = []
+    effect = runtime.get("effect")
+    if isinstance(effect, str) and effect and effect not in kinds:
+        kinds.append(effect)
+    for field in sorted(runtime):
+        if field.endswith("_application"):
+            kinds.append(field[: -len("_application")])
+    return sorted(set(kinds))
+
+
+def script_instructions_by_local_reference(analysis: dict[str, Any]) -> dict[tuple[str, Any], dict[str, Any]]:
+    result: dict[tuple[str, Any], dict[str, Any]] = {}
+    semantic_keys = {
+        "object": ("object_id",),
+        "waypoint": ("waypoint_id", "circle_waypoint_id"),
+        "camera_zone": ("camera_zone_id",),
+        "grm_zone": ("grm_zone_id",),
+        "ladder_zone": ("ladder_zone_id",),
+        "escalator_zone": ("escalator_zone_id",),
+        "hit_zone": ("hit_zone_id",),
+        "rail_zone": ("rail_zone_id",),
+        "change_cube_control": ("zone_id", "change_cube_zone_id"),
+    }
+    for instruction in analysis.get("first_instructions") or []:
+        if not isinstance(instruction, dict):
+            continue
+        semantics = instruction.get("operand_semantics") if isinstance(instruction.get("operand_semantics"), dict) else {}
+        for reference_key, keys in semantic_keys.items():
+            for key in keys:
+                if key in semantics:
+                    result.setdefault((reference_key, semantics.get(key)), instruction)
+                    result.setdefault((reference_key.replace("_zone", ""), semantics.get(key)), instruction)
+    return result
+
+
+def first_instruction_for_reference_value(analysis: dict[str, Any], reference_value: Any) -> dict[str, Any] | None:
+    for instruction in analysis.get("first_instructions") or []:
+        if not isinstance(instruction, dict):
+            continue
+        semantics = instruction.get("operand_semantics")
+        if isinstance(semantics, dict) and reference_value in semantics.values():
+            return instruction
+    return None
+
+
+def instruction_from_control_link(link: dict[str, Any], *, source: bool) -> dict[str, Any]:
+    if source:
+        return {
+            "offset": link.get("source_offset"),
+            "mnemonic": link.get("source_opcode"),
+            "behavior_category": link.get("source_behavior_category"),
+        }
+    return {
+        "offset": link.get("target_offset"),
+        "mnemonic": link.get("target_opcode") or link.get("target_containing_opcode"),
+        "behavior_category": link.get("target_behavior_category") or link.get("target_containing_behavior_category"),
+        "byte_length": link.get("target_containing_byte_length"),
+    }
+
+
+def instruction_from_runtime_field(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "offset": field.get("source_offset"),
+        "mnemonic": field.get("opcode"),
+        "behavior_category": field.get("behavior_category"),
+    }
+
+
+def instruction_from_patch_target(target: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "offset": target.get("instruction_offset"),
+        "mnemonic": target.get("instruction_opcode"),
+        "behavior_category": target.get("instruction_behavior_category"),
+    }
+
+
+def runtime_field_from_patch_target(target: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source_offset": target.get("instruction_offset"),
+        "field": target.get("patched_field"),
+        "operand_offset": target.get("operand_relative_offset"),
+        "size": target.get("patched_field_size"),
+        "source": target.get("patched_field_source"),
+    }
+
+
+def object_index_from_owner(owner: Any) -> int | None:
+    if owner == "hero":
+        return 0
+    if isinstance(owner, str) and owner.startswith("object:"):
+        try:
+            return int(owner.split(":", 1)[1])
+        except ValueError:
+            return None
+    if isinstance(owner, int) and not isinstance(owner, bool):
+        return owner
+    return None
+
+
+def target_kind_for_usage(link_kind: str) -> str:
+    if link_kind in {"sample", "ambience_sample", "script_sample_missing"}:
+        return "sample"
+    if link_kind in {"text", "zone_text"}:
+        return "text"
+    if link_kind == "video":
+        return "video"
+    if link_kind in {"body", "animation", "sprite"}:
+        return "asset"
+    if link_kind == "grm_fragment":
+        return "background_resource"
+    return "asset"
+
+
+def resolution_state_for_missing_source(source: dict[str, Any]) -> str:
+    status = str(source.get("status") or source.get("missing_reason") or source.get("reason") or "")
+    if "outside" in status:
+        return "outside_table"
+    if "empty" in status:
+        return "empty_archive_slot"
+    if "undecoded" in status:
+        return "undecoded_slot"
+    if "name_not_found" in status or "not_found" in status:
+        return "unresolved_name"
+    if "not loaded" in status or "no_samples_archive_loaded" in status:
+        return "not_loaded_archive"
+    return "backend_unresolved"
+
+
+def absence_evidence_status_for_missing_source(source: dict[str, Any]) -> str:
+    return absence_evidence_status_for_resolution_state(resolution_state_for_missing_source(source))
+
+
+def absence_evidence_status_for_resolution_state(resolution_state: str) -> str:
+    if resolution_state in {"outside_table", "empty_archive_slot", "undecoded_slot"}:
+        return "decoded_absent"
+    if resolution_state == "not_loaded_archive":
+        return "archive_not_loaded"
+    if resolution_state == "intentionally_deferred_target":
+        return "intentionally_deferred"
+    return "unresolved"
 
 
 def proof_scope_for_usage(usage: dict[str, Any]) -> str:
@@ -1698,8 +3169,26 @@ def resolve_node_id(graph: CatalogGraph, stable_id: str) -> str:
     if stable_id in graph.indexes.get("assetById", {}):
         return str(graph.indexes["assetById"][stable_id])
     if "#object:" in stable_id:
-        scene_id, object_value = stable_id.split("#object:", 1)
-        return scene_object_node_id_for(scene_id, parse_object_index(object_value))
+        scene_id, rest = stable_id.split("#object:", 1)
+        if "#script:" in rest:
+            object_value, script_rest = rest.split("#script:", 1)
+            if "#offset:" in script_rest:
+                script_kind, offset = script_rest.split("#offset:", 1)
+                if "#field:" in offset:
+                    offset_value, field_name = offset.split("#field:", 1)
+                    return runtime_state_field_node_id_for(scene_id, parse_object_index(object_value), script_kind, offset_value, field_name)
+                return script_instruction_node_id_for(scene_id, parse_object_index(object_value), script_kind, offset)
+            return script_block_node_id_for(scene_id, parse_object_index(object_value), script_rest)
+        return scene_object_node_id_for(scene_id, parse_object_index(rest))
+    if "#zone:" in stable_id:
+        scene_id, zone_value = stable_id.split("#zone:", 1)
+        return scene_zone_node_id_for(scene_id, parse_object_index(zone_value))
+    if "#waypoint:" in stable_id:
+        scene_id, waypoint_value = stable_id.split("#waypoint:", 1)
+        return waypoint_node_id_for(scene_id, parse_object_index(waypoint_value))
+    if "#patch:" in stable_id:
+        scene_id, patch_value = stable_id.split("#patch:", 1)
+        return patch_record_node_id_for(scene_id, parse_object_index(patch_value))
     if stable_id.startswith("ANIM3DS:"):
         return sprite_range_node_id_for(stable_id.split(":", 1)[1])
     return asset_node_id_for(stable_id)
@@ -1732,11 +3221,37 @@ def scene_object_node_id_for(scene_id: str, object_index: Any) -> str:
     return f"scene-object:{scene_id}:{object_index}"
 
 
+def scene_zone_node_id_for(scene_id: str, zone_index: Any) -> str:
+    return f"scene-zone:{scene_id}:{zone_index}"
+
+
+def waypoint_node_id_for(scene_id: str, waypoint_index: Any) -> str:
+    return f"waypoint:{scene_id}:{waypoint_index}"
+
+
+def script_block_node_id_for(scene_id: str, object_index: Any, script_kind: str) -> str:
+    return f"script-block:{scene_id}:{object_index}:{script_kind}"
+
+
+def script_instruction_node_id_for(scene_id: str, object_index: Any, script_kind: str, offset: Any) -> str:
+    return f"script-instruction:{scene_id}:{object_index}:{script_kind}:{offset}"
+
+
+def runtime_state_field_node_id_for(scene_id: str, object_index: Any, script_kind: str, offset: Any, field_name: Any) -> str:
+    return f"runtime-state-field:{scene_id}:{object_index}:{script_kind}:{offset}:{field_name}"
+
+
+def patch_record_node_id_for(scene_id: str, patch_index: Any) -> str:
+    return f"patch-record:{scene_id}:{patch_index}"
+
+
 def script_reference_node_id_for(scene_id: str, object_index: Any, link: dict[str, Any]) -> str:
     parts = [
         scene_id,
         str(object_index),
         str(link.get("script_kind") or "script"),
+        str(link.get("source_offset") if link.get("source_offset") is not None else link.get("offset") or ""),
+        str(link.get("occurrence_index") if link.get("occurrence_index") is not None else ""),
         str(link.get("reference_key") or "ref"),
         str(link.get("reference_value") or ""),
         str(link.get("asset_id") or link.get("target_asset_id") or ""),
@@ -1776,11 +3291,54 @@ def stable_id_from_node_id(node_id: str) -> str:
         rest = node_id[len("scene-object:") :]
         scene_id, object_index = rest.rsplit(":", 1)
         return f"{scene_id}#object:{object_index}"
+    if node_id.startswith("scene-zone:"):
+        rest = node_id[len("scene-zone:") :]
+        scene_id, zone_index = rest.rsplit(":", 1)
+        return f"{scene_id}#zone:{zone_index}"
+    if node_id.startswith("waypoint:"):
+        rest = node_id[len("waypoint:") :]
+        scene_id, waypoint_index = rest.rsplit(":", 1)
+        return f"{scene_id}#waypoint:{waypoint_index}"
+    if node_id.startswith("script-block:"):
+        rest = node_id[len("script-block:") :]
+        scene_id, object_index, script_kind = rest.rsplit(":", 2)
+        return f"{scene_id}#object:{object_index}#script:{script_kind}"
+    if node_id.startswith("script-instruction:"):
+        rest = node_id[len("script-instruction:") :]
+        scene_id, object_index, script_kind, offset = rest.rsplit(":", 3)
+        return f"{scene_id}#object:{object_index}#script:{script_kind}#offset:{offset}"
+    if node_id.startswith("runtime-state-field:"):
+        rest = node_id[len("runtime-state-field:") :]
+        scene_id, object_index, script_kind, offset, field_name = rest.rsplit(":", 4)
+        return f"{scene_id}#object:{object_index}#script:{script_kind}#offset:{offset}#field:{field_name}"
+    if node_id.startswith("patch-record:"):
+        rest = node_id[len("patch-record:") :]
+        scene_id, patch_index = rest.rsplit(":", 1)
+        return f"{scene_id}#patch:{patch_index}"
     if node_id.startswith("scene:"):
         return node_id[len("scene:") :]
     if node_id.startswith("sprite-range:"):
         return node_id[len("sprite-range:") :]
     return node_id
+
+
+def stable_edge_base(edge: dict[str, Any]) -> str:
+    parts = [
+        str(edge["type"]),
+        str(edge["from"]),
+        str(edge["to"]),
+        str(edge.get("proofScope") or "unknown"),
+        str(edge.get("sourceField") or ""),
+        str(edge.get("sourceRule") or ""),
+        str(edge.get("sourcePath") or ""),
+        str(edge.get("sourceOffset") if edge.get("sourceOffset") is not None else ""),
+        str(edge.get("rawReference") if edge.get("rawReference") is not None else ""),
+        str(edge.get("resolverKind") or ""),
+    ]
+    occurrence_key = edge.get("occurrenceKey")
+    if occurrence_key is not None:
+        parts.append(str(occurrence_key))
+    return "|".join(parts)
 
 
 def stable_edge_id(base: str, count: int) -> str:
@@ -1866,6 +3424,46 @@ def catalog_graph_command(argv: list[str]) -> int:
     scene_object.add_argument("object_index")
     scene_object.add_argument("--json", action="store_true")
 
+    zone = subparsers.add_parser("zone")
+    zone.add_argument("scene_id")
+    zone.add_argument("zone_index")
+    zone.add_argument("--json", action="store_true")
+
+    waypoint = subparsers.add_parser("waypoint")
+    waypoint.add_argument("scene_id")
+    waypoint.add_argument("waypoint_index")
+    waypoint.add_argument("--json", action="store_true")
+
+    script_instruction = subparsers.add_parser("script-instruction")
+    script_instruction.add_argument("scene_id")
+    script_instruction.add_argument("object_index")
+    script_instruction.add_argument("script_kind")
+    script_instruction.add_argument("offset")
+    script_instruction.add_argument("--json", action="store_true")
+
+    operation = subparsers.add_parser("operation")
+    operation.add_argument("model_id")
+    operation.add_argument("animation_id")
+    operation.add_argument("--operation", default="pose_playback")
+    operation.add_argument("--json", action="store_true")
+
+    selection = subparsers.add_parser("selection")
+    selection.add_argument("id")
+    selection.add_argument("--json", action="store_true")
+
+    search = subparsers.add_parser("search")
+    search.add_argument("q")
+    search.add_argument("--node-type", action="append", dest="node_types")
+    search.add_argument("--edge-type", action="append", dest="edge_types")
+    search.add_argument("--proof-scope", action="append", dest="proof_scopes")
+    search.add_argument("--evidence-status", action="append", dest="evidence_statuses")
+    search.add_argument("--nodes-only", action="store_true")
+    search.add_argument("--limit", type=int, default=50)
+    search.add_argument("--json", action="store_true")
+
+    missing_targets = subparsers.add_parser("missing-targets")
+    missing_targets.add_argument("--json", action="store_true")
+
     export = subparsers.add_parser("export")
     export.add_argument("--subgraph")
     export.add_argument("--json", action="store_true")
@@ -1902,6 +3500,29 @@ def catalog_graph_command(argv: list[str]) -> int:
         payload = query_usages(graph, args.id, args.proof_scope, args.evidence_status)
     elif args.command == "scene-object":
         payload = query_scene_object(graph, args.scene_id, args.object_index)
+    elif args.command == "zone":
+        payload = query_zone(graph, args.scene_id, args.zone_index)
+    elif args.command == "waypoint":
+        payload = query_waypoint(graph, args.scene_id, args.waypoint_index)
+    elif args.command == "script-instruction":
+        payload = query_script_instruction(graph, args.scene_id, args.object_index, args.script_kind, args.offset)
+    elif args.command == "operation":
+        payload = query_animation_operation_compatibility(graph, args.model_id, args.animation_id, args.operation)
+    elif args.command == "selection":
+        payload = query_selection(graph, args.id)
+    elif args.command == "search":
+        payload = query_search(
+            graph,
+            args.q,
+            node_types=args.node_types,
+            edge_types=args.edge_types,
+            proof_scopes=args.proof_scopes,
+            evidence_statuses=args.evidence_statuses,
+            include_edges=not args.nodes_only,
+            limit=args.limit,
+        )
+    elif args.command == "missing-targets":
+        payload = query_missing_targets(graph)
     elif args.command == "export":
         payload = query_export(graph, args.subgraph)
     else:  # pragma: no cover - argparse enforces choices
