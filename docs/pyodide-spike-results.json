@@ -1,0 +1,68 @@
+{
+  "schema": "lba2_lm2_viewer.pyodide_spike.v1",
+  "generated_at": "2026-05-16T03:05:27.817Z",
+  "source_files": 15,
+  "source_bytes": 916070,
+  "elapsed_ms": 1921.2841,
+  "ok": true,
+  "startupMs": 1042.6131,
+  "operationMs": 449.98080000000004,
+  "msgspec": {
+    "ok": true,
+    "version": "0.19.0",
+    "ms": 393.69799999999987
+  },
+  "payload": {
+    "hqr": {
+      "ms": 0.8542000000000272,
+      "regular": {
+        "count": 1,
+        "first_index": 1,
+        "first_length": 21
+      },
+      "classic": {
+        "count": 3,
+        "indexes": [
+          0,
+          2
+        ]
+      }
+    },
+    "lm2": {
+      "ms": 0.16700000000002824,
+      "vertices": 1,
+      "bones": 1,
+      "first_vertex": [
+        3,
+        6,
+        -9,
+        0
+      ]
+    },
+    "animation": {
+      "ms": 0.30629999999987056,
+      "keyframes": 2,
+      "sample_target": 1,
+      "posed_first_vertex": [
+        3.75,
+        6,
+        -9,
+        0
+      ]
+    },
+    "catalog": {
+      "ms": 7.330599999999965,
+      "source_mode": "files",
+      "asset_count": 1,
+      "first_asset": "BODY.HQR:1",
+      "models": 1
+    }
+  },
+  "memory": {
+    "rss": 179253248,
+    "heapTotal": 41709568,
+    "heapUsed": 23563136,
+    "external": 64210694,
+    "arrayBuffers": 12801285
+  }
+}

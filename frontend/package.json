@@ -4,15 +4,21 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "prepare:static-runtime": "node ../scripts/prepare-static-runtime.mjs",
+    "dev": "npm run prepare:static-runtime && vite --host 127.0.0.1",
+    "check:static-boundary": "node ../scripts/check-static-boundary.mjs",
+    "spike:pyodide": "node ../scripts/run-pyodide-spike.mjs",
+    "build": "npm run prepare:static-runtime && npm run check:static-boundary && tsc && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:e2e:static": "npm run build && playwright test --config playwright.config.ts"
   },
   "dependencies": {
     "three": "^0.164.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/three": "^0.164.1",
+    "pyodide": "0.29.4",
     "typescript": "^5.9.3",
     "vite": "^8.0.9"
   }

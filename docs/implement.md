@@ -97,6 +97,9 @@ When model/entity contracts land:
 If a JSON Schema is generated or maintained, keep it aligned with the msgspec
 types and fixture expectations.
 
+The first model contract schema is `lm2_model_contract.v0` under
+`lba2_lm2_viewer.contracts`.
+
 ## Animation Rules
 
 Animation playback is allowed as a near-term target only after structured decode
@@ -104,11 +107,17 @@ and frame stepping are validated.
 
 Implementation order:
 
-1. Decode full records.
+1. Decode full records. Implemented in `lba2_lm2_viewer.animation`.
 2. Test header, keyframe, boneframe, loop, and interpolation behavior.
-3. Export evidence JSON.
-4. Add frame stepping for selected BODY + ANIM pairs.
-5. Add continuous playback.
+   Implemented with synthetic fixtures.
+3. Export evidence JSON. Implemented by `lba2-lm2-viewer animation`.
+4. Add posed frame stepping for selected BODY + ANIM pairs. Implemented by the
+   backend pose path and frontend Animation panel.
+5. Add continuous playback. Implemented by the backend sequence endpoint and
+   frontend Animation controller. Playback uses explicit intro/loop sequence
+   indexes so the loop-start frame can interpolate from the last keyframe, and
+   world-motion repeat cycles accumulate root-motion deltas instead of snapping
+   back to the first loop pass.
 
 Use updated MBN model viewer decompilation as reference for:
 
@@ -120,7 +129,36 @@ Use updated MBN model viewer decompilation as reference for:
 - linear interpolation
 - body transform application
 
-Do not add visual playback from guessed semantics.
+Do not add new visual playback semantics without source, MBN, or original-runtime
+evidence.
+
+## ANIM3DS Track
+
+ANIM3DS frame payloads are LSP sprite evidence. The original runtime source
+identifies entry 127 as the `T_ANIM_3DS` frame-range table, so that metadata
+layout is decoded.
+
+Implemented:
+
+1. Catalog every non-empty `ANIM3DS.HQR` entry.
+2. Use classic zero-based indexing for ANIM3DS, matching the original runtime.
+3. Decode entry 127 as `T_ANIM_3DS` records: name, start frame, end frame, and
+   frame count.
+4. Classify ANIM3DS entries as `sprite` assets so they stay out of BODY
+   animation compatibility and animation counts.
+5. Link raw sprite frames to their owning ANIM3DS range when the table is
+   available.
+6. Decode individual LSP sprite frames into width, height, offsets, palette
+   indices, and pixels for frontend preview.
+7. Emit unknown descriptors with offsets, lengths, SHA-256 hashes, confidence,
+   and notes rather than raw bytes.
+8. Keep raw ANIM3DS deferment separate from real `ANIM.HQR` parse failures:
+   deferred ANIM3DS entries use `decode_status: deferred`, while parser
+   failures use `decode_status: parse_failed` and `parse_error`.
+
+Deferred:
+
+1. Contract connections for ANIM3DS usage evidence.
 
 ## Validation Matrix
 

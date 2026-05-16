@@ -1,6 +1,6 @@
 # Bootstrap Prompt
 
-You are working in `D:\repos\reverse\lba2-lm2-viewer`, an existing Python +
+You are working in `<repo>`, an existing Python +
 Vite/TypeScript/Three.js reverse-engineering viewer for Little Big Adventure 2
 LM2 models and animations.
 

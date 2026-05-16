@@ -1,0 +1,213 @@
+{
+  "schema_version": "lm2_model_contract.v0",
+  "tool": "lba2-lm2-viewer 0.1.0",
+  "source": {
+    "format": "lm2",
+    "asset_id": "SYNTH.HQR:1",
+    "label": "Synthetic test model",
+    "archive": "SYNTH.HQR",
+    "entry_index": 1,
+    "classic_index": 0,
+    "archive_offset": null,
+    "asset_root": null,
+    "source_mode": "synthetic",
+    "decoded_bytes": 96,
+    "decoded_sha256": "synthetic-sha256",
+    "archive_raw_bytes": 106,
+    "archive_raw_sha256": "synthetic-raw-sha256",
+    "resource_header": null
+  },
+  "geometry": {
+    "counts": {
+      "bones": 2,
+      "vertices": 3,
+      "normals": 0,
+      "polygons": 1,
+      "lines": 1,
+      "spheres": 1,
+      "uv_groups": 1
+    },
+    "decoded_bounds": {
+      "x": [
+        0.0,
+        10.0
+      ],
+      "y": [
+        0.0,
+        20.0
+      ],
+      "z": [
+        0.0,
+        0.0
+      ]
+    },
+    "decoded_unit": "viewer_world",
+    "header_raw_bounds": {
+      "x": [
+        -1,
+        10
+      ],
+      "y": [
+        -2,
+        20
+      ],
+      "z": [
+        -3,
+        30
+      ]
+    },
+    "header_raw_unit": "lm2_header_integer",
+    "bone_parent_indices": [
+      0,
+      0
+    ],
+    "skinned_vertex_count": 2,
+    "coordinate_space": "decoded_source",
+    "viewer_world_scale": 0.15
+  },
+  "render": {
+    "version": 1,
+    "flags": 1281,
+    "no_sort": false,
+    "has_transparency": true,
+    "textured_polygon_count": 1,
+    "transparent_polygon_count": 1,
+    "palette_indices": [
+      2,
+      3,
+      12
+    ],
+    "materials": [
+      {
+        "kind": "texture",
+        "value": 0,
+        "polygon_indices": [
+          0
+        ]
+      }
+    ],
+    "uv_groups": [
+      {
+        "index": 0,
+        "x": 1,
+        "y": 2,
+        "w": 4,
+        "h": 5,
+        "polygon_indices": [
+          0
+        ]
+      }
+    ]
+  },
+  "animation": {
+    "has_animation_flag": true,
+    "compatible_animation_ids": [],
+    "notes": [
+      "Compatibility is intentionally empty until animation semantics are decoded."
+    ]
+  },
+  "gameplay": {
+    "scale": 0.15,
+    "collision_bounds": {
+      "x": [
+        0.0,
+        10.0
+      ],
+      "y": [
+        0.0,
+        20.0
+      ],
+      "z": [
+        0.0,
+        0.0
+      ]
+    },
+    "attachment_points": [],
+    "notes": [
+      "Gameplay-facing attachments and collision semantics are not yet decoded."
+    ]
+  },
+  "evidence": [
+    {
+      "kind": "synthetic_fixture",
+      "path": "tests/fixtures/contracts/synthetic_model_contract_v0.json",
+      "sha256": null,
+      "note": "Synthetic contract fixture with no game-derived data."
+    }
+  ],
+  "unknowns": [
+    {
+      "section": "header.unknown",
+      "offset": 32,
+      "length": 8,
+      "sha256": null,
+      "confidence": "unknown",
+      "note": "Parser records the header span but does not retain bytes yet.",
+      "value": null
+    },
+    {
+      "section": "bones[0].unknown_1",
+      "offset": 100,
+      "length": 2,
+      "sha256": null,
+      "confidence": "parsed_unknown",
+      "note": "Parsed LM2 bone field with unknown semantics.",
+      "value": 7
+    },
+    {
+      "section": "bones[0].unknown_2",
+      "offset": 102,
+      "length": 2,
+      "sha256": null,
+      "confidence": "parsed_unknown",
+      "note": "Parsed LM2 bone field with unknown semantics.",
+      "value": 8
+    },
+    {
+      "section": "bones[1].unknown_1",
+      "offset": 108,
+      "length": 2,
+      "sha256": null,
+      "confidence": "parsed_unknown",
+      "note": "Parsed LM2 bone field with unknown semantics.",
+      "value": 9
+    },
+    {
+      "section": "bones[1].unknown_2",
+      "offset": 110,
+      "length": 2,
+      "sha256": null,
+      "confidence": "parsed_unknown",
+      "note": "Parsed LM2 bone field with unknown semantics.",
+      "value": 10
+    },
+    {
+      "section": "lines[0].unknown",
+      "offset": 160,
+      "length": 2,
+      "sha256": null,
+      "confidence": "parsed_unknown",
+      "note": "Parsed LM2 line field with unknown semantics.",
+      "value": 99
+    },
+    {
+      "section": "spheres[0].unknown",
+      "offset": 168,
+      "length": 2,
+      "sha256": null,
+      "confidence": "parsed_unknown",
+      "note": "Parsed LM2 sphere field with unknown semantics.",
+      "value": 77
+    }
+  ],
+  "confidence": {
+    "geometry": "high",
+    "render": "medium",
+    "animation": "medium",
+    "gameplay": "low",
+    "notes": [
+      "Geometry counts and bounds come from the parsed LM2 model.",
+      "Render facts are structural until visual parity is separately proven."
+    ]
+  }
+}

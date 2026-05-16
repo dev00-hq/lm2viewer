@@ -111,17 +111,17 @@ py -3 .\scripts\package.py
 
 ### M3: Model Evidence Exports
 
-Linear: LM2-5
-
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- CLI-first, frontend-ready export probe for a selected catalog asset.
-- Output bundle: OBJ, MTL, shared atlas PNG, per-UV-group PNGs, and JSON evidence
-  manifest.
-- Default coordinate space: raw decoded/source coordinates.
-- OBJ polygon modes: `original` and `triangulated`.
+- Implemented: CLI-first catalog asset export probe.
+- Implemented: frontend export control for selected catalog model assets.
+- Implemented: output bundle with OBJ, MTL, JSON evidence manifest, shared atlas
+  PNG when available, and per-UV-group PNGs when available.
+- Implemented: default coordinate space records decoded/source coordinates.
+- Implemented: OBJ polygon modes `original` and `triangulated`.
+- Implemented: backend endpoint and UI path use the same export service.
 
 Design decisions:
 
@@ -132,17 +132,26 @@ Design decisions:
 - glTF/GLB remains the likely future replacement-asset format, but not the first
   RE probe target.
 
+Command:
+
+```powershell
+lba2-lm2-viewer export --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001
+```
+
+The frontend path exports the selected model and asks the backend to open an
+output-folder picker.
+
 ### M4: Contract Draft
 
-Linear: LM2-6
-
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- Versioned `msgspec.Struct` contract types under the viewer package.
-- Plain JSON export as the stable interchange artifact.
-- Tiny synthetic contract fixtures committed for tests and examples.
+- Implemented: versioned `msgspec.Struct` contract types under
+  `lba2_lm2_viewer.contracts`.
+- Implemented: plain JSON export as the stable interchange artifact.
+- Implemented: tiny synthetic contract fixtures committed for tests and examples.
+- Implemented: CLI-first catalog asset contract export.
 - No committed exports from copyrighted game assets.
 
 The first contract should include source identity, geometry facts, render facts,
@@ -152,35 +161,45 @@ unknown-field descriptors.
 If this milestone adds `msgspec`, update `pyproject.toml`, `requirements.txt`,
 and packaging docs together.
 
+Command:
+
+```powershell
+lba2-lm2-viewer contract --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\body-001.contract.json
+```
+
 ### M5: Texture and UV Inspector
 
-Linear: LM2-7
-
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- Read-only inspector panel for polygon, material, UV group, sampled atlas
-  region, render flags, and unknowns.
-- Atlas preview with selected-region highlight.
-- Evidence copy/export affordance.
+- Implemented: read-only frontend inspector panel for polygon, material, UV
+  group, sampled atlas region, render flags, and polygon unknown flags.
+- Implemented: atlas preview canvas with selected-region and UV outline
+  highlight.
+- Implemented: evidence copy and JSON download affordances.
 
 Do not build a UV editor. Use external tools such as Blender for UV editing
 experiments.
 
 ### M6: Animation Semantic Decode and Frame Stepping
 
-Linear: LM2-8
-
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- Full ANIM record decode beyond current summaries.
-- Tests for header, keyframe, boneframe, loop, and interpolation behavior.
-- Evidence JSON for at least one known animation.
-- Frame stepping for selected BODY + ANIM pairs.
-- Continuous playback only after frame stepping matches MBN/original evidence.
+- Implemented: full ANIM record decode beyond current summaries.
+- Implemented: tests for header, keyframe, boneframe, loop, and interpolation
+  behavior.
+- Implemented: CLI evidence JSON with raw records, one sampled frame step, and
+  optional BODY bone-count compatibility. Evidence also records the canonical
+  playback transition table so loop-start samples are not inferred from frame
+  numbers alone.
+- Implemented: posed BODY + ANIM vertex transform stepping in the viewer for
+  selected catalog model and ANIM pairs.
+- Implemented: continuous viewer playback with explicit intro/loop sequence
+  metadata. Repeat-off playback stops before the generated loop segment; repeat
+  playback accumulates loop-cycle root motion for translating animations.
 
 Use the updated MBN model viewer decompilation as reference for animation header
 layout, keyframe records, boneframe records, animation case handling, rotation
@@ -188,17 +207,23 @@ interpolation, linear interpolation, and body transform application.
 
 ### M7: ANIM3DS Track
 
-Linear: LM2-9
-
-Status: planned.
+Status: implemented.
 
 Deliverable:
 
-- Catalog every ANIM3DS entry with parse status, size, hash, header words, and
-  unknown descriptors.
-- Add deeper decode only when source, MBN, or original runtime evidence identifies
-  the semantic layout.
-- Connect ANIM3DS entries to contracts once usage evidence is known.
+- Implemented: catalog every non-empty ANIM3DS entry with decoded LSP sprite
+  frame stats when possible, and explicit raw/deferred evidence when decode
+  fails.
+- Implemented: use classic zero-based ANIM3DS indexing and decode entry 127 as
+  the `T_ANIM_3DS` frame-range table from the original runtime source.
+- Implemented: classify ANIM3DS entries as sprite assets, not BODY-compatible
+  animations.
+- Implemented: link raw ANIM3DS sprite frames to their owning frame-range record.
+- Implemented: catalog summaries distinguish decoded animations from raw
+  animation evidence.
+- Implemented: LSP sprite pixel decode and frontend preview for ANIM3DS frame
+  payloads.
+- Deferred: connect ANIM3DS entries to contracts once usage evidence is known.
 
 ANIM3DS deep decode should not block the first validated BODY + ANIM frame
 stepping path unless a selected reference model depends on it.

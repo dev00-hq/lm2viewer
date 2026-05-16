@@ -1,74 +1,400 @@
 import './styles.css';
-import { buildCatalog, fetchCatalog, fetchDecodeProgress, fetchInitialModel, loadCatalogAsset, loadPath, pickCatalogFiles, pickCatalogFolder, uploadModel } from './api';
+import { animationCompatibilityPrefix, compatibleAnimationIds } from './compatibility';
 import { requireElement } from './dom';
-import type { CatalogAsset, DecodeProgress, Lm2Model } from './types';
+import { InspectorRenderer, anim3dsRangeInspectorSections, animationInspectorSections, animationSampleInspectorSections, backgroundInspectorSections, entityFacetInspectorSections, evidenceArtifactInspectorSections, holomapInspectorSections, modelInspectorSections, modelSurfaceInspectorSections, paletteImageInspectorSections, rawAnimationInspectorSections, resourceRecordInspectorSections, runtimeTableInspectorSections, sampleAudioInspectorSections, sceneInspectorSections, sceneObjectInspectorSections, sceneUsageInspectorSections, smackerVideoInspectorSections, spriteFrameInspectorSections, textOrderInspectorSections, textPayloadInspectorSections, unclassifiedResourceInspectorSections, type InspectorSection } from './inspector';
+import { viewerService } from './runtime/viewerService';
+import { AppSelectionStore, selectionFromAnimationPose, selectionFromAnimationSample, selectionFromCatalogAsset as buildSelectionFromCatalogAsset, selectionFromEntityFacet, selectionFromEntityWorkflow, selectionFromGraphProjection, selectionFromModelSurface, selectionFromResourcePaletteContext, selectionFromResourceRecord, selectionFromRuntimeResolution, selectionFromSceneUsage, selectionFromSceneUsageFacet, selectionFromSpriteFrame, type AppSelection, type EntityFacetSelectionKind } from './selection';
+import type { Catalog, CatalogAsset, CatalogGraphSceneObjectRelationshipProjection, CatalogGraphSceneObjectVisualLink, CatalogGraphSelectionProjection, ExportPayload, Lm2Model, PolygonMode, PortPromotionPacketsPayload, SceneAssetUsage, SceneScriptAnalysis, SceneStats, SpritePayload } from './types';
+import { AnimationController } from './ui/animationController';
 import { CatalogUi } from './ui/catalog';
+import { EntityView } from './ui/entityView';
+import { ResourceWorkspace } from './ui/resourceWorkspace';
+import { RuntimeSpriteResolver } from './ui/runtimeSpriteResolver';
+import { SpriteViewer } from './ui/spriteViewer';
 import { renderStats } from './ui/stats';
-import { ViewerScene, type VisibilityState } from './viewer/scene';
+import { UvInspector } from './ui/uvInspector';
+import {
+  DEFAULT_CANVAS_BACKGROUND_SHADE,
+  ViewerScene,
+  canvasBackgroundColor,
+  canvasBackgroundSliderStops,
+  type CanvasBackgroundMode,
+  type CanvasBackgroundShade,
+  type VisibilityState,
+} from './viewer/scene';
 
 const canvas = requireElement('canvas', HTMLCanvasElement);
 const scene = new ViewerScene({ canvas });
 
+type MainView = 'model' | 'sprite' | 'entity' | 'resource';
+type DockSide = 'explorer' | 'inspector';
+type InspectorTab = 'details' | 'uv';
+
+const app = requireElement('app', HTMLDivElement);
 const stats = requireElement('stats', HTMLDivElement);
 const errorBox = requireElement('error', HTMLDivElement);
 const overlay = requireElement('overlay', HTMLDivElement);
 const horizonIndicator = requireElement('horizonIndicator', HTMLDivElement);
+const horizonLockToggle = requireElement('horizonLockToggle', HTMLButtonElement);
+const viewControlsToggle = requireElement('viewControlsToggle', HTMLButtonElement);
+const viewControlsPopover = requireElement('viewControlsPopover', HTMLDivElement);
+const explorerDockToggle = requireElement('explorerDockToggle', HTMLButtonElement);
+const inspectorDockToggle = requireElement('inspectorDockToggle', HTMLButtonElement);
 const showFaces = requireElement('showFaces', HTMLInputElement);
 const showLines = requireElement('showLines', HTMLInputElement);
 const showSpheres = requireElement('showSpheres', HTMLInputElement);
 const wireframe = requireElement('wireframe', HTMLInputElement);
 const showGrid = requireElement('showGrid', HTMLInputElement);
+const lightCanvas = requireElement('lightCanvas', HTMLInputElement);
+const canvasBackgroundToggle = requireElement('canvasBackgroundToggle', HTMLButtonElement);
+const canvasBackgroundShade = requireElement('canvasBackgroundShade', HTMLButtonElement);
+const canvasBackgroundShadePicker = requireElement('canvasBackgroundShadePicker', HTMLDivElement);
 const lockHorizon = requireElement('lockHorizon', HTMLInputElement);
-const assetRootInput = requireElement('assetRoot', HTMLInputElement);
-const pathInput = requireElement('path', HTMLInputElement);
 const fileInput = requireElement('file', HTMLInputElement);
+const hqrFilesInput = requireElement('hqrFiles', HTMLInputElement);
+const hqrFolderInput = requireElement('hqrFolder', HTMLInputElement);
 const drop = requireElement('drop', HTMLDivElement);
 const progressPanel = requireElement('decodeProgress', HTMLDivElement);
 const progressText = requireElement('progressText', HTMLSpanElement);
 const progressMeta = requireElement('progressMeta', HTMLSpanElement);
 const progressBar = requireElement('progressBar', HTMLDivElement);
 const progressFill = requireElement('progressFill', HTMLDivElement);
+const activeSelectionPanel = requireElement('activeSelection', HTMLDivElement);
+const exportAssetButton = requireElement('exportAsset', HTMLButtonElement);
+const exportPolygonMode = requireElement('exportPolygonMode', HTMLSelectElement);
+const exportResult = requireElement('exportResult', HTMLDivElement);
+const sceneUsageStrip = requireElement('sceneUsageStrip', HTMLElement);
+const sceneObjectTable = requireElement('sceneObjectTable', HTMLElement);
+const sceneLocalTable = requireElement('sceneLocalTable', HTMLElement);
+const portEvidenceTable = requireElement('portEvidenceTable', HTMLElement);
+const scriptEvidenceTable = requireElement('scriptEvidenceTable', HTMLElement);
+const rawDescriptorTable = requireElement('rawDescriptorTable', HTMLElement);
+const animationPanel = requireElement('animationPanel', HTMLDivElement);
+const animationPanelResize = requireElement('animationPanelResize', HTMLDivElement);
+const canvasAnimationSelect = requireElement('canvasAnimationSelect', HTMLSelectElement);
+const mainViews: Record<MainView, { tab: HTMLButtonElement; panel: HTMLElement }> = {
+  model: {
+    tab: requireElement('modelViewTab', HTMLButtonElement),
+    panel: requireElement('modelViewPanel', HTMLElement),
+  },
+  sprite: {
+    tab: requireElement('spriteViewTab', HTMLButtonElement),
+    panel: requireElement('spriteViewPanel', HTMLElement),
+  },
+  entity: {
+    tab: requireElement('entityViewTab', HTMLButtonElement),
+    panel: requireElement('entityViewPanel', HTMLElement),
+  },
+  resource: {
+    tab: requireElement('resourceViewTab', HTMLButtonElement),
+    panel: requireElement('resourceViewPanel', HTMLElement),
+  },
+};
+const inspectorTabs: Record<InspectorTab, { tab: HTMLButtonElement; panel: HTMLElement }> = {
+  details: {
+    tab: requireElement('inspectorDetailsTab', HTMLButtonElement),
+    panel: requireElement('inspectorDetailsPanel', HTMLElement),
+  },
+  uv: {
+    tab: requireElement('inspectorUvTab', HTMLButtonElement),
+    panel: requireElement('inspectorUvPanel', HTMLElement),
+  },
+};
+const uvInspector = new UvInspector({
+  root: requireElement('uvInspector', HTMLDivElement),
+  polygon: requireElement('uvPolygon', HTMLSelectElement),
+  atlas: requireElement('uvAtlas', HTMLCanvasElement),
+  facts: requireElement('uvFacts', HTMLDivElement),
+  previous: requireElement('uvPrevious', HTMLButtonElement),
+  next: requireElement('uvNext', HTMLButtonElement),
+  copy: requireElement('uvCopy', HTMLButtonElement),
+  download: requireElement('uvDownload', HTMLButtonElement),
+  result: requireElement('uvResult', HTMLDivElement),
+}, {
+  onSurfaceSelected: (model, evidence) => {
+    selectionStore.set(selectionFromModelSurface(model, evidence, {
+      graphSelection: graphSelectionForAsset(model.catalog_asset),
+    }));
+  },
+});
+let currentCatalog: Catalog | null = null;
+let portPromotionPackets: PortPromotionPacketsPayload | null = null;
+let portPromotionError: string | null = null;
 let progressInterval: number | undefined;
 let progressHideTimer: number | undefined;
 let progressStartedAt = 0;
+let catalogSelectionRequestId = 0;
+let selectedCanvasBackgroundShade: CanvasBackgroundShade = DEFAULT_CANVAS_BACKGROUND_SHADE;
+
+const backgroundStorageKeys = {
+  mode: 'lba2-lm2-viewer.canvasBackgroundMode',
+  shade: 'lba2-lm2-viewer.canvasBackgroundShade',
+};
 
 const catalogUi = new CatalogUi({
   summary: requireElement('catalogSummary', HTMLDivElement),
   search: requireElement('catalogSearch', HTMLInputElement),
   filter: requireElement('kindFilter', HTMLSelectElement),
   list: requireElement('assetList', HTMLDivElement),
-  detail: requireElement('assetDetail', HTMLDivElement),
   onSelect: selectCatalogAsset,
+  onSearch: async (q, kind) => {
+    const result = await viewerService.searchCatalog(q, kind, 0, 260);
+    mergeCatalogAssets(result.assets);
+    return { assets: result.assets, total: result.total };
+  },
+});
+const inspector = new InspectorRenderer(
+  requireElement('assetDetail', HTMLDivElement),
+  requireElement('inspectorSearch', HTMLInputElement),
+);
+const selectionStore = new AppSelectionStore();
+const spriteViewer = new SpriteViewer({
+  panel: requireElement('spriteViewPanel', HTMLElement),
+  canvas: requireElement('spriteCanvas', HTMLCanvasElement),
+  title: requireElement('spriteTitle', HTMLDivElement),
+  meta: requireElement('spriteMeta', HTMLDivElement),
+  facts: requireElement('spriteFacts', HTMLDivElement),
+  zoomIn: requireElement('spriteZoomIn', HTMLButtonElement),
+  zoomOut: requireElement('spriteZoomOut', HTMLButtonElement),
+  fit: requireElement('spriteFit', HTMLButtonElement),
+  previous: requireElement('spritePrevious', HTMLButtonElement),
+  play: requireElement('spritePlay', HTMLButtonElement),
+  next: requireElement('spriteNext', HTMLButtonElement),
+  scrub: requireElement('spriteScrub', HTMLInputElement),
+  frameLabel: requireElement('spriteFrameLabel', HTMLDivElement),
+  strip: requireElement('spriteFrameStrip', HTMLElement),
+  loadFrame: loadSpriteFrame,
+  onFrameLoaded: (asset, payload) => {
+    selectionStore.set(selectionFromSpriteFrame(asset, payload, {
+      graphSelection: graphSelectionForAsset(asset),
+    }));
+  },
+  onPixelPicked: (asset, payload, pixel) => {
+    const current = selectionStore.current;
+    const frameSelection = selectionFromSpriteFrame(asset, payload, {
+      graphSelection: graphSelectionForAsset(asset),
+    });
+    if (!current || current.kind !== 'sprite_frame' || current.stableId !== frameSelection.stableId) return;
+    selectionStore.update({
+      facets: {
+        ...(current.facets || {}),
+        pickedPixelX: pixel.x,
+        pickedPixelY: pixel.y,
+        pickedPaletteIndex: pixel.paletteIndex,
+        pickedRgba: pixel.rgba.join(','),
+      },
+    });
+  },
+});
+const entityView = new EntityView({
+  panel: requireElement('entityViewPanel', HTMLElement),
+  title: requireElement('entityTitle', HTMLDivElement),
+  trail: requireElement('entityTrail', HTMLDivElement),
+  usages: requireElement('entityUsages', HTMLDivElement),
+  detail: requireElement('entityDetail', HTMLDivElement),
+  visualLinks: requireElement('entityVisualLinks', HTMLDivElement),
+  openAsset: (assetId) => {
+    void openLinkedVisualAsset(assetId);
+  },
+  selectEntityFacet: (workflow, kind) => {
+    const selection = selectionFromEntityFacet(workflow, kind);
+    if (selection) selectionStore.set(selection);
+  },
+  selectUsageFacet: (usage, kind) => {
+    const asset = findCatalogAsset(usage.target_asset_id);
+    const selection = asset ? selectionFromSceneUsageFacet(asset, usage, kind) : null;
+    if (selection) selectionStore.set(selection);
+  },
+});
+const resourceWorkspace = new ResourceWorkspace({
+  panel: requireElement('resourceViewPanel', HTMLElement),
+  title: requireElement('resourceTitle', HTMLDivElement),
+  meta: requireElement('resourceMeta', HTMLDivElement),
+  facts: requireElement('resourceFacts', HTMLDivElement),
+  records: requireElement('resourceRecords', HTMLDivElement),
+  stage: requireElement('resourceStage', HTMLElement),
+  emptyState: requireElement('resourceEmptyState', HTMLElement),
+  canvas: requireElement('resourceCanvas', HTMLCanvasElement),
+  audioWrap: requireElement('resourceAudio', HTMLElement),
+  audio: requireElement('resourceAudioPlayer', HTMLAudioElement),
+  audioMeta: requireElement('resourceAudioMeta', HTMLDivElement),
+  onRecordSelected: (asset, record) => {
+    if (record.kind === 'palette_context') {
+      const selection = selectionFromResourcePaletteContext(asset, record, {
+        graphSelection: graphSelectionForAsset(asset),
+      });
+      if (selection) selectionStore.set(selection);
+      return;
+    }
+    const graphSelection = currentCatalog?.graph?.selectionByStableId?.[record.stableId];
+    if (!graphSelection) {
+      overlay.textContent = `Graph resource record selection unavailable for ${record.stableId}`;
+      return;
+    }
+    selectionStore.set(selectionFromResourceRecord(asset, record, {
+      graphSelection,
+    }));
+  },
+});
+const runtimeSpriteResolver = new RuntimeSpriteResolver({
+  root: requireElement('runtimeSpriteResolver', HTMLElement),
+  flags: requireElement('runtimeSpriteFlags', HTMLInputElement),
+  sprite: requireElement('runtimeSpriteIndex', HTMLInputElement),
+  bodyNum: requireElement('runtimeSpriteBodyNum', HTMLInputElement),
+  objectIndex: requireElement('runtimeSpriteObjectIndex', HTMLInputElement),
+  labelTrack: requireElement('runtimeSpriteLabelTrack', HTMLInputElement),
+  resolve: requireElement('runtimeSpriteResolve', HTMLButtonElement),
+  open: requireElement('runtimeSpriteOpen', HTMLButtonElement),
+  result: requireElement('runtimeSpriteResult', HTMLDivElement),
+  openAsset: (assetId) => {
+    void openLinkedVisualAsset(assetId);
+  },
+  openWorkflow: (request) => {
+    void runAction(async () => {
+      const workflow = await viewerService.loadRuntimeSpriteEntityWorkflow(request);
+      entityView.setWorkflow(workflow);
+      const entitySelection = selectionFromEntityWorkflow(workflow);
+      if (entitySelection) selectionStore.set(entitySelection);
+      setMainView('entity');
+      overlay.textContent = workflow.selected_entity?.entity_id || workflow.resolved_asset?.id || 'Runtime sprite evidence';
+    }, { label: 'Loading entity workflow' });
+  },
+  onResolved: (payload) => {
+    selectionStore.set(selectionFromRuntimeResolution(payload));
+  },
+  setError: (message) => {
+    errorBox.textContent = message;
+  },
+});
+const animationController = new AnimationController({
+  elements: {
+    root: animationPanel,
+    selection: requireElement('animationSelection', HTMLDivElement),
+    playbackState: requireElement('animationPlaybackState', HTMLDivElement),
+    timeCurrent: requireElement('animationTimeCurrent', HTMLSpanElement),
+    timeTotal: requireElement('animationTimeTotal', HTMLSpanElement),
+    scrub: requireElement('animationScrub', HTMLInputElement),
+    frame: requireElement('animationFrame', HTMLInputElement),
+    elapsed: requireElement('animationElapsed', HTMLInputElement),
+    previous: requireElement('animationPrevious', HTMLButtonElement),
+    play: requireElement('animationPlay', HTMLButtonElement),
+    repeat: requireElement('animationRepeat', HTMLButtonElement),
+    pose: requireElement('animationPose', HTMLButtonElement),
+    mode: requireElement('animationPlaybackMode', HTMLSelectElement),
+    next: requireElement('animationNext', HTMLButtonElement),
+    result: requireElement('animationResult', HTMLDivElement),
+    strip: requireElement('animationSequenceStrip', HTMLElement),
+  },
+  scene,
+  showModel,
+  setError: (message: string) => {
+    errorBox.textContent = message;
+  },
+  setOverlay: (message: string) => {
+    overlay.textContent = message;
+  },
+  runAction,
+  onSampleSelected: (body, animation, sequence, frame, loopCycle) => {
+    selectionStore.set(selectionFromAnimationSample(body, animation, sequence, frame, loopCycle, {
+      graphSelection: graphSelectionForAsset(body),
+    }));
+  },
+  onPoseSelected: (body, animation, model) => {
+    const selection = selectionFromAnimationPose(body, animation, model, {
+      graphSelection: graphSelectionForAsset(body),
+    });
+    if (selection) selectionStore.set(selection);
+  },
 });
 
-Object.assign(globalThis, { lm2Viewer: { camera: scene.camera, controls: scene.controls, scene: scene.scene, get currentModel() { return scene.model; } } });
+selectionStore.subscribe((selection) => {
+  if (selection?.kind !== 'model_surface') setInspectorTab('details');
+  renderActiveSelection(selection);
+  catalogUi.setHighlightedAssetId(selectionCatalogAssetId(selection));
+  resourceWorkspace.setSelectedRecordId(resourceRecordIdForSelection(selection));
+  renderSelectionInspector(selection);
+  updateExportControls();
+  renderSceneUsageStrip(selection);
+  renderSceneObjectTable(selection);
+  renderSceneLocalTable(selection);
+  renderPortEvidenceTable(selection);
+  renderScriptEvidenceTable(selection);
+  renderRawDescriptorTable(selection);
+});
+
+Object.assign(globalThis, { lm2Viewer: { camera: scene.camera, controls: scene.controls, scene: scene.scene, get currentModel() { return scene.model; }, get backgroundMode() { return scene.backgroundMode; } } });
 
 for (const element of [showFaces, showLines, showSpheres, wireframe, showGrid]) {
   element.addEventListener('change', refreshVisibility);
 }
 lockHorizon.addEventListener('change', refreshHorizonLock);
+lightCanvas.addEventListener('change', refreshCanvasBackground);
+canvasBackgroundToggle.addEventListener('click', () => {
+  lightCanvas.checked = !lightCanvas.checked;
+  refreshCanvasBackground();
+  if (!canvasBackgroundShadePicker.hidden) renderBackgroundShadePicker();
+});
+canvasBackgroundShade.addEventListener('click', () => {
+  renderBackgroundShadePicker();
+  canvasBackgroundShadePicker.hidden = !canvasBackgroundShadePicker.hidden;
+  canvasBackgroundShade.setAttribute('aria-expanded', String(!canvasBackgroundShadePicker.hidden));
+  if (!canvasBackgroundShadePicker.hidden) {
+    canvasBackgroundShadePicker.querySelector<HTMLInputElement>('#canvasBackgroundShadeSlider')?.focus();
+  }
+});
+document.addEventListener('pointerdown', (event) => {
+  const target = event.target;
+  if (!(target instanceof Node)) return;
+  if (!canvasBackgroundShadePicker.hidden
+    && !canvasBackgroundShade.contains(target)
+    && !canvasBackgroundShadePicker.contains(target)) {
+    hideBackgroundShadePicker();
+  }
+  if (!viewControlsPopover.hidden
+    && !viewControlsToggle.contains(target)
+    && !viewControlsPopover.contains(target)) {
+    hideViewControlsPopover();
+  }
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    hideBackgroundShadePicker();
+    hideViewControlsPopover();
+  }
+});
 requireElement('resetView', HTMLButtonElement).addEventListener('click', () => scene.resetView());
 requireElement('zoomIn', HTMLButtonElement).addEventListener('click', () => scene.zoomBy(0.72));
 requireElement('zoomOut', HTMLButtonElement).addEventListener('click', () => scene.zoomBy(1.38));
-requireElement('loadAssetRoot', HTMLButtonElement).addEventListener('click', () => runAction(
-  async () => setCatalog(await buildCatalog(assetRootInput.value)),
-  { label: 'Indexing HQR folder', pollServer: true },
-));
-requireElement('pickAssetRoot', HTMLButtonElement).addEventListener('click', () => runAction(
-  async () => setCatalog(await pickCatalogFolder()),
-  { label: 'Choose a folder to index', pollServer: true },
-));
-requireElement('pickHqrFiles', HTMLButtonElement).addEventListener('click', () => runAction(
-  async () => setCatalog(await pickCatalogFiles()),
-  { label: 'Choose HQR files to index', pollServer: true },
-));
-requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => runAction(
-  async () => showModel(await loadPath(pathInput.value)),
-  { label: 'Decoding model' },
-));
+horizonLockToggle.addEventListener('click', () => {
+  lockHorizon.checked = !lockHorizon.checked;
+  refreshHorizonLock();
+});
+viewControlsToggle.addEventListener('click', () => {
+  viewControlsPopover.hidden = !viewControlsPopover.hidden;
+  viewControlsToggle.setAttribute('aria-expanded', String(!viewControlsPopover.hidden));
+});
+inspectorTabs.details.tab.addEventListener('click', () => setInspectorTab('details'));
+inspectorTabs.uv.tab.addEventListener('click', () => setInspectorTab('uv'));
+explorerDockToggle.addEventListener('click', () => setDockCollapsed('explorer', !app.classList.contains('explorer-collapsed')));
+inspectorDockToggle.addEventListener('click', () => setDockCollapsed('inspector', !app.classList.contains('inspector-collapsed')));
+exportAssetButton.addEventListener('click', () => runAction(exportSelectedAsset, { label: 'Exporting evidence probe' }));
+setupAnimationPanelResize();
+mainViews.model.tab.addEventListener('click', () => setMainView('model'));
+mainViews.sprite.tab.addEventListener('click', () => setMainView('sprite'));
+mainViews.entity.tab.addEventListener('click', () => setMainView('entity'));
+mainViews.resource.tab.addEventListener('click', () => setMainView('resource'));
+canvasAnimationSelect.addEventListener('change', () => void selectCanvasAnimation());
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
-  if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
+  if (file) void runAction(async () => showModel(await viewerService.decodeModelFile(file)), { label: `Decoding ${file.name}` });
+});
+hqrFilesInput.addEventListener('change', () => {
+  const files = selectedFiles(hqrFilesInput);
+  if (files.length) void runAction(async () => setCatalog(await viewerService.buildCatalogFromFiles(files)), { label: `Indexing ${files.length} selected files` });
+});
+hqrFolderInput.addEventListener('change', () => {
+  const files = selectedFiles(hqrFolderInput);
+  if (files.length) void runAction(async () => setCatalog(await viewerService.buildCatalogFromFiles(files)), { label: `Indexing ${files.length} folder files` });
 });
 
 drop.addEventListener('dragover', (event) => {
@@ -80,10 +406,14 @@ drop.addEventListener('drop', (event) => {
   event.preventDefault();
   drop.classList.remove('active');
   const file = event.dataTransfer?.files?.[0];
-  if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
+  if (file) void runAction(async () => showModel(await viewerService.decodeModelFile(file)), { label: `Decoding ${file.name}` });
 });
 
-window.addEventListener('resize', () => scene.resize());
+window.addEventListener('resize', () => {
+  scene.resize();
+  spriteViewer.resize();
+  resourceWorkspace.resize();
+});
 window.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || isEditableTarget(event.target)) return;
   if (event.key.toLowerCase() === 'l') {
@@ -96,39 +426,1521 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+restoreCanvasBackgroundPreference();
 void initialLoad();
+refreshCanvasBackground();
 refreshHorizonLock();
 tick();
 
 async function initialLoad(): Promise<void> {
-  setCatalog(await fetchCatalog());
-  const model = await fetchInitialModel();
-  if (model) showModel(model);
+  setCatalog(await viewerService.loadInitialCatalog());
+  await loadPortPromotionEvidence();
+  const initialSelectionVersion = catalogSelectionRequestId;
+  const model = await viewerService.loadInitialModel();
+  if (model && !selectionStore.current && catalogSelectionRequestId === initialSelectionVersion) showModel(model);
 }
 
-function setCatalog(catalog: Awaited<ReturnType<typeof fetchCatalog>>): void {
+function selectedFiles(input: HTMLInputElement): File[] {
+  return Array.from(input.files || []);
+}
+
+async function loadPortPromotionEvidence(): Promise<void> {
+  try {
+    portPromotionPackets = await viewerService.loadPortPromotionPackets();
+    portPromotionError = null;
+  } catch (error) {
+    portPromotionPackets = null;
+    portPromotionError = error instanceof Error ? error.message : String(error);
+  }
+  renderPortEvidenceTable(selectionStore.current);
+}
+
+function setCatalog(catalog: Catalog | null): void {
+  currentCatalog = catalog;
+  if (currentCatalog && !currentCatalog.graph) {
+    currentCatalog.graph = {
+      schema: 'catalog_graph.catalog_projection.v0',
+      indexes: {},
+      compatibilityByModelId: {},
+      selectionByAssetId: {},
+      selectionByStableId: {},
+    };
+  }
   catalogUi.setCatalog(catalog);
-  if (catalog?.asset_root) assetRootInput.value = catalog.asset_root;
+  runtimeSpriteResolver.setCatalog(catalog);
+  updateCanvasAnimationSelect(animationController.selectedBodyAsset);
 }
 
-async function selectCatalogAsset(asset: CatalogAsset): Promise<void> {
+function mergeCatalogAssets(assets: CatalogAsset[]): void {
+  if (!currentCatalog) return;
+  const byId = new Map((currentCatalog.assets || []).map((asset) => [asset.id, asset]));
+  for (const asset of assets) byId.set(asset.id, asset);
+  currentCatalog.assets = Array.from(byId.values());
+}
+
+async function hydrateCatalogAsset(asset: CatalogAsset | string): Promise<CatalogAsset> {
+  const id = typeof asset === 'string' ? asset : asset.id;
+  const detailed = await viewerService.loadCatalogAssetDetail(id);
+  mergeCatalogAssets([detailed]);
+  return detailed;
+}
+
+function ensureCatalogGraphCache(): NonNullable<Catalog['graph']> {
+  if (!currentCatalog) throw new Error('No catalog loaded.');
+  if (!currentCatalog.graph) {
+    currentCatalog.graph = {
+      schema: 'catalog_graph.catalog_projection.v0',
+      indexes: {},
+      compatibilityByModelId: {},
+      selectionByAssetId: {},
+      selectionByStableId: {},
+    };
+  }
+  currentCatalog.graph.indexes ||= {};
+  currentCatalog.graph.selectionByAssetId ||= {};
+  currentCatalog.graph.selectionByStableId ||= {};
+  currentCatalog.graph.compatibilityByModelId ||= {};
+  return currentCatalog.graph;
+}
+
+async function hydrateGraphSelection(id: string): Promise<CatalogGraphSelectionProjection> {
+  const graph = ensureCatalogGraphCache();
+  const cached = graph.selectionByAssetId?.[id] || graph.selectionByStableId?.[id];
+  if (cached) return cached;
+  const payload = await viewerService.loadCatalogGraphSelection(id);
+  if (!payload.found || !payload.selection) {
+    throw new Error(`Graph selection projection unavailable for ${id}.`);
+  }
+  graph.selectionByStableId![payload.selection.stableId] = payload.selection;
+  if (payload.selection.kind === 'asset') {
+    graph.selectionByAssetId![payload.selection.stableId] = payload.selection;
+  }
+  return payload.selection;
+}
+
+async function hydrateCompatibleAnimations(modelAsset: CatalogAsset): Promise<void> {
+  if (modelAsset.kind !== 'model') return;
+  const graph = ensureCatalogGraphCache();
+  if (graph.indexes.compatibleAnimationsByModelId?.[modelAsset.id]) return;
+  const payload = await viewerService.loadCatalogGraphCompatible(modelAsset.id);
+  mergeCatalogAssets(payload.animations || []);
+  graph.indexes.compatibleAnimationsByModelId ||= {};
+  graph.compatibilityByModelId ||= {};
+  graph.indexes.compatibleAnimationsByModelId[modelAsset.id] = payload.compatibleAnimationIds;
+  graph.compatibilityByModelId[modelAsset.id] = payload.compatibility;
+}
+
+function selectionFromCatalogAsset(
+  asset: CatalogAsset,
+  options: Parameters<typeof buildSelectionFromCatalogAsset>[1] = {},
+): AppSelection {
+  const graphSelection = graphSelectionForAsset(asset);
+  if (currentCatalog?.graph?.selectionByAssetId && !graphSelection) {
+    throw new Error(`Missing graph selection projection for catalog asset ${asset.id}`);
+  }
+  return buildSelectionFromCatalogAsset(asset, {
+    ...options,
+    graphSelection,
+  });
+}
+
+function graphSelectionForAsset(asset?: CatalogAsset | null) {
+  return asset ? currentCatalog?.graph?.selectionByAssetId?.[asset.id] : undefined;
+}
+
+async function selectCatalogAsset(
+  asset: CatalogAsset,
+  options: { preserveSelection?: boolean; preserveEntityWorkflow?: boolean } = {},
+): Promise<void> {
+  const requestId = ++catalogSelectionRequestId;
+  animationController.stop();
+  spriteViewer.stop();
   await runAction(async () => {
-    catalogUi.select(asset);
-    const payload = await loadCatalogAsset(asset);
+    const detailedAsset = await hydrateCatalogAsset(asset);
+    await hydrateGraphSelection(detailedAsset.id);
+    if (detailedAsset.kind === 'model') await hydrateCompatibleAnimations(detailedAsset);
+    if (!options.preserveSelection) selectionStore.set(selectionFromCatalogAsset(detailedAsset));
+    const payload = await viewerService.loadCatalogAsset(detailedAsset);
+    if (requestId !== catalogSelectionRequestId) return;
     if ('animation' in payload) {
-      catalogUi.renderDetail(payload.animation);
+      mergeCatalogAssets([payload.animation]);
+      await hydrateGraphSelection(payload.animation.id);
+      resourceWorkspace.clear();
+      clearModelInspection();
+      const rawAnimation = isRawAnimationInspectorAsset(payload.animation);
+      if (!rawAnimation) {
+        animationController.setAnimationAsset(payload.animation);
+        updateCanvasAnimationSelect(animationController.selectedBodyAsset);
+      }
+      if (!options.preserveSelection) {
+        selectionStore.set(selectionFromCatalogAsset(payload.animation, {
+          workspaceSuggestion: 'model',
+          compatibilityStatus: !rawAnimation && animationController.selectedBodyAsset
+            ? animationCompatibilityPrefix(currentCatalog, payload.animation, animationController.selectedBodyAsset).trim() || undefined
+            : undefined,
+        }));
+      }
+      if (!options.preserveEntityWorkflow) await showAssetEntityWorkflow(payload.animation, hasSceneUsages(payload.animation));
       overlay.textContent = `${payload.animation.label} selected`;
       return;
     }
-    showModel(payload);
+    if ('sprite' in payload) {
+      mergeCatalogAssets([payload.sprite]);
+      await hydrateGraphSelection(payload.sprite.id);
+      clearModelInspection();
+      const sceneAsset = payload.sprite.kind === 'scene';
+      const resourceAsset = payload.sprite.kind === 'resource';
+      if (sceneAsset) {
+        resourceWorkspace.clear();
+        spriteViewer.setSprite(payload, []);
+        if (!options.preserveSelection) {
+          selectionStore.set(selectionFromCatalogAsset(payload.sprite, {
+            workspaceSuggestion: 'entity',
+          }));
+        }
+        if (!options.preserveEntityWorkflow) await showAssetEntityWorkflow(payload.sprite, false);
+        setMainView('entity');
+        overlay.textContent = `${payload.sprite.label} selected`;
+        return;
+      }
+      if (!options.preserveSelection) {
+        selectionStore.set(
+          payload.frame && !resourceAsset
+            ? selectionFromSpriteFrame(payload.sprite, payload, {
+              graphSelection: graphSelectionForAsset(payload.sprite),
+            })
+            : selectionFromCatalogAsset(payload.sprite, {
+              workspaceSuggestion: resourceAsset ? 'resource' : 'sprite',
+            }),
+        );
+      }
+      if (!options.preserveEntityWorkflow) await showAssetEntityWorkflow(payload.sprite, false);
+      if (resourceAsset) {
+        resourceWorkspace.setResource(payload.sprite, payload.frame);
+        setMainView('resource');
+      } else {
+        resourceWorkspace.clear();
+        spriteViewer.setSprite(payload, spriteRangeAssets(payload.sprite));
+        setMainView('sprite');
+      }
+      overlay.textContent = `${payload.sprite.label} selected`;
+      return;
+    }
+    if ('scene' in payload) {
+      mergeCatalogAssets([payload.scene]);
+      await hydrateGraphSelection(payload.scene.id);
+      resourceWorkspace.clear();
+      clearModelInspection();
+      if (!options.preserveSelection) {
+        selectionStore.set(selectionFromCatalogAsset(payload.scene, {
+          workspaceSuggestion: 'entity',
+        }));
+      }
+      if (!options.preserveEntityWorkflow) await showAssetEntityWorkflow(payload.scene, false);
+      setMainView('entity');
+      overlay.textContent = `${payload.scene.label} selected`;
+      return;
+    }
+    if ('resource' in payload) {
+      mergeCatalogAssets([payload.resource]);
+      await hydrateGraphSelection(payload.resource.id);
+      clearModelInspection();
+      if (!options.preserveSelection) {
+        selectionStore.set(selectionFromCatalogAsset(payload.resource));
+      }
+      if (!options.preserveEntityWorkflow) await showAssetEntityWorkflow(payload.resource, false);
+      const stats = payload.resource.stats;
+      const audioUrl = 'semantic_layout' in stats && stats.semantic_layout === 'sample_wave_audio'
+        ? viewerService.catalogAudioUrl(payload.resource)
+        : null;
+      resourceWorkspace.setResource(payload.resource, undefined, audioUrl);
+      setMainView('resource');
+      overlay.textContent = `${payload.resource.label} selected`;
+      return;
+    }
+    showModel(payload, { preserveSelection: options.preserveSelection });
+    if (payload.catalog_asset && !options.preserveEntityWorkflow) await showAssetEntityWorkflow(payload.catalog_asset, hasSceneUsages(payload.catalog_asset));
   }, { label: asset.kind === 'model' ? `Decoding ${asset.label}` : `Loading ${asset.label}` });
 }
 
-function showModel(model: Lm2Model): void {
+async function openLinkedVisualAsset(assetId: string): Promise<void> {
+  const asset = findCatalogAsset(assetId);
+  if (!asset) {
+    errorBox.textContent = `Catalog asset not found: ${assetId}`;
+    return;
+  }
+  await selectCatalogAsset(asset, { preserveSelection: true, preserveEntityWorkflow: true });
+}
+
+async function showAssetEntityWorkflow(asset: CatalogAsset, activate: boolean): Promise<void> {
+  try {
+    const workflow = await viewerService.loadAssetEntityWorkflow(asset);
+    entityView.setWorkflow(workflow);
+    if (activate) {
+      const entitySelection = selectionFromEntityWorkflow(workflow);
+      if (entitySelection) selectionStore.set(entitySelection);
+      setMainView('entity');
+    }
+  } catch {
+    entityView.setWorkflow(null);
+  }
+}
+
+function hasSceneUsages(asset: CatalogAsset): boolean {
+  const graphSelection = currentCatalog?.graph?.selectionByAssetId?.[asset.id];
+  return Number(graphSelection?.facets?.relationshipLinkCount || 0) > 0;
+}
+
+async function loadSpriteFrame(asset: CatalogAsset): Promise<SpritePayload> {
+  const payload = await viewerService.loadCatalogAsset(asset);
+  if (!('sprite' in payload)) throw new Error(`Catalog asset is not a sprite frame: ${asset.id}`);
+  return payload;
+}
+
+function spriteRangeAssets(spriteAsset: CatalogAsset): CatalogAsset[] {
+  const stats = spriteAsset.stats;
+  if (!currentCatalog || !('semantic_layout' in stats) || stats.semantic_layout !== 'lsp_sprite_frame' || !stats.anim3ds_info) {
+    return [spriteAsset];
+  }
+  const range = stats.anim3ds_info;
+  const assets = currentCatalog.assets.filter((asset) => {
+    if (asset.kind !== 'sprite' || asset.entry_type !== 'anim3ds-frame') return false;
+    const assetStats = asset.stats;
+    if (!('semantic_layout' in assetStats) || assetStats.semantic_layout !== 'lsp_sprite_frame' || !assetStats.anim3ds_info) return false;
+    return assetStats.anim3ds_info.name === range.name
+      && assetStats.anim3ds_info.start_frame === range.start_frame
+      && assetStats.anim3ds_info.end_frame === range.end_frame;
+  });
+  assets.sort((a, b) => {
+    const aStats = a.stats;
+    const bStats = b.stats;
+    const aFrame = 'semantic_layout' in aStats && aStats.semantic_layout === 'lsp_sprite_frame'
+      ? aStats.anim3ds_info?.relative_frame ?? a.source.entry_index
+      : a.source.entry_index;
+    const bFrame = 'semantic_layout' in bStats && bStats.semantic_layout === 'lsp_sprite_frame'
+      ? bStats.anim3ds_info?.relative_frame ?? b.source.entry_index
+      : b.source.entry_index;
+    return aFrame - bFrame || a.source.entry_index - b.source.entry_index;
+  });
+  return assets.length > 0 ? assets : [spriteAsset];
+}
+
+function showModel(model: Lm2Model, options: { preserveSelection?: boolean } = {}): void {
+  resourceWorkspace.clear();
+  setMainView('model');
   scene.loadModel(model);
   renderStats(stats, model);
+  uvInspector.setModel(model);
   overlay.textContent = model.source || 'Uploaded model';
-  if (model.catalog_asset) catalogUi.select(model.catalog_asset);
+  if (model.catalog_asset && !options.preserveSelection) {
+    selectionStore.set(selectionFromCatalogAsset(model.catalog_asset, {
+      exportable: model.catalog_asset.kind === 'model',
+      workspaceSuggestion: 'model',
+    }));
+  }
+  const catalogBodyAsset = model.catalog_asset?.kind === 'model' ? model.catalog_asset : null;
+  catalogUi.setSelectedModel(catalogBodyAsset);
+  animationController.setBodyAsset(catalogBodyAsset || (model.pose ? animationController.selectedBodyAsset : null));
+  updateCanvasAnimationSelect(animationController.selectedBodyAsset);
+  animationController.updateControls();
+}
+
+function setMainView(view: MainView): void {
+  for (const [key, entry] of Object.entries(mainViews) as Array<[MainView, typeof mainViews[MainView]]>) {
+    const active = key === view;
+    entry.panel.hidden = !active;
+    entry.panel.classList.toggle('active', active);
+    entry.tab.classList.toggle('active', active);
+    entry.tab.setAttribute('aria-pressed', String(active));
+  }
+  if (view === 'model') {
+    overlay.hidden = false;
+    scene.resize();
+  } else if (view === 'sprite') {
+    overlay.hidden = true;
+    spriteViewer.resize();
+  } else if (view === 'resource') {
+    overlay.hidden = true;
+    resourceWorkspace.resize();
+  } else {
+    overlay.hidden = true;
+  }
+}
+
+async function selectCanvasAnimation(): Promise<void> {
+  const asset = findCatalogAsset(canvasAnimationSelect.value);
+  if (!asset || asset.kind !== 'animation' || asset.entry_type !== 'animation') return;
+  const detailedAsset = await hydrateCatalogAsset(asset);
+  await hydrateGraphSelection(detailedAsset.id);
+  animationController.setAnimationAsset(detailedAsset);
+  selectionStore.set(selectionFromCatalogAsset(detailedAsset, {
+    workspaceSuggestion: 'model',
+    compatibilityStatus: animationController.selectedBodyAsset
+      ? animationCompatibilityPrefix(currentCatalog, detailedAsset, animationController.selectedBodyAsset).trim() || undefined
+      : undefined,
+  }));
+  overlay.textContent = `${detailedAsset.label} selected`;
+  updateCanvasAnimationSelect(animationController.selectedBodyAsset);
+}
+
+function updateCanvasAnimationSelect(modelAsset: CatalogAsset | null): void {
+  canvasAnimationSelect.replaceChildren();
+  if (!currentCatalog || !modelAsset) {
+    canvasAnimationSelect.append(new Option('No model selected', ''));
+    canvasAnimationSelect.disabled = true;
+    return;
+  }
+
+  const animations = compatibleAnimations(modelAsset);
+  if (animations.length === 0) {
+    canvasAnimationSelect.append(new Option('No compatible animations', ''));
+    canvasAnimationSelect.disabled = true;
+    return;
+  }
+
+  canvasAnimationSelect.append(new Option(`${animations.length} compatible animations`, ''));
+  for (const animation of animations) {
+    canvasAnimationSelect.append(new Option(`${animationCompatibilityPrefix(currentCatalog, animation, modelAsset)}${animation.label}`, animation.id));
+  }
+  canvasAnimationSelect.disabled = false;
+  const selectedAnimation = animationController.selectedAnimationAsset;
+  canvasAnimationSelect.value = selectedAnimation && animations.some((animation) => animation.id === selectedAnimation.id)
+    ? selectedAnimation.id
+    : '';
+}
+
+function compatibleAnimations(modelAsset: CatalogAsset): CatalogAsset[] {
+  const ids = new Set(compatibleAnimationIds(currentCatalog, modelAsset));
+  return (currentCatalog?.assets || [])
+    .filter((asset) => ids.has(asset.id))
+    .sort((a, b) => a.source.entry_index - b.source.entry_index || a.label.localeCompare(b.label));
+}
+
+function findCatalogAsset(id: string): CatalogAsset | null {
+  return currentCatalog?.assets.find((asset) => asset.id === id) || null;
+}
+
+function selectionCatalogAssetId(selection: AppSelection | null): string | null {
+  if (!selection) return null;
+  if (selection.kind === 'asset') return selection.stableId;
+  if (selection.evidence?.usageAsset) return selection.evidence.usageAsset.id;
+  if (selection.evidence?.resourceAsset) return selection.evidence.resourceAsset.id;
+  if (selection.evidence?.animation) return selection.evidence.animation.id;
+  if (selection.evidence?.animationBody) return selection.evidence.animationBody.id;
+  if (selection.evidence?.model?.catalog_asset) return selection.evidence.model.catalog_asset.id;
+  const facetAssetId = selection.facets?.assetId;
+  return typeof facetAssetId === 'string' ? facetAssetId : null;
+}
+
+function resourceRecordIdForSelection(selection: AppSelection | null): string | null {
+  if (selection?.kind !== 'resource_record' && selection?.kind !== 'palette_context') return null;
+  return selection.evidence?.resourceRecord?.stableId || selection.stableId;
+}
+
+function assetForUsageStrip(selection: AppSelection | null): CatalogAsset | null {
+  if (!selection) return null;
+  if (selection.kind === 'graph_edge' || selection.kind === 'scene_usage') return selection.evidence?.usageAsset || null;
+  if (selection.kind === 'scene_object') {
+    return findCatalogAsset(selection.evidence?.entityWorkflow?.resolved_asset?.id || String(selection.facets?.resolvedAssetId || ''));
+  }
+  if (selection.kind === 'resource_record') return selection.evidence?.resourceAsset || null;
+  if (selection.kind === 'palette_context') return selection.evidence?.resourceAsset || null;
+  if (selection.kind === 'sprite_frame') return selection.evidence?.usageAsset || null;
+  if (selection.kind === 'model_surface') return selection.evidence?.model?.catalog_asset || null;
+  if (selection.kind === 'animation_sample') return selection.evidence?.animationBody || null;
+  if (selection.kind !== 'asset') return null;
+  return findCatalogAsset(selection.stableId);
+}
+
+type GraphUsageLink = CatalogGraphSelectionProjection['links'][number];
+
+function sceneUsageRecordForGraphLink(records: SceneAssetUsage[] | undefined, link: GraphUsageLink): SceneAssetUsage | null {
+  const candidates = records || [];
+  if (!link.edgeId) return null;
+  const byEdge = candidates.find((usage) => usage.graphEdgeId === link.edgeId || usage.selectedEdgeId === link.edgeId || usage.edgeId === link.edgeId);
+  if (byEdge) return byEdge;
+  return null;
+}
+
+function activeGraphUsageStableId(selection: AppSelection | null): string {
+  if (selection?.kind !== 'graph_edge' && selection?.kind !== 'scene_usage') return '';
+  if (selection.kind === 'graph_edge') return selection.stableId;
+  const usage = selection.evidence?.sceneUsage;
+  return usage?.graphEdgeId || usage?.selectedEdgeId || usage?.edgeId || '';
+}
+
+function renderSceneUsageStrip(selection: AppSelection | null): void {
+  const asset = assetForUsageStrip(selection);
+  const graphSelection = asset ? currentCatalog?.graph?.selectionByAssetId?.[asset.id] : null;
+  const graphLinks = graphSelection?.links?.filter((link) => link.kind === 'scene_object' || link.kind === 'scene_usage') || [];
+  const graphUsageItems = graphLinks.slice(0, 48)
+    .map((link) => ({ link, usage: sceneUsageRecordForGraphLink(graphSelection?.usageRecords, link) }))
+    .filter((item): item is { link: GraphUsageLink; usage: SceneAssetUsage } => Boolean(item.usage));
+  if (asset && graphUsageItems.length > 0) {
+    const activeUsageId = activeGraphUsageStableId(selection);
+    sceneUsageStrip.replaceChildren(...graphUsageItems.map(({ link, usage }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'scene-usage-item';
+      button.setAttribute('aria-current', String(Boolean(link.edgeId) && link.edgeId === activeUsageId));
+      button.title = [
+        link.label,
+        link.proofScope,
+        link.evidenceStatus,
+        link.sourceRule,
+        link.sourceField,
+        link.indexRule,
+      ].filter(Boolean).join(' | ');
+      button.addEventListener('click', () => {
+        if (!link.edgeId) {
+          overlay.textContent = `Graph usage edge selection unavailable for ${asset.id}.`;
+          return;
+        }
+        void runAction(async () => {
+          const edgeSelection = await hydrateGraphSelection(link.edgeId || '');
+          selectionStore.set(selectionFromSceneUsage(asset, usage, edgeSelection));
+        }, { label: `Loading graph usage ${link.edgeId}` });
+      });
+      const title = document.createElement('strong');
+      title.textContent = link.label;
+      const scope = document.createElement('span');
+      scope.textContent = link.proofScope || 'graph usage';
+      const status = document.createElement('span');
+      status.textContent = link.evidenceStatus || 'unknown';
+      const detail = document.createElement('span');
+      detail.textContent = link.sourceRule || link.indexRule || 'catalog graph edge';
+      button.append(title, scope, status, detail);
+      return button;
+    }));
+    return;
+  }
+  if (!asset) {
+    sceneUsageStrip.textContent = 'No selected usage strip.';
+    return;
+  }
+  sceneUsageStrip.textContent = graphLinks.length > 0
+    ? 'Graph usage links are missing usage records.'
+    : 'No graph usage evidence for selected asset.';
+}
+
+function sceneAssetForObjectTable(selection: AppSelection | null): CatalogAsset | null {
+  if (!selection) return null;
+  if (selection.kind === 'asset') {
+    const asset = findCatalogAsset(selection.stableId);
+    return asset?.kind === 'scene' ? asset : null;
+  }
+  if (selection.kind === 'scene_object') {
+    return findCatalogAsset(selection.evidence?.entityContract?.scene_asset_id || '');
+  }
+  if (selection.kind === 'graph_edge' || selection.kind === 'scene_usage') {
+    return findCatalogAsset(selection.evidence?.sceneUsage?.scene_asset_id || '');
+  }
+  if (selection.kind === 'sprite_frame') {
+    const asset = findCatalogAsset(selectionCatalogAssetId(selection) || '');
+    return asset?.kind === 'scene' ? asset : null;
+  }
+  return null;
+}
+
+function renderSceneObjectTable(selection: AppSelection | null): void {
+  const asset = sceneAssetForObjectTable(selection);
+  const recon = sceneReconnaissance(asset);
+  if (!asset || !recon) {
+    sceneObjectTable.textContent = 'No scene object evidence.';
+    return;
+  }
+  const objects: SceneObjectEvidenceRow[] = [
+    ...(recon.hero ? [{ index: 0, position: recon.hero.start }] : []),
+    ...(recon.sampled_objects || []).filter((object) => object.index !== 0),
+  ];
+  if (objects.length === 0) {
+    sceneObjectTable.textContent = 'No sampled scene objects.';
+    return;
+  }
+  const activeObjectId = selection?.kind === 'scene_object' ? selection.stableId : '';
+  const rows = objects.slice(0, 24).map((object) => {
+    const render = object.runtime?.render_type || '-';
+    const stableId = `${asset.id}#object:${object.index}`;
+    const graphRelationships = sceneObjectRelationshipProjection(stableId);
+    return {
+      stableId,
+      index: String(object.index),
+      flags: object.flags === undefined ? '-' : `0x${object.flags.toString(16).toUpperCase()}`,
+      file3d: sceneObjectRelationshipValue(graphRelationships, 'file3d'),
+      position: object.position ? `${object.position.x},${object.position.y},${object.position.z}` : '-',
+      visuals: sceneObjectVisualsValue(graphRelationships),
+      render,
+    };
+  });
+
+  const summary = document.createElement('div');
+  const total = recon.sampled_object_count ?? objects.length;
+  summary.textContent = total > rows.length
+    ? `${total} scene object records; showing first ${rows.length}.`
+    : `${rows.length} scene object records.`;
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const label of ['Stable ID', 'Object', 'Flags', 'File3D', 'Position', 'Visuals', 'Render', 'Open']) {
+    const cell = document.createElement('th');
+    cell.textContent = label;
+    headRow.append(cell);
+  }
+  head.append(headRow);
+  const body = document.createElement('tbody');
+  for (const object of rows) {
+    const row = document.createElement('tr');
+    row.setAttribute('aria-current', String(object.stableId === activeObjectId));
+    appendCopyableTextCell(row, object.stableId, 'Copy scene object ID');
+    appendTextCell(row, object.index);
+    appendTextCell(row, object.flags);
+    appendTextCell(row, object.file3d);
+    appendTextCell(row, object.position);
+    appendTextCell(row, object.visuals);
+    appendTextCell(row, object.render);
+    const openCell = document.createElement('td');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.textContent = 'Open';
+    open.title = `Open ${object.stableId}`;
+    open.addEventListener('click', () => {
+      void openSceneObject(asset.id, Number(object.index));
+    });
+    openCell.append(open);
+    row.append(openCell);
+    body.append(row);
+  }
+  table.append(head, body);
+  sceneObjectTable.replaceChildren(summary, table);
+}
+
+function sceneObjectRelationshipProjection(stableId: string): CatalogGraphSceneObjectRelationshipProjection | null {
+  return currentCatalog?.graph?.sceneObjectRelationshipsByStableId?.[stableId] || null;
+}
+
+function sceneObjectRelationshipValue(
+  projection: CatalogGraphSceneObjectRelationshipProjection | null,
+  role: string,
+): string {
+  if (!projection) return 'graph relationship unavailable';
+  const link = projection?.visualLinks.find((item) => item.role === role);
+  return link?.stableId || '-';
+}
+
+function sceneObjectVisualsValue(projection: CatalogGraphSceneObjectRelationshipProjection | null): string {
+  if (!projection) return 'graph relationship unavailable';
+  const values = ['body', 'animation', 'sprite']
+    .map((role) => sceneObjectRelationshipLabel(projection.visualLinks.find((link) => link.role === role)))
+    .filter((value) => value.length > 0);
+  return values.length > 0 ? values.join(' | ') : 'no graph visual links';
+}
+
+function sceneObjectRelationshipLabel(link: CatalogGraphSceneObjectVisualLink | undefined): string {
+  if (!link?.stableId) return '';
+  const missing = link.targetAvailable ? '' : ' missing';
+  return `${link.stableId}${missing}`;
+}
+
+async function openSceneObject(sceneAssetId: string, objectIndex: number): Promise<void> {
+  catalogSelectionRequestId += 1;
+  await runAction(async () => {
+    const workflow = await viewerService.loadSceneObjectEntityWorkflow(sceneAssetId, objectIndex);
+    entityView.setWorkflow(workflow);
+    const entitySelection = selectionFromEntityWorkflow(workflow);
+    if (entitySelection) selectionStore.set(entitySelection);
+    setMainView('entity');
+  }, { label: `Opening ${sceneAssetId} object ${objectIndex}` });
+}
+
+type SceneLocalEvidenceRow = {
+  stableId: string;
+  kind: string;
+  index: string;
+  offset: string;
+  location: string;
+  contract: string;
+  target: string;
+};
+
+function renderSceneLocalTable(selection: AppSelection | null): void {
+  const asset = sceneAssetForObjectTable(selection);
+  const recon = sceneReconnaissance(asset);
+  if (!asset || !recon) {
+    sceneLocalTable.textContent = 'No scene local evidence.';
+    return;
+  }
+
+  const rows: SceneLocalEvidenceRow[] = [
+    ...(recon.zones || []).slice(0, 12).map((zone) => ({
+      stableId: `${asset.id}#zone:${zone.index}`,
+      kind: 'Zone',
+      index: String(zone.index),
+      offset: String(zone.offset),
+      location: `${zone.start.x},${zone.start.y},${zone.start.z} -> ${zone.end.x},${zone.end.y},${zone.end.z}`,
+      contract: `${zone.type_name} value ${zone.value}; ${zone.runtime?.effect || 'effect unknown'}`,
+      target: zone.runtime?.script_controls?.length
+        ? zone.runtime.script_controls.map((control) => `${control.opcode}:${control.action}`).join(', ')
+        : '-',
+    })),
+    ...(recon.tracks || []).slice(0, 12).map((track) => ({
+      stableId: `${asset.id}#waypoint:${track.index}`,
+      kind: 'Waypoint',
+      index: String(track.index),
+      offset: String(track.offset),
+      location: `${track.position.x},${track.position.y},${track.position.z}`,
+      contract: 'track target position',
+      target: '-',
+    })),
+    ...(recon.grm_fragment_links || []).slice(0, 8).map((link) => ({
+      stableId: `${asset.id}#zone:${link.zone_index}#grm:${link.grm_index}`,
+      kind: 'GRM',
+      index: `${link.zone_index}/${link.grm_index}`,
+      offset: '-',
+      location: `cell ${link.target_cell_start.x},${link.target_cell_start.y},${link.target_cell_start.z}; span ${link.zone_cell_span.x},${link.zone_cell_span.y},${link.zone_cell_span.z}`,
+      contract: link.script_control || 'GRM fragment runtime state',
+      target: link.asset_id || `LBA_BKG.HQR:${link.resolved_grm_entry ?? '-'}`,
+    })),
+    ...(recon.patches || []).slice(0, 12).map((patch) => {
+      const target = patch.target;
+      const instruction = target.instruction_opcode
+        ? `${target.instruction_opcode}${target.patched_field ? `.${target.patched_field}` : ''}`
+        : `${target.kind}${target.script_relative_offset === null ? '' : `@${target.script_relative_offset}`}`;
+      return {
+        stableId: `${asset.id}#patch:${patch.index}`,
+        kind: 'Patch',
+        index: String(patch.index),
+        offset: String(patch.offset),
+        location: `target ${patch.target_offset}`,
+        contract: `${patch.size} bytes -> ${instruction}`,
+        target: `${target.owner || '-'} ${target.instruction_found === false ? 'missing instruction' : target.patched_field_source || target.kind}`,
+      };
+    }),
+  ];
+
+  if (rows.length === 0) {
+    sceneLocalTable.textContent = 'No sampled zones, waypoints, GRM links, or patches.';
+    return;
+  }
+
+  const summary = document.createElement('div');
+  summary.textContent = [
+    `${recon.zone_count ?? 0} zones`,
+    `${recon.track_count ?? 0} waypoints`,
+    `${recon.grm_fragment_links?.length ?? 0} GRM links`,
+    `${recon.patch_count ?? 0} patches`,
+  ].join('; ');
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const label of ['Stable ID', 'Kind', 'Index', 'Offset', 'Location', 'Runtime Contract', 'Target']) {
+    const cell = document.createElement('th');
+    cell.textContent = label;
+    headRow.append(cell);
+  }
+  head.append(headRow);
+  const body = document.createElement('tbody');
+  for (const rowData of rows) {
+    const row = document.createElement('tr');
+    const graphSelection = currentCatalog?.graph?.selectionByStableId?.[rowData.stableId];
+    if (graphSelection) {
+      row.tabIndex = 0;
+      row.title = `Select graph evidence ${rowData.stableId}`;
+      row.addEventListener('click', () => {
+        selectionStore.set(selectionFromGraphProjection(graphSelection, { workspaceSuggestion: 'entity' }));
+      });
+      row.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        selectionStore.set(selectionFromGraphProjection(graphSelection, { workspaceSuggestion: 'entity' }));
+      });
+    }
+    appendCopyableTextCell(row, rowData.stableId, 'Copy scene local ID');
+    appendTextCell(row, rowData.kind);
+    appendTextCell(row, rowData.index);
+    appendTextCell(row, rowData.offset);
+    appendTextCell(row, rowData.location);
+    appendTextCell(row, rowData.contract);
+    appendTextCell(row, rowData.target);
+    body.append(row);
+  }
+  table.append(head, body);
+  sceneLocalTable.replaceChildren(summary, table);
+}
+
+function renderPortEvidenceTable(selection: AppSelection | null): void {
+  if (portPromotionError) {
+    portEvidenceTable.textContent = `Port evidence unavailable: ${portPromotionError}`;
+    return;
+  }
+  if (!portPromotionPackets) {
+    portEvidenceTable.textContent = 'Port evidence not loaded.';
+    return;
+  }
+  const target = portEvidenceTarget(selection);
+  if (!target) {
+    portEvidenceTable.textContent = `No port promotion packet target for this selection. Manifest: ${portPromotionPackets.manifest}.`;
+    return;
+  }
+  const packets = portPromotionPackets.packets.filter((packet) => packet.fixture_source?.scene === target.sceneIndex);
+  const summary = document.createElement('div');
+  summary.textContent = packets.length
+    ? `${packets.length} promotion packet${packets.length === 1 ? '' : 's'} for scene ${target.sceneIndex}. Canonical runtime is copied only from live-positive or approved-exception packets.`
+    : `Scene ${target.sceneIndex} has no matching promotion packet; canonical_runtime is unknown/unpromoted. viewer_loadable and preview success are admission hints only.`;
+  if (packets.length === 0) {
+    portEvidenceTable.replaceChildren(summary);
+    return;
+  }
+
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const label of ['Packet ID', 'Evidence Class', 'Status', 'Canonical Runtime', 'Runtime Contracts', 'Fixture', 'Source Doc']) {
+    const cell = document.createElement('th');
+    cell.textContent = label;
+    headRow.append(cell);
+  }
+  head.append(headRow);
+  const body = document.createElement('tbody');
+  for (const packet of packets) {
+    const row = document.createElement('tr');
+    appendCopyableTextCell(row, packet.id, 'Copy packet ID');
+    appendTextCell(row, packet.evidence_class);
+    const statusCell = document.createElement('td');
+    const status = document.createElement('span');
+    status.className = 'evidence-status';
+    status.dataset.status = packet.status;
+    status.textContent = packet.status;
+    statusCell.append(status);
+    row.append(statusCell);
+    appendTextCell(row, packet.canonical_runtime && (packet.status === 'live_positive' || packet.status === 'approved_exception') ? 'true' : 'false');
+    appendTextCell(row, packet.runtime_contracts.length ? packet.runtime_contracts.join(', ') : '-');
+    appendTextCell(row, packet.fixture || '-');
+    appendTextCell(row, packet.packet);
+    body.append(row);
+  }
+  table.append(head, body);
+  portEvidenceTable.replaceChildren(summary, table);
+}
+
+function appendTextCell(row: HTMLTableRowElement, value: string): void {
+  const cell = document.createElement('td');
+  cell.textContent = value;
+  cell.title = value;
+  row.append(cell);
+}
+
+function appendCopyableTextCell(row: HTMLTableRowElement, value: string, label: string): void {
+  const cell = document.createElement('td');
+  cell.className = 'copyable-cell';
+  const code = document.createElement('code');
+  code.textContent = value;
+  code.title = value;
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.textContent = 'Copy';
+  copy.title = `${label}: ${value}`;
+  copy.addEventListener('click', () => {
+    void copyText(value);
+  });
+  cell.append(code, copy);
+  row.append(cell);
+}
+
+function portEvidenceTarget(selection: AppSelection | null): { sceneAssetId: string; sceneIndex: number } | null {
+  if (!selection) return null;
+  const scriptTarget = scriptTargetForSelection(selection);
+  if (scriptTarget) {
+    const asset = findCatalogAsset(scriptTarget.sceneAssetId);
+    const sceneIndex = sceneIndexForAsset(asset);
+    return asset && sceneIndex !== null ? { sceneAssetId: asset.id, sceneIndex } : null;
+  }
+  if (selection.kind === 'asset') {
+    const asset = findCatalogAsset(selection.stableId);
+    const sceneIndex = sceneIndexForAsset(asset);
+    return asset?.kind === 'scene' && sceneIndex !== null ? { sceneAssetId: asset.id, sceneIndex } : null;
+  }
+  return null;
+}
+
+function sceneIndexForAsset(asset: CatalogAsset | null): number | null {
+  if (!asset || asset.kind !== 'scene') return null;
+  return typeof asset.source.entry_index === 'number' ? asset.source.entry_index - 1 : null;
+}
+
+function renderRawDescriptorTable(selection: AppSelection | null): void {
+  const asset = assetForUsageStrip(selection);
+  const stats = asset?.stats;
+  const descriptors = stats && 'unknown_descriptors' in stats ? stats.unknown_descriptors : [];
+  if (!asset || descriptors.length === 0) {
+    rawDescriptorTable.textContent = 'No raw descriptors.';
+    return;
+  }
+
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const label of ['Stable ID', 'Section', 'Offset', 'Length', 'Confidence', 'Note', 'SHA-256']) {
+    const cell = document.createElement('th');
+    cell.textContent = label;
+    headRow.append(cell);
+  }
+  head.append(headRow);
+
+  const body = document.createElement('tbody');
+  for (const descriptor of descriptors.slice(0, 24)) {
+    const row = document.createElement('tr');
+    appendCopyableTextCell(row, `${asset.id}#descriptor:${descriptor.section}@${descriptor.offset}`, 'Copy descriptor ID');
+    for (const value of [
+      descriptor.section,
+      String(descriptor.offset),
+      String(descriptor.length),
+      descriptor.confidence,
+      descriptor.note,
+      descriptor.sha256,
+    ]) {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      cell.title = value;
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  table.append(head, body);
+
+  const summary = document.createElement('div');
+  summary.textContent = descriptors.length > 24
+    ? `${descriptors.length} descriptors; showing first 24 for ${asset.id}.`
+    : `${descriptors.length} descriptors for ${asset.id}.`;
+  rawDescriptorTable.replaceChildren(summary, table);
+}
+
+type ScriptEvidence = {
+  ownerStableId: string;
+  scriptKind: 'track' | 'life';
+  analysis: SceneScriptAnalysis;
+};
+
+type ScriptOwner = {
+  track_script_analysis?: SceneScriptAnalysis;
+  life_script_analysis?: SceneScriptAnalysis;
+};
+
+type SceneObjectEvidenceRow = {
+  index: number;
+  flags?: number;
+  file3d_index?: number;
+  position?: { x: number; y: number; z: number };
+  runtime?: { render_type?: string };
+};
+
+function renderScriptEvidenceTable(selection: AppSelection | null): void {
+  const scripts = scriptEvidenceForSelection(selection);
+  if (scripts.length === 0) {
+    scriptEvidenceTable.textContent = 'No script/control-flow evidence.';
+    return;
+  }
+
+  const instructionRows = scripts.flatMap((script) =>
+    script.analysis.first_instructions.slice(0, 12).map((instruction) => ({
+      stableId: `${script.ownerStableId}#script:${script.scriptKind}@${instruction.offset}`,
+      script,
+      offset: instruction.offset,
+      opcode: instruction.mnemonic,
+      bytes: instruction.byte_length,
+      category: instruction.behavior_category,
+      effect: instruction.behavior_effect,
+    })),
+  ).slice(0, 24);
+
+  const controlRows = scripts.flatMap((script) =>
+    (script.analysis.control_flow_links || []).slice(0, 12).map((link) => ({
+      stableId: `${script.ownerStableId}#script:${script.scriptKind}@${link.source_offset}->${link.target_script_kind}:${link.target_offset}`,
+      script,
+      source: `${link.source_offset} ${link.source_opcode}`,
+      target: `${link.target_script_kind} ${link.target_offset}`,
+      found: link.target_found ? 'found' : 'missing',
+      status: link.target_status || '-',
+      targetOpcode: link.target_opcode || link.target_containing_opcode || link.target_previous_decoded_opcode || '-',
+    })),
+  ).slice(0, 24);
+
+  const summary = document.createElement('div');
+  const instructionCount = scripts.reduce((total, script) => total + script.analysis.instruction_count, 0);
+  const controlCount = scripts.reduce((total, script) => total + (script.analysis.control_flow_links_total ?? script.analysis.control_flow_links?.length ?? 0), 0);
+  summary.textContent = `${scripts.length} decoded scripts, ${instructionCount} instructions, ${controlCount} control-flow links.`;
+
+  const nodes: HTMLElement[] = [summary];
+  nodes.push(renderEvidenceTable('Instruction Samples', ['Stable ID', 'Script', 'Offset', 'Opcode', 'Bytes', 'Category', 'Effect'], instructionRows.map((row) => [
+    row.stableId,
+    row.script.scriptKind,
+    String(row.offset),
+    row.opcode,
+    String(row.bytes),
+    row.category,
+    row.effect,
+  ])));
+  nodes.push(renderEvidenceTable('Control Flow', ['Stable ID', 'Script', 'Source', 'Target', 'Found', 'Status', 'Target Opcode'], controlRows.map((row) => [
+    row.stableId,
+    row.script.scriptKind,
+    row.source,
+    row.target,
+    row.found,
+    row.status,
+    row.targetOpcode,
+  ])));
+  scriptEvidenceTable.replaceChildren(...nodes);
+}
+
+function renderEvidenceTable(titleText: string, headers: string[], rows: string[][]): HTMLElement {
+  const wrapper = document.createElement('div');
+  const title = document.createElement('strong');
+  title.textContent = titleText;
+  wrapper.append(title);
+  if (rows.length === 0) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No sampled rows.';
+    wrapper.append(empty);
+    return wrapper;
+  }
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const header of headers) {
+    const cell = document.createElement('th');
+    cell.textContent = header;
+    headRow.append(cell);
+  }
+  head.append(headRow);
+  const body = document.createElement('tbody');
+  for (const values of rows) {
+    const row = document.createElement('tr');
+    for (const [index, value] of values.entries()) {
+      const cell = document.createElement('td');
+      if (headers[index] === 'Stable ID') {
+        cell.className = 'copyable-cell';
+        const code = document.createElement('code');
+        code.textContent = value;
+        code.title = value;
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.textContent = 'Copy';
+        copy.title = `Copy stable ID: ${value}`;
+        copy.addEventListener('click', () => {
+          void copyText(value);
+        });
+        cell.append(code, copy);
+      } else {
+        cell.textContent = value;
+        cell.title = value;
+      }
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  table.append(head, body);
+  wrapper.append(table);
+  return wrapper;
+}
+
+function scriptEvidenceForSelection(selection: AppSelection | null): ScriptEvidence[] {
+  if (!selection) return [];
+  const target = scriptTargetForSelection(selection);
+  if (!target) return [];
+  const asset = findCatalogAsset(target.sceneAssetId);
+  const recon = sceneReconnaissance(asset);
+  if (!recon) return [];
+  const owner = findScriptOwner(recon, target.objectIndex);
+  if (!owner) return [];
+  return ([
+    ['track', owner.track_script_analysis],
+    ['life', owner.life_script_analysis],
+  ] as const)
+    .filter((entry): entry is readonly ['track' | 'life', SceneScriptAnalysis] => Boolean(entry[1]))
+    .map(([scriptKind, analysis]) => ({
+      ownerStableId: target.ownerStableId,
+      scriptKind,
+      analysis,
+    }));
+}
+
+function scriptTargetForSelection(selection: AppSelection): { sceneAssetId: string; objectIndex: number; ownerStableId: string } | null {
+  if (selection.kind === 'scene_object') {
+    const entity = selection.evidence?.entityContract;
+    return entity?.scene_asset_id && entity.object_index !== null
+      ? { sceneAssetId: entity.scene_asset_id, objectIndex: entity.object_index, ownerStableId: entity.entity_id }
+      : null;
+  }
+  if (selection.kind === 'graph_edge' || selection.kind === 'scene_usage') {
+    const usage = selection.evidence?.sceneUsage;
+    return usage?.scene_asset_id && usage.object_index !== null
+      ? { sceneAssetId: usage.scene_asset_id, objectIndex: usage.object_index, ownerStableId: `${usage.scene_asset_id}#object:${usage.object_index}` }
+      : null;
+  }
+  if (selection.kind === 'asset') {
+    const asset = findCatalogAsset(selection.stableId);
+    return asset?.kind === 'scene'
+      ? { sceneAssetId: asset.id, objectIndex: 0, ownerStableId: `${asset.id}#object:0` }
+      : null;
+  }
+  if (selection.kind === 'sprite_frame') {
+    const asset = findCatalogAsset(selectionCatalogAssetId(selection) || '');
+    return asset?.kind === 'scene'
+      ? { sceneAssetId: asset.id, objectIndex: 0, ownerStableId: `${asset.id}#object:0` }
+      : null;
+  }
+  return null;
+}
+
+function sceneReconnaissance(asset: CatalogAsset | null): SceneStats['reconnaissance'] | null {
+  const stats = asset?.stats as Partial<SceneStats> | undefined;
+  return stats?.semantic_layout === 'scene_runtime_layout_partial' && stats.reconnaissance ? stats.reconnaissance : null;
+}
+
+function findScriptOwner(recon: SceneStats['reconnaissance'], objectIndex: number): ScriptOwner | null {
+  if (objectIndex === 0 && recon.hero) return recon.hero;
+  return (recon.sampled_objects || []).find((object) => object.index === objectIndex) || null;
+}
+
+function renderSelectionInspector(selection: AppSelection | null): void {
+  if (!selection) {
+    inspector.clear('Select a catalog entry to inspect it.');
+    return;
+  }
+  if (selection.kind === 'evidence_artifact') {
+    inspector.setSections(evidenceArtifactInspectorSections(selection));
+    return;
+  }
+  if (selection.kind === 'scene_object') {
+    const sections = sceneObjectInspectorSections(selection);
+    setInspectorSectionsOrClear(sections, `No scene object inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  if (selection.kind === 'model_surface') {
+    const sections = modelSurfaceInspectorSections(selection);
+    setInspectorSectionsOrClear(sections, `No model surface inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  if (selection.kind === 'animation_sample') {
+    const sections = animationSampleInspectorSections(selection);
+    setInspectorSectionsOrClear(sections, `No animation sample inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  if (selection.kind === 'resource_record') {
+    const sections = resourceRecordInspectorSections(selection);
+    setInspectorSectionsOrClear(sections, `No resource record inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  if (selection.kind === 'graph_edge') {
+    inspector.setSections(graphEdgeInspectorSections(selection));
+    return;
+  }
+  if (isGraphNodeSelection(selection)) {
+    inspector.setSections(graphNodeInspectorSections(selection));
+    return;
+  }
+  if (selection.kind === 'scene_usage') {
+    const sections = sceneUsageInspectorSections(selection);
+    setInspectorSectionsOrClear(sections, `No scene usage inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  if (isEntityFacetSelection(selection.kind)) {
+    const sections = entityFacetInspectorSections(selection);
+    setInspectorSectionsOrClear(sections, `No entity facet inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  if (selection.kind !== 'asset' && selection.kind !== 'sprite_frame') {
+    inspector.clear(`No inspector route is available for ${selection.stableId}.`);
+    return;
+  }
+  const asset = findCatalogAsset(selection.kind === 'sprite_frame' ? selectionCatalogAssetId(selection) || '' : selection.stableId);
+  if (!asset) {
+    inspector.clear(`Catalog asset is unavailable for ${selection.stableId}.`);
+    return;
+  }
+  if (selection.inspectorRoute) {
+    const sections = graphRoutedInspectorSections(selection.inspectorRoute, asset, selection);
+    if (sections) {
+      setInspectorSectionsOrClear(sections, `Graph inspector route ${selection.inspectorRoute} produced no sections for ${selection.stableId}.`);
+      return;
+    }
+  }
+  if (isGraphProjectedCatalogSelection(selection)) {
+    inspector.clear(`No graph inspector route is available for ${selection.stableId}.`);
+    return;
+  }
+  if (asset.kind === 'model') {
+    inspector.setSections(modelInspectorSections(asset, selection));
+    return;
+  }
+  const rawAnimationSections = rawAnimationInspectorSections(asset, selection);
+  if (rawAnimationSections.length > 0) {
+    inspector.setSections(rawAnimationSections);
+    return;
+  }
+  if (asset.kind === 'animation' && asset.entry_type === 'animation') {
+    inspector.setSections(animationInspectorSections(asset, selection));
+    return;
+  }
+  if (asset.kind === 'scene') {
+    const sections = sceneInspectorSections(asset, selection, currentCatalog?.graph?.sceneObjectRelationshipsByStableId);
+    setInspectorSectionsOrClear(sections, `No scene inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  const anim3dsRangeSections = anim3dsRangeInspectorSections(asset, selection);
+  if (anim3dsRangeSections.length > 0) {
+    inspector.setSections(anim3dsRangeSections);
+    return;
+  }
+  if (asset.kind === 'sprite') {
+    const sections = spriteFrameInspectorSections(asset, selection);
+    setInspectorSectionsOrClear(sections, `No sprite inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  if (asset.kind === 'resource') {
+    const sections = [
+      ...sampleAudioInspectorSections(asset, selection),
+      ...smackerVideoInspectorSections(asset, selection),
+      ...textOrderInspectorSections(asset, selection),
+      ...textPayloadInspectorSections(asset, selection),
+      ...paletteImageInspectorSections(asset, selection),
+      ...runtimeTableInspectorSections(asset, selection),
+      ...holomapInspectorSections(asset, selection),
+      ...backgroundInspectorSections(asset, selection),
+      ...unclassifiedResourceInspectorSections(asset, selection),
+    ];
+    setInspectorSectionsOrClear(sections, `No resource inspector sections for ${selection.stableId}.`);
+    return;
+  }
+  inspector.clear(`No inspector sections are available for ${selection.stableId}.`);
+}
+
+function setInspectorSectionsOrClear(sections: InspectorSection[], emptyMessage: string): void {
+  if (sections.length > 0) {
+    inspector.setSections(sections);
+  } else {
+    inspector.clear(emptyMessage);
+  }
+}
+
+function isGraphNodeSelection(selection: AppSelection): boolean {
+  return ['scene_zone', 'waypoint', 'script_instruction', 'patch_record', 'runtime_state_field'].includes(selection.kind);
+}
+
+function graphEdgeInspectorSections(selection: AppSelection): InspectorSection[] {
+  const usage = selection.evidence?.sceneUsage;
+  const rows = [
+    { label: 'Stable ID', value: selection.stableId, copyValue: selection.stableId },
+    { label: 'Kind', value: selection.kind },
+    { label: 'Status', value: selection.evidenceStatus, status: selection.evidenceStatus },
+    { label: 'Provenance', value: selection.provenance },
+    { label: 'Proof scope', value: String(selection.links.find((link) => link.edgeId === selection.stableId)?.proofScope || usage?.proofScope || '-') },
+  ];
+  const edgeRows = [
+    { label: 'Edge ID', value: selection.stableId, copyValue: selection.stableId },
+    { label: 'Owner', value: String(selection.facets?.ownerNodeId || `${usage?.scene_asset_id || '-'}#object:${usage?.object_index ?? '-'}`) },
+    { label: 'Target', value: String(selection.facets?.targetStableId || usage?.target_asset_id || '-') },
+    { label: 'Source evidence', value: String(selection.facets?.sourceEvidenceId || '-') },
+    { label: 'Occurrence', value: String(selection.facets?.occurrenceOrdinal ?? '-') },
+    { label: 'Resolver', value: String(selection.facets?.resolverKind || '-') },
+  ];
+  return [
+    {
+      id: 'graph_edge_summary',
+      title: 'Graph Edge',
+      rows,
+      actions: [{ id: 'copy_edge_id', label: 'Copy Edge ID', copyValue: selection.stableId }],
+      defaultOpen: true,
+      searchText: rows.map((row) => `${row.label} ${row.value}`).join(' '),
+    },
+    {
+      id: 'graph_edge_identity',
+      title: 'Edge Identity',
+      rows: edgeRows,
+      defaultOpen: true,
+      searchText: edgeRows.map((row) => `${row.label} ${row.value}`).join(' '),
+    },
+    {
+      id: 'graph_edge_export',
+      title: 'Export',
+      rows: [{ label: 'Status', value: selection.exportActions.length === 1 ? 'Edge-aware export available.' : 'No edge-aware export action available.' }],
+      defaultOpen: true,
+      searchText: 'edge-aware export graph edge selected edge id',
+    },
+  ];
+}
+
+function graphNodeInspectorSections(selection: AppSelection): InspectorSection[] {
+  const rows = [
+    { label: 'Stable ID', value: selection.stableId, copyValue: selection.stableId },
+    { label: 'Kind', value: selection.kind },
+    { label: 'Status', value: selection.evidenceStatus, status: selection.evidenceStatus },
+    { label: 'Provenance', value: selection.provenance },
+    { label: 'Graph node', value: String(selection.facets?.graphNodeId || '-') },
+  ];
+  const linkRows = selection.links.slice(0, 16).map((link) => ({
+    label: link.kind,
+    value: [link.stableId, link.proofScope, link.evidenceStatus].filter(Boolean).join(' | '),
+    copyValue: link.edgeId || link.stableId,
+  }));
+  return [
+    {
+      id: 'graph_node_summary',
+      title: 'Graph Evidence',
+      rows,
+      actions: [{ id: 'copy_graph_node_id', label: 'Copy Stable ID', copyValue: selection.stableId }],
+      defaultOpen: true,
+      searchText: rows.map((row) => `${row.label} ${row.value}`).join(' '),
+    },
+    {
+      id: 'graph_node_relationships',
+      title: 'Relationships',
+      rows: linkRows.length ? linkRows : [{ label: 'Relationships', value: 'No graph relationships projected.' }],
+      defaultOpen: true,
+      searchText: linkRows.map((row) => `${row.label} ${row.value}`).join(' '),
+    },
+  ];
+}
+
+function graphRoutedInspectorSections(route: string, asset: CatalogAsset, selection: AppSelection) {
+  switch (route) {
+    case 'model':
+      return modelInspectorSections(asset, selection);
+    case 'animation':
+      return animationInspectorSections(asset, selection);
+    case 'raw_animation':
+      return rawAnimationInspectorSections(asset, selection);
+    case 'scene':
+      return sceneInspectorSections(asset, selection, currentCatalog?.graph?.sceneObjectRelationshipsByStableId);
+    case 'anim3ds_range':
+      return anim3dsRangeInspectorSections(asset, selection);
+    case 'sprite_frame':
+      return spriteFrameInspectorSections(asset, selection);
+    case 'sample_audio':
+      return sampleAudioInspectorSections(asset, selection);
+    case 'smacker_video':
+      return smackerVideoInspectorSections(asset, selection);
+    case 'text_order':
+      return textOrderInspectorSections(asset, selection);
+    case 'text_payload':
+      return textPayloadInspectorSections(asset, selection);
+    case 'palette_image':
+      return paletteImageInspectorSections(asset, selection);
+    case 'runtime_table':
+      return runtimeTableInspectorSections(asset, selection);
+    case 'holomap':
+      return holomapInspectorSections(asset, selection);
+    case 'background':
+      return backgroundInspectorSections(asset, selection);
+    case 'unclassified_resource':
+      return unclassifiedResourceInspectorSections(asset, selection);
+    default:
+      return null;
+  }
+}
+
+function isGraphProjectedCatalogSelection(selection: AppSelection): boolean {
+  return (selection.kind === 'asset' || selection.kind === 'sprite_frame')
+    && (
+      typeof selection.facets?.graphNodeId === 'string'
+      || selection.exportCapability?.source === 'catalog_graph.selection_projection.v0'
+      || Boolean(selection.inspectorRoute)
+    );
+}
+
+function isEntityFacetSelection(kind: AppSelection['kind']): kind is EntityFacetSelectionKind | 'palette_context' {
+  return kind === 'runtime_sprite_state'
+    || kind === 'file3d_resolution'
+    || kind === 'anim3ds_range_state'
+    || kind === 'render_contract'
+    || kind === 'palette_context';
+}
+
+function isRawAnimationInspectorAsset(asset: CatalogAsset): boolean {
+  const stats = asset.stats;
+  return (asset.kind === 'animation' || asset.kind === 'sprite')
+    && 'parse_status' in stats
+    && stats.parse_status === 'raw'
+    && 'semantic_layout' in stats
+    && stats.semantic_layout === 'unknown';
+}
+
+async function exportSelectedAsset(): Promise<void> {
+  const exportAction = selectionStore.current?.exportActions[0];
+  const exportAssetId = exportAction?.targetAssetId;
+  const exportAsset = exportAssetId ? findCatalogAsset(exportAssetId) : null;
+  if (!exportAsset) throw new Error('Select an exportable catalog model, sprite frame, sample, indexed image, background grid, or scene background before exporting.');
+  exportResult.textContent = '';
+  const polygonMode = selectedPolygonMode();
+  const result = await viewerService.exportCatalogAsset(exportAsset, polygonMode, exportAction?.selectedEdgeId);
+  const fileEntries = collectManifestFiles(result.manifest.files);
+  const fileCount = fileEntries.filter(Boolean).length;
+  const downloadLabel = triggerExportDownload(result);
+  exportResult.textContent = downloadLabel
+    ? `Downloaded ${downloadLabel} with ${fileCount} files`
+    : `Prepared ${fileCount} files from ${result.output_dir}`;
+  overlay.textContent = `Exported ${result.manifest.source.catalog_label || result.manifest.source.catalog_asset_id}`;
+  selectionStore.set({
+    kind: 'evidence_artifact',
+    stableId: `${result.manifest.source.catalog_asset_id}#export:${result.manifest.files.manifest}`,
+    label: `Export manifest for ${result.manifest.source.catalog_label || result.manifest.source.catalog_asset_id}`,
+    provenance: result.output_dir,
+    evidenceStatus: 'decoded_only',
+    links: [{ kind: 'asset', stableId: result.manifest.source.catalog_asset_id, label: result.manifest.source.catalog_label || result.manifest.source.catalog_asset_id }],
+    unknowns: result.manifest.warnings || [],
+    previewActions: [],
+    exportActions: [],
+    facets: {
+      outputDir: result.output_dir,
+      fileCount,
+      polygonMode: result.manifest.options.polygon_mode,
+      manifest: result.manifest.files.manifest,
+      generatedFiles: fileEntries.filter(Boolean).join(', '),
+      sourceAssetId: result.manifest.source.catalog_asset_id,
+      sourceLabel: result.manifest.source.catalog_label || result.manifest.source.catalog_asset_id,
+      selectedEdgeId: exportAction?.selectedEdgeId,
+    },
+  });
+}
+
+function triggerExportDownload(result: ExportPayload): string {
+  const download = result.download;
+  if (!download) return '';
+  const bytes = base64ToBytes(download.base64);
+  const payload = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(payload).set(bytes);
+  const url = URL.createObjectURL(new Blob([payload], { type: download.mimeType }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = download.filename;
+  anchor.style.display = 'none';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return download.filename;
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function collectManifestFiles(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap((entry) => collectManifestFiles(entry));
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (typeof record.path === 'string') return [record.path];
+    return Object.values(record).flatMap((entry) => collectManifestFiles(entry));
+  }
+  return [];
+}
+
+function renderActiveSelection(selection: AppSelection | null): void {
+  activeSelectionPanel.replaceChildren();
+  if (!selection) {
+    activeSelectionPanel.textContent = 'No active selection.';
+    return;
+  }
+
+  const heading = document.createElement('div');
+  heading.className = 'selection-heading';
+  const title = document.createElement('strong');
+  title.textContent = selection.label;
+  const kind = document.createElement('span');
+  kind.className = 'selection-kind';
+  kind.textContent = selection.kind;
+  heading.append(title, kind);
+
+  const status = document.createElement('span');
+  status.className = 'evidence-status';
+  status.dataset.status = selection.evidenceStatus;
+  status.textContent = selection.evidenceStatus;
+
+  const actions = document.createElement('div');
+  actions.className = 'selection-actions';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.textContent = 'Copy ID';
+  copy.addEventListener('click', () => {
+    void copyText(selection.stableId);
+  });
+  actions.append(copy);
+  for (const action of selection.previewActions) {
+    const actionButton = document.createElement('button');
+    actionButton.type = 'button';
+    actionButton.textContent = action.label;
+    actionButton.addEventListener('click', () => {
+      void handleSelectionPreviewAction(action);
+    });
+    actions.append(actionButton);
+  }
+  if (selection.exportActions.length) {
+    const exportLabel = document.createElement('button');
+    exportLabel.type = 'button';
+    exportLabel.textContent = selection.exportActions[0].label;
+    exportLabel.addEventListener('click', () => {
+      void runAction(exportSelectedAsset, { label: 'Exporting evidence probe' });
+    });
+    actions.append(exportLabel);
+  }
+
+  const rows = [
+    selectionRow('Stable ID', selection.stableId),
+    selection.source?.archive !== undefined ? selectionRow('Source', `${selection.source.archive}[${selection.source.entryIndex ?? '-'}]`) : null,
+    selectionRow('Status', status),
+    selectionRow('Provenance', selection.provenance),
+    selection.compatibilityStatus ? selectionRow('Compat', selection.compatibilityStatus) : null,
+    selection.workspaceSuggestion ? selectionRow('Workspace', selection.workspaceSuggestion) : null,
+    selection.links.length ? selectionRow('Links', selection.links.map((link) => link.stableId).join(', ')) : null,
+    selection.unknowns.length ? selectionRow('Unknowns', selection.unknowns.join(' | ')) : null,
+  ].filter((row): row is HTMLElement => row !== null);
+
+  activeSelectionPanel.append(heading, ...rows, actions);
+}
+
+async function handleSelectionPreviewAction(action: AppSelection['previewActions'][number]): Promise<void> {
+  if (!action.targetAssetId) return;
+  await openLinkedVisualAsset(action.targetAssetId);
+}
+
+function selectionRow(label: string, value: string | HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'selection-row';
+  const key = document.createElement('span');
+  key.textContent = label;
+  const val = document.createElement('strong');
+  if (typeof value === 'string') {
+    val.textContent = value;
+  } else {
+    val.append(value);
+  }
+  row.append(key, val);
+  return row;
+}
+
+async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    exportResult.textContent = `Copied ${text}`;
+  } catch {
+    exportResult.textContent = text;
+  }
+}
+
+function updateExportControls(): void {
+  exportAssetButton.disabled = selectionStore.current?.exportActions.length !== 1;
+}
+
+function selectedPolygonMode(): PolygonMode {
+  if (exportPolygonMode.value === 'original' || exportPolygonMode.value === 'triangulated') {
+    return exportPolygonMode.value;
+  }
+  throw new Error(`Unsupported polygon mode: ${exportPolygonMode.value}`);
 }
 
 function refreshVisibility(): void {
@@ -145,7 +1957,108 @@ function refreshVisibility(): void {
 function refreshHorizonLock(): void {
   scene.setLockHorizon(lockHorizon.checked);
   horizonIndicator.classList.toggle('locked', lockHorizon.checked);
-  horizonIndicator.textContent = lockHorizon.checked ? 'HORIZON LOCKED' : 'HORIZON FREE';
+  const label = lockHorizon.checked ? 'Horizon locked' : 'Horizon free';
+  const actionLabel = lockHorizon.checked ? 'Unlock horizon' : 'Lock horizon';
+  horizonIndicator.setAttribute('aria-label', label);
+  horizonIndicator.title = label;
+  horizonLockToggle.setAttribute('aria-pressed', String(lockHorizon.checked));
+  horizonLockToggle.setAttribute('aria-label', actionLabel);
+  horizonLockToggle.title = actionLabel;
+}
+
+function setDockCollapsed(side: DockSide, collapsed: boolean): void {
+  const className = `${side}-collapsed`;
+  const toggle = side === 'explorer' ? explorerDockToggle : inspectorDockToggle;
+  const label = collapsed
+    ? `Expand ${side} sidebar`
+    : `Collapse ${side} sidebar`;
+  app.classList.toggle(className, collapsed);
+  toggle.setAttribute('aria-expanded', String(!collapsed));
+  toggle.setAttribute('aria-label', label);
+  toggle.title = label;
+  requestAnimationFrame(() => {
+    scene.resize();
+    spriteViewer.resize();
+    resourceWorkspace.resize();
+  });
+}
+
+function setInspectorTab(tab: InspectorTab): void {
+  for (const [key, entry] of Object.entries(inspectorTabs) as Array<[InspectorTab, typeof inspectorTabs[InspectorTab]]>) {
+    const active = key === tab;
+    entry.panel.hidden = !active;
+    entry.panel.classList.toggle('active', active);
+    entry.tab.classList.toggle('active', active);
+    entry.tab.setAttribute('aria-selected', String(active));
+  }
+}
+
+function clearModelInspection(): void {
+  uvInspector.setModel(null);
+  stats.textContent = '';
+  setInspectorTab('details');
+}
+
+function refreshCanvasBackground(): void {
+  const mode: CanvasBackgroundMode = lightCanvas.checked ? 'light' : 'dark';
+  scene.setBackground(mode, selectedCanvasBackgroundShade);
+  document.body.dataset.canvasBackground = mode;
+  document.body.dataset.canvasBackgroundShade = String(selectedCanvasBackgroundShade);
+  canvasBackgroundToggle.textContent = '';
+  canvasBackgroundToggle.setAttribute('aria-pressed', String(mode === 'light'));
+  canvasBackgroundToggle.title = mode === 'light' ? 'Switch to dark canvas background' : 'Switch to light canvas background';
+  canvasBackgroundToggle.setAttribute('aria-label', canvasBackgroundToggle.title);
+  const shadeColor = canvasBackgroundColor(mode, selectedCanvasBackgroundShade);
+  canvasBackgroundShade.style.setProperty('--shade-color', shadeColor);
+  canvasBackgroundShade.textContent = '';
+  canvasBackgroundShade.title = `Choose ${mode} canvas background shade`;
+  canvasBackgroundShade.setAttribute('aria-label', `${mode} canvas background shade ${selectedCanvasBackgroundShade}`);
+  localStorage.setItem(backgroundStorageKeys.mode, mode);
+  localStorage.setItem(backgroundStorageKeys.shade, String(selectedCanvasBackgroundShade));
+}
+
+function restoreCanvasBackgroundPreference(): void {
+  const storedMode = localStorage.getItem(backgroundStorageKeys.mode);
+  const storedShade = localStorage.getItem(backgroundStorageKeys.shade);
+  lightCanvas.checked = storedMode === 'light';
+  selectedCanvasBackgroundShade = storedCanvasBackgroundShade(storedShade);
+}
+
+function renderBackgroundShadePicker(): void {
+  const mode: CanvasBackgroundMode = lightCanvas.checked ? 'light' : 'dark';
+  const [start, end] = canvasBackgroundSliderStops(mode);
+  const slider = document.createElement('input');
+  slider.id = 'canvasBackgroundShadeSlider';
+  slider.className = 'shade-slider';
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '100';
+  slider.step = '1';
+  slider.value = String(selectedCanvasBackgroundShade);
+  slider.setAttribute('aria-label', `${mode} canvas background shade`);
+  slider.style.setProperty('--slider-start', start);
+  slider.style.setProperty('--slider-end', end);
+  slider.addEventListener('input', () => {
+    selectedCanvasBackgroundShade = Number(slider.value);
+    refreshCanvasBackground();
+  });
+  canvasBackgroundShadePicker.replaceChildren(slider);
+}
+
+function hideBackgroundShadePicker(): void {
+  canvasBackgroundShadePicker.hidden = true;
+  canvasBackgroundShade.setAttribute('aria-expanded', 'false');
+}
+
+function hideViewControlsPopover(): void {
+  viewControlsPopover.hidden = true;
+  viewControlsToggle.setAttribute('aria-expanded', 'false');
+}
+
+function storedCanvasBackgroundShade(value: string | null): CanvasBackgroundShade {
+  const shade = Number(value);
+  if (!Number.isFinite(shade)) return selectedCanvasBackgroundShade;
+  return Math.max(0, Math.min(100, Math.round(shade)));
 }
 
 async function runAction(action: () => Promise<void>, progress?: { label: string; pollServer?: boolean }): Promise<void> {
@@ -195,37 +2108,12 @@ function updateLocalProgress(label: string): void {
   progressBar.removeAttribute('aria-valuenow');
 }
 
-async function updateServerProgress(fallbackLabel: string): Promise<void> {
+async function updateServerProgress(localLabel: string): Promise<void> {
   try {
-    renderProgress(await fetchDecodeProgress(), fallbackLabel);
+    updateLocalProgress(localLabel);
   } catch {
-    updateLocalProgress(fallbackLabel);
+    updateLocalProgress(localLabel);
   }
-}
-
-function renderProgress(progress: DecodeProgress, fallbackLabel: string): void {
-  progressText.textContent = progress.label || fallbackLabel;
-  progressMeta.textContent = formatProgressMeta(progress);
-
-  if (progress.total > 0 && progress.percent !== null) {
-    const percent = Math.max(0, Math.min(100, progress.percent * 100));
-    progressBar.classList.remove('indeterminate');
-    progressFill.style.width = `${percent}%`;
-    progressBar.setAttribute('aria-valuenow', String(Math.round(percent)));
-  } else {
-    progressBar.classList.add('indeterminate');
-    progressBar.removeAttribute('aria-valuenow');
-  }
-
-  progressBar.classList.toggle('error', progress.phase === 'error');
-}
-
-function formatProgressMeta(progress: DecodeProgress): string {
-  const elapsed = formatElapsed(progress.elapsed_seconds);
-  if (progress.total > 0) {
-    return `${progress.current}/${progress.total} entries, ${elapsed}`;
-  }
-  return elapsed;
 }
 
 function endProgress(success: boolean): void {
@@ -253,6 +2141,33 @@ function clearProgressTimers(): void {
 
 function formatElapsed(seconds: number): string {
   return `${seconds.toFixed(1)}s`;
+}
+
+function setupAnimationPanelResize(): void {
+  const minWidth = 170;
+  const maxWidth = 360;
+  animationPanelResize.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = animationPanel.getBoundingClientRect().width;
+    const parentWidth = animationPanel.parentElement?.getBoundingClientRect().width ?? maxWidth;
+    const widthLimit = Math.min(maxWidth, Math.max(minWidth, parentWidth - 28));
+    animationPanelResize.setPointerCapture(event.pointerId);
+
+    const drag = (moveEvent: PointerEvent) => {
+      const width = Math.max(minWidth, Math.min(widthLimit, startWidth + moveEvent.clientX - startX));
+      animationPanel.style.width = `${Math.round(width)}px`;
+    };
+    const stop = () => {
+      animationPanelResize.removeEventListener('pointermove', drag);
+      animationPanelResize.removeEventListener('pointerup', stop);
+      animationPanelResize.removeEventListener('pointercancel', stop);
+    };
+
+    animationPanelResize.addEventListener('pointermove', drag);
+    animationPanelResize.addEventListener('pointerup', stop);
+    animationPanelResize.addEventListener('pointercancel', stop);
+  });
 }
 
 function tick(): void {

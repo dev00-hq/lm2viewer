@@ -9,14 +9,14 @@ description = "Standalone LM2 model explorer for Little Big Adventure 2 assets"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "LBA2 LM2 Viewer contributors" }]
-dependencies = []
+dependencies = ["msgspec>=0.18,<1"]
 
 [project.scripts]
 lba2-lm2-viewer = "lba2_lm2_viewer.viewer:main"
 symphony = "symphony.cli:main"
 
 [tool.setuptools]
-packages = ["lba2_lm2_viewer", "symphony"]
+packages = ["lba2_lm2_viewer", "lba2_lm2_viewer.contracts", "lba2_lm2_viewer.exports"]
 
 [tool.setuptools.package-data]
 lba2_lm2_viewer = ["body_metadata.json", "frontend/dist/**/*"]
