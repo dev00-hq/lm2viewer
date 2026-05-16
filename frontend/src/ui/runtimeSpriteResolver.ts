@@ -1,4 +1,4 @@
-import { resolveRuntimeSprite } from '../api';
+import { viewerService } from '../runtime/viewerService';
 import type { Catalog, RuntimeSpriteResolvePayload } from '../types';
 
 export interface RuntimeSpriteResolverOptions {
@@ -48,7 +48,7 @@ export class RuntimeSpriteResolver {
     let payload: RuntimeSpriteResolvePayload;
     try {
       const request = this.requestFromInputs();
-      payload = await resolveRuntimeSprite(request);
+      payload = await viewerService.resolveRuntimeSprite(request);
       this.options.openWorkflow?.(request);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

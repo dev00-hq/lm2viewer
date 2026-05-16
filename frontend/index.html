@@ -17,13 +17,15 @@
         <input id="file" type="file" accept=".lm2,.ldc,.bin,application/octet-stream" />
         <div id="drop">Drop an .lm2/.ldc file here</div>
 
-        <h2>HQR Folder</h2>
-        <div class="row">
-          <input id="assetRoot" type="text" placeholder="C:\path\to\LBA2" />
-        <button id="loadAssetRoot">Index</button>
-        </div>
-        <button id="pickAssetRoot" class="secondary-action">Choose folder...</button>
-        <button id="pickHqrFiles" class="secondary-action">Choose HQR files...</button>
+        <h2>Local Assets</h2>
+        <label class="file-picker">
+          <span>HQR files</span>
+          <input id="hqrFiles" type="file" accept=".hqr,.HQR,application/octet-stream" multiple />
+        </label>
+        <label class="file-picker">
+          <span>Folder</span>
+          <input id="hqrFolder" type="file" webkitdirectory multiple />
+        </label>
 
         <h2>Explorer</h2>
         <div id="catalogSummary" class="catalog-summary">No catalog loaded</div>
@@ -39,12 +41,6 @@
           </select>
         </div>
         <div id="assetList" class="asset-list"></div>
-
-        <h2>Server Path</h2>
-        <div class="row">
-          <input id="path" type="text" placeholder="C:\path\to\body001.ldc" />
-          <button id="loadPath">Load</button>
-        </div>
 
         <div id="error" class="error"></div>
       </aside>

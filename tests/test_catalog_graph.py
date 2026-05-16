@@ -975,7 +975,7 @@ class CatalogGraphTests(unittest.TestCase):
 
         self.assertEqual(payload["schema"], "viewer-compact-catalog-v1")
         self.assertNotIn("graph", payload)
-        self.assertIn("search", payload["capabilities"])
+        self.assertNotIn("capabilities", payload)
 
     def test_catalog_query_surface_is_bounded_and_backend_owned(self) -> None:
         server = ViewerServer(None, None)

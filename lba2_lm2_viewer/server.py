@@ -225,14 +225,6 @@ def compact_catalog(catalog: dict[str, Any], *, offset: int = 0, limit: int = DE
             "count": len(rows),
             "total": len(compact_assets),
         },
-        "capabilities": {
-            "search": "/api/catalog/search",
-            "assetDetail": "/api/catalog/asset",
-            "graphSelection": "/api/catalog-graph/selection",
-            "graphEdges": "/api/catalog-graph/edges",
-            "graphUsages": "/api/catalog-graph/usages",
-            "graphCompatible": "/api/catalog-graph/compatible",
-        },
     }
 
 

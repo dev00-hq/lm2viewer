@@ -1,10 +1,10 @@
 import './styles.css';
-import { buildCatalog, catalogAudioUrl, exportCatalogAsset, fetchCatalog, fetchDecodeProgress, fetchInitialModel, fetchPortPromotionPackets, loadAssetEntityWorkflow, loadCatalogAsset, loadCatalogAssetDetail, loadCatalogGraphCompatible, loadCatalogGraphSelection, loadPath, loadRuntimeSpriteEntityWorkflow, loadSceneObjectEntityWorkflow, pickCatalogFiles, pickCatalogFolder, searchCatalog, uploadModel } from './api';
 import { animationCompatibilityPrefix, compatibleAnimationIds } from './compatibility';
 import { requireElement } from './dom';
 import { InspectorRenderer, anim3dsRangeInspectorSections, animationInspectorSections, animationSampleInspectorSections, backgroundInspectorSections, entityFacetInspectorSections, evidenceArtifactInspectorSections, holomapInspectorSections, modelInspectorSections, modelSurfaceInspectorSections, paletteImageInspectorSections, rawAnimationInspectorSections, resourceRecordInspectorSections, runtimeTableInspectorSections, sampleAudioInspectorSections, sceneInspectorSections, sceneObjectInspectorSections, sceneUsageInspectorSections, smackerVideoInspectorSections, spriteFrameInspectorSections, textOrderInspectorSections, textPayloadInspectorSections, unclassifiedResourceInspectorSections, type InspectorSection } from './inspector';
+import { viewerService } from './runtime/viewerService';
 import { AppSelectionStore, selectionFromAnimationPose, selectionFromAnimationSample, selectionFromCatalogAsset as buildSelectionFromCatalogAsset, selectionFromEntityFacet, selectionFromEntityWorkflow, selectionFromGraphProjection, selectionFromModelSurface, selectionFromResourcePaletteContext, selectionFromResourceRecord, selectionFromRuntimeResolution, selectionFromSceneUsage, selectionFromSceneUsageFacet, selectionFromSpriteFrame, type AppSelection, type EntityFacetSelectionKind } from './selection';
-import type { Catalog, CatalogAsset, CatalogGraphSceneObjectRelationshipProjection, CatalogGraphSceneObjectVisualLink, CatalogGraphSelectionProjection, DecodeProgress, Lm2Model, PolygonMode, PortPromotionPacketsPayload, SceneAssetUsage, SceneScriptAnalysis, SceneStats, SpritePayload } from './types';
+import type { Catalog, CatalogAsset, CatalogGraphSceneObjectRelationshipProjection, CatalogGraphSceneObjectVisualLink, CatalogGraphSelectionProjection, ExportPayload, Lm2Model, PolygonMode, PortPromotionPacketsPayload, SceneAssetUsage, SceneScriptAnalysis, SceneStats, SpritePayload } from './types';
 import { AnimationController } from './ui/animationController';
 import { CatalogUi } from './ui/catalog';
 import { EntityView } from './ui/entityView';
@@ -50,9 +50,9 @@ const canvasBackgroundToggle = requireElement('canvasBackgroundToggle', HTMLButt
 const canvasBackgroundShade = requireElement('canvasBackgroundShade', HTMLButtonElement);
 const canvasBackgroundShadePicker = requireElement('canvasBackgroundShadePicker', HTMLDivElement);
 const lockHorizon = requireElement('lockHorizon', HTMLInputElement);
-const assetRootInput = requireElement('assetRoot', HTMLInputElement);
-const pathInput = requireElement('path', HTMLInputElement);
 const fileInput = requireElement('file', HTMLInputElement);
+const hqrFilesInput = requireElement('hqrFiles', HTMLInputElement);
+const hqrFolderInput = requireElement('hqrFolder', HTMLInputElement);
 const drop = requireElement('drop', HTMLDivElement);
 const progressPanel = requireElement('decodeProgress', HTMLDivElement);
 const progressText = requireElement('progressText', HTMLSpanElement);
@@ -138,7 +138,7 @@ const catalogUi = new CatalogUi({
   list: requireElement('assetList', HTMLDivElement),
   onSelect: selectCatalogAsset,
   onSearch: async (q, kind) => {
-    const result = await searchCatalog(q, kind, 0, 260);
+    const result = await viewerService.searchCatalog(q, kind, 0, 260);
     mergeCatalogAssets(result.assets);
     return { assets: result.assets, total: result.total };
   },
@@ -251,7 +251,7 @@ const runtimeSpriteResolver = new RuntimeSpriteResolver({
   },
   openWorkflow: (request) => {
     void runAction(async () => {
-      const workflow = await loadRuntimeSpriteEntityWorkflow(request);
+      const workflow = await viewerService.loadRuntimeSpriteEntityWorkflow(request);
       entityView.setWorkflow(workflow);
       const entitySelection = selectionFromEntityWorkflow(workflow);
       if (entitySelection) selectionStore.set(entitySelection);
@@ -377,22 +377,6 @@ inspectorTabs.details.tab.addEventListener('click', () => setInspectorTab('detai
 inspectorTabs.uv.tab.addEventListener('click', () => setInspectorTab('uv'));
 explorerDockToggle.addEventListener('click', () => setDockCollapsed('explorer', !app.classList.contains('explorer-collapsed')));
 inspectorDockToggle.addEventListener('click', () => setDockCollapsed('inspector', !app.classList.contains('inspector-collapsed')));
-requireElement('loadAssetRoot', HTMLButtonElement).addEventListener('click', () => runAction(
-  async () => setCatalog(await buildCatalog(assetRootInput.value)),
-  { label: 'Indexing HQR folder', pollServer: true },
-));
-requireElement('pickAssetRoot', HTMLButtonElement).addEventListener('click', () => runAction(
-  async () => setCatalog(await pickCatalogFolder()),
-  { label: 'Choose a folder to index', pollServer: true },
-));
-requireElement('pickHqrFiles', HTMLButtonElement).addEventListener('click', () => runAction(
-  async () => setCatalog(await pickCatalogFiles()),
-  { label: 'Choose HQR files to index', pollServer: true },
-));
-requireElement('loadPath', HTMLButtonElement).addEventListener('click', () => runAction(
-  async () => showModel(await loadPath(pathInput.value)),
-  { label: 'Decoding model' },
-));
 exportAssetButton.addEventListener('click', () => runAction(exportSelectedAsset, { label: 'Exporting evidence probe' }));
 setupAnimationPanelResize();
 mainViews.model.tab.addEventListener('click', () => setMainView('model'));
@@ -402,7 +386,15 @@ mainViews.resource.tab.addEventListener('click', () => setMainView('resource'));
 canvasAnimationSelect.addEventListener('change', () => void selectCanvasAnimation());
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
-  if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
+  if (file) void runAction(async () => showModel(await viewerService.decodeModelFile(file)), { label: `Decoding ${file.name}` });
+});
+hqrFilesInput.addEventListener('change', () => {
+  const files = selectedFiles(hqrFilesInput);
+  if (files.length) void runAction(async () => setCatalog(await viewerService.buildCatalogFromFiles(files)), { label: `Indexing ${files.length} selected files` });
+});
+hqrFolderInput.addEventListener('change', () => {
+  const files = selectedFiles(hqrFolderInput);
+  if (files.length) void runAction(async () => setCatalog(await viewerService.buildCatalogFromFiles(files)), { label: `Indexing ${files.length} folder files` });
 });
 
 drop.addEventListener('dragover', (event) => {
@@ -414,7 +406,7 @@ drop.addEventListener('drop', (event) => {
   event.preventDefault();
   drop.classList.remove('active');
   const file = event.dataTransfer?.files?.[0];
-  if (file) void runAction(async () => showModel(await uploadModel(file)), { label: `Decoding ${file.name}` });
+  if (file) void runAction(async () => showModel(await viewerService.decodeModelFile(file)), { label: `Decoding ${file.name}` });
 });
 
 window.addEventListener('resize', () => {
@@ -441,16 +433,20 @@ refreshHorizonLock();
 tick();
 
 async function initialLoad(): Promise<void> {
-  setCatalog(await fetchCatalog());
+  setCatalog(await viewerService.loadInitialCatalog());
   await loadPortPromotionEvidence();
   const initialSelectionVersion = catalogSelectionRequestId;
-  const model = await fetchInitialModel();
+  const model = await viewerService.loadInitialModel();
   if (model && !selectionStore.current && catalogSelectionRequestId === initialSelectionVersion) showModel(model);
+}
+
+function selectedFiles(input: HTMLInputElement): File[] {
+  return Array.from(input.files || []);
 }
 
 async function loadPortPromotionEvidence(): Promise<void> {
   try {
-    portPromotionPackets = await fetchPortPromotionPackets();
+    portPromotionPackets = await viewerService.loadPortPromotionPackets();
     portPromotionError = null;
   } catch (error) {
     portPromotionPackets = null;
@@ -459,7 +455,7 @@ async function loadPortPromotionEvidence(): Promise<void> {
   renderPortEvidenceTable(selectionStore.current);
 }
 
-function setCatalog(catalog: Awaited<ReturnType<typeof fetchCatalog>>): void {
+function setCatalog(catalog: Catalog | null): void {
   currentCatalog = catalog;
   if (currentCatalog && !currentCatalog.graph) {
     currentCatalog.graph = {
@@ -472,7 +468,6 @@ function setCatalog(catalog: Awaited<ReturnType<typeof fetchCatalog>>): void {
   }
   catalogUi.setCatalog(catalog);
   runtimeSpriteResolver.setCatalog(catalog);
-  if (catalog?.asset_root) assetRootInput.value = catalog.asset_root;
   updateCanvasAnimationSelect(animationController.selectedBodyAsset);
 }
 
@@ -485,7 +480,7 @@ function mergeCatalogAssets(assets: CatalogAsset[]): void {
 
 async function hydrateCatalogAsset(asset: CatalogAsset | string): Promise<CatalogAsset> {
   const id = typeof asset === 'string' ? asset : asset.id;
-  const detailed = await loadCatalogAssetDetail(id);
+  const detailed = await viewerService.loadCatalogAssetDetail(id);
   mergeCatalogAssets([detailed]);
   return detailed;
 }
@@ -512,7 +507,7 @@ async function hydrateGraphSelection(id: string): Promise<CatalogGraphSelectionP
   const graph = ensureCatalogGraphCache();
   const cached = graph.selectionByAssetId?.[id] || graph.selectionByStableId?.[id];
   if (cached) return cached;
-  const payload = await loadCatalogGraphSelection(id);
+  const payload = await viewerService.loadCatalogGraphSelection(id);
   if (!payload.found || !payload.selection) {
     throw new Error(`Graph selection projection unavailable for ${id}.`);
   }
@@ -527,7 +522,7 @@ async function hydrateCompatibleAnimations(modelAsset: CatalogAsset): Promise<vo
   if (modelAsset.kind !== 'model') return;
   const graph = ensureCatalogGraphCache();
   if (graph.indexes.compatibleAnimationsByModelId?.[modelAsset.id]) return;
-  const payload = await loadCatalogGraphCompatible(modelAsset.id);
+  const payload = await viewerService.loadCatalogGraphCompatible(modelAsset.id);
   mergeCatalogAssets(payload.animations || []);
   graph.indexes.compatibleAnimationsByModelId ||= {};
   graph.compatibilityByModelId ||= {};
@@ -565,7 +560,7 @@ async function selectCatalogAsset(
     await hydrateGraphSelection(detailedAsset.id);
     if (detailedAsset.kind === 'model') await hydrateCompatibleAnimations(detailedAsset);
     if (!options.preserveSelection) selectionStore.set(selectionFromCatalogAsset(detailedAsset));
-    const payload = await loadCatalogAsset(detailedAsset);
+    const payload = await viewerService.loadCatalogAsset(detailedAsset);
     if (requestId !== catalogSelectionRequestId) return;
     if ('animation' in payload) {
       mergeCatalogAssets([payload.animation]);
@@ -656,7 +651,7 @@ async function selectCatalogAsset(
       if (!options.preserveEntityWorkflow) await showAssetEntityWorkflow(payload.resource, false);
       const stats = payload.resource.stats;
       const audioUrl = 'semantic_layout' in stats && stats.semantic_layout === 'sample_wave_audio'
-        ? catalogAudioUrl(payload.resource)
+        ? viewerService.catalogAudioUrl(payload.resource)
         : null;
       resourceWorkspace.setResource(payload.resource, undefined, audioUrl);
       setMainView('resource');
@@ -679,7 +674,7 @@ async function openLinkedVisualAsset(assetId: string): Promise<void> {
 
 async function showAssetEntityWorkflow(asset: CatalogAsset, activate: boolean): Promise<void> {
   try {
-    const workflow = await loadAssetEntityWorkflow(asset);
+    const workflow = await viewerService.loadAssetEntityWorkflow(asset);
     entityView.setWorkflow(workflow);
     if (activate) {
       const entitySelection = selectionFromEntityWorkflow(workflow);
@@ -697,7 +692,7 @@ function hasSceneUsages(asset: CatalogAsset): boolean {
 }
 
 async function loadSpriteFrame(asset: CatalogAsset): Promise<SpritePayload> {
-  const payload = await loadCatalogAsset(asset);
+  const payload = await viewerService.loadCatalogAsset(asset);
   if (!('sprite' in payload)) throw new Error(`Catalog asset is not a sprite frame: ${asset.id}`);
   return payload;
 }
@@ -1049,7 +1044,7 @@ function sceneObjectRelationshipLabel(link: CatalogGraphSceneObjectVisualLink | 
 async function openSceneObject(sceneAssetId: string, objectIndex: number): Promise<void> {
   catalogSelectionRequestId += 1;
   await runAction(async () => {
-    const workflow = await loadSceneObjectEntityWorkflow(sceneAssetId, objectIndex);
+    const workflow = await viewerService.loadSceneObjectEntityWorkflow(sceneAssetId, objectIndex);
     entityView.setWorkflow(workflow);
     const entitySelection = selectionFromEntityWorkflow(workflow);
     if (entitySelection) selectionStore.set(entitySelection);
@@ -1776,10 +1771,13 @@ async function exportSelectedAsset(): Promise<void> {
   if (!exportAsset) throw new Error('Select an exportable catalog model, sprite frame, sample, indexed image, background grid, or scene background before exporting.');
   exportResult.textContent = '';
   const polygonMode = selectedPolygonMode();
-  const result = await exportCatalogAsset(exportAsset, polygonMode, exportAction?.selectedEdgeId);
+  const result = await viewerService.exportCatalogAsset(exportAsset, polygonMode, exportAction?.selectedEdgeId);
   const fileEntries = collectManifestFiles(result.manifest.files);
   const fileCount = fileEntries.filter(Boolean).length;
-  exportResult.textContent = `Wrote ${fileCount} files to ${result.output_dir}`;
+  const downloadLabel = triggerExportDownload(result);
+  exportResult.textContent = downloadLabel
+    ? `Downloaded ${downloadLabel} with ${fileCount} files`
+    : `Prepared ${fileCount} files from ${result.output_dir}`;
   overlay.textContent = `Exported ${result.manifest.source.catalog_label || result.manifest.source.catalog_asset_id}`;
   selectionStore.set({
     kind: 'evidence_artifact',
@@ -1802,6 +1800,33 @@ async function exportSelectedAsset(): Promise<void> {
       selectedEdgeId: exportAction?.selectedEdgeId,
     },
   });
+}
+
+function triggerExportDownload(result: ExportPayload): string {
+  const download = result.download;
+  if (!download) return '';
+  const bytes = base64ToBytes(download.base64);
+  const payload = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(payload).set(bytes);
+  const url = URL.createObjectURL(new Blob([payload], { type: download.mimeType }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = download.filename;
+  anchor.style.display = 'none';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return download.filename;
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function collectManifestFiles(value: unknown): string[] {
@@ -2085,35 +2110,10 @@ function updateLocalProgress(label: string): void {
 
 async function updateServerProgress(localLabel: string): Promise<void> {
   try {
-    renderProgress(await fetchDecodeProgress(), localLabel);
+    updateLocalProgress(localLabel);
   } catch {
     updateLocalProgress(localLabel);
   }
-}
-
-function renderProgress(progress: DecodeProgress, localLabel: string): void {
-  progressText.textContent = progress.label || localLabel;
-  progressMeta.textContent = formatProgressMeta(progress);
-
-  if (progress.total > 0 && progress.percent !== null) {
-    const percent = Math.max(0, Math.min(100, progress.percent * 100));
-    progressBar.classList.remove('indeterminate');
-    progressFill.style.width = `${percent}%`;
-    progressBar.setAttribute('aria-valuenow', String(Math.round(percent)));
-  } else {
-    progressBar.classList.add('indeterminate');
-    progressBar.removeAttribute('aria-valuenow');
-  }
-
-  progressBar.classList.toggle('error', progress.phase === 'error');
-}
-
-function formatProgressMeta(progress: DecodeProgress): string {
-  const elapsed = formatElapsed(progress.elapsed_seconds);
-  if (progress.total > 0) {
-    return `${progress.current}/${progress.total} entries, ${elapsed}`;
-  }
-  return elapsed;
 }
 
 function endProgress(success: boolean): void {

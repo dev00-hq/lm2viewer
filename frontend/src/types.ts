@@ -1956,4 +1956,9 @@ export interface ExportPayload {
     };
     warnings?: string[];
   };
+  download?: {
+    filename: string;
+    mimeType: string;
+    base64: string;
+  };
 }

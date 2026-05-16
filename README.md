@@ -1,18 +1,18 @@
 # LBA2 LM2 Viewer
 
-A local LM2 model viewer for Little Big Adventure 2 assets.
+A static browser LM2 evidence workbench for Little Big Adventure 2 assets.
 
-The project ships the decoder, Python backend, and browser frontend. It does not ship game data, decoded models, animations, textures, palettes, or HQR files.
-When the app starts, you choose a folder or one or more HQR files from your own local LBA2 installation, and decoding happens on your machine.
+The hosted app ships the decoder and viewer frontend. It does not ship game data,
+decoded models, animations, textures, palettes, or HQR files. When the app
+starts, you choose one or more local HQR files from your own LBA2 installation,
+and decoding happens inside the browser runtime worker on your machine.
 
 ## Requirements
 
-- Python 3.10 or newer
 - Node.js and npm for source builds
 - A local copy of the LBA2 asset files
 
-Installable Python dependencies are listed in both `pyproject.toml` and
-`requirements.txt`.
+Python is only needed for legacy/backend development and Python test suites.
 
 ## Build From Source
 
@@ -22,14 +22,46 @@ From the repository root:
 py -3 .\scripts\build.py
 ```
 
-This is the normal one-command setup for developers. It:
+This is the legacy one-command setup for Python/backend developers. It:
 
 - installs frontend dependencies with `npm ci`
-- builds the Vite frontend into `lba2_lm2_viewer/frontend/dist/`
+- builds the Vite frontend
 - installs the Python package in editable mode with `pip install -e .`
 
-The generated frontend bundle is ignored by Git. It is rebuilt locally and
-included only when packaging a release.
+For the canonical static app, build from `frontend/`:
+
+```powershell
+cd frontend
+npm ci
+npm run build
+```
+
+The static site is written to `frontend/dist/`. The generated bundle is ignored
+by Git and is rebuilt by the hosting provider.
+
+## Cloudflare Pages
+
+Use these Cloudflare Pages settings:
+
+- Build command: `cd frontend && npm ci && npm run build`
+- Build output directory: `frontend/dist`
+- Root directory: repository root
+- Node version: 24.15.0
+
+The build copies the Pyodide runtime into the site output and packages the
+Python decoder sources into the worker bundle. Cloudflare serves only static
+files; there is no `/api/*`, `/catalog.json`, or `/model.json` backend in the
+hosted app.
+
+Local deploy-readiness validation:
+
+```powershell
+cd frontend
+npm run test:e2e:static
+npm run preview -- --port 4178
+```
+
+Then open `http://127.0.0.1:4178/` and select local HQR files.
 
 ## Run
 
@@ -45,7 +77,7 @@ If your Python scripts directory is not on `PATH`, use the module entry point:
 py -3 -m lba2_lm2_viewer
 ```
 
-The server listens on `http://127.0.0.1:8765` by default and opens the browser viewer. In the app, use **Choose folder...** for a full asset directory or **Choose HQR files...** to decode only selected files.
+The server listens on `http://127.0.0.1:8765` by default and opens the browser viewer. This path is for legacy local backend development; the deployable app is the static `frontend/dist/` build. In the app, use **Choose HQR files...** to decode selected files.
 
 You can also start with a known asset folder:
 
@@ -79,7 +111,7 @@ The current audited archive status is tracked in `docs/hqr-coverage.md`.
 
 ## Development
 
-Python source lives in `lba2_lm2_viewer/`. Frontend source lives in `frontend/`.
+Python decoder source lives in `lba2_lm2_viewer/`. Frontend source lives in `frontend/`.
 Root-level `viewer.py` and `lba_hqr.py` are compatibility wrappers around the package modules.
 
 Run the full local build:
@@ -106,8 +138,8 @@ During frontend-only work, you can use the Vite dev server from `frontend/`:
 npm run dev
 ```
 
-The Python backend serves the built files from
-`lba2_lm2_viewer/frontend/dist/`, so run the project build before testing the integrated backend/frontend path.
+The static deploy target is `frontend/dist/`; use `npm run build` and
+`npm run test:e2e:static` before deployment.
 
 ## Export Probe
 
@@ -120,8 +152,8 @@ lba2-lm2-viewer export --asset-root "C:\LBA2" --asset "BODY.HQR:1" --out out\bod
 The bundle contains OBJ, MTL, `manifest.json`, and texture PNGs when palette and
 atlas data are available.
 
-The browser viewer also exposes **Export** for the selected catalog model and
-uses a backend folder picker for the output location.
+The browser viewer also exposes **Export** for the selected catalog asset and
+downloads a ZIP evidence bundle generated in the browser worker.
 
 `TEXT.HQR` payload banks can also be exported as JSON bundles. The export pairs
 each decoded text record with its order-table message id, `FlagDial` byte,

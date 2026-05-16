@@ -1,4 +1,4 @@
-import { loadAnimationSequence, poseAnimation } from '../api';
+import { viewerService } from '../runtime/viewerService';
 import type { AnimationSequenceFrame, AnimationSequencePayload, CatalogAsset, Lm2Model } from '../types';
 import type { ViewerScene } from '../viewer/scene';
 
@@ -213,7 +213,7 @@ export class AnimationController {
     this.busy = true;
     this.updateControls();
     try {
-      const model = await poseAnimation(bodyAsset, animationAsset, frame, elapsedMs, previousFrame);
+      const model = await viewerService.poseAnimation(bodyAsset, animationAsset, frame, elapsedMs, previousFrame);
       this.options.showModel(model);
       const sample = model.pose?.sample;
       this.options.elements.result.textContent = sample
@@ -272,7 +272,7 @@ export class AnimationController {
       this.sequence.animation_asset_id !== animationAsset.id ||
       this.sequence.step_ms !== playbackStepMs
     ) {
-      this.sequence = await loadAnimationSequence(bodyAsset, animationAsset, playbackStepMs);
+      this.sequence = await viewerService.loadAnimationSequence(bodyAsset, animationAsset, playbackStepMs);
       this.validateSequence(this.sequence);
       this.renderSequenceStrip();
     }
