@@ -3,11 +3,11 @@
 Probe commands use the new read-only graph surface:
 
 ```powershell
-python -m lba2_lm2_viewer catalog-graph --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 probe --ids BODY.HQR:2 BODY.HQR:29 SCENE.HQR:2 --json
-python -m lba2_lm2_viewer catalog-graph --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 scene-object SCENE.HQR:2 2 --json
-python -m lba2_lm2_viewer catalog-graph --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 edges BODY.HQR:2 --direction incoming --proof-scope classic_source_rule --evidence-status source_backed --json
-python -m lba2_lm2_viewer catalog-graph --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 prove BODY.HQR:2 ANIM.HQR:2 --json
-python -m lba2_lm2_viewer catalog-graph --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 build --output temp/catalog-graph.json
+python -m lba2_lm2_viewer catalog-graph --asset-root <asset-root> probe --ids BODY.HQR:2 BODY.HQR:29 SCENE.HQR:2 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <asset-root> scene-object SCENE.HQR:2 2 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <asset-root> edges BODY.HQR:2 --direction incoming --proof-scope classic_source_rule --evidence-status source_backed --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <asset-root> prove BODY.HQR:2 ANIM.HQR:2 --json
+python -m lba2_lm2_viewer catalog-graph --asset-root <asset-root> build --output temp/catalog-graph.json
 python -m lba2_lm2_viewer catalog-graph --graph-json temp/catalog-graph.json usages BODY.HQR:29 --proof-scope scene_object_state --evidence-status source_backed --json
 ```
 

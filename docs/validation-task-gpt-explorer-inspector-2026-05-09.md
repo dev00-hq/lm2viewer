@@ -3,7 +3,7 @@
 ## Environment
 
 - URL: `http://127.0.0.1:8901/`
-- Worktree: `C:\Users\sebam\.codex\worktrees\e82a\lba2-lm2-viewer`
+- Worktree: `<codex-worktree>\lba2-lm2-viewer`
 - Frontend build: `npm run build`
 - Browser: Codex in-app browser through agent-browser
 
@@ -94,14 +94,14 @@ and observed source-backed scene-object evidence plus the scene usage strip.
 ## Resource-Record Export Follow-Up
 
 - URL: `http://127.0.0.1:8903/`
-- Asset root: `D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+- Asset root: `<asset-root>`
 - Selected Explorer asset: `LBA_BKG.HQR:1`
 - Opened Resource workspace and selected `Record 0`.
 - Observed active selection `LBA_BKG.HQR:1#record:0`, kind
   `resource_record`, with `Export evidence bundle` visible.
 - Export produced `manifest.json`, `LBA_BKG_HQR_1_composition.json`, and
   `LBA_BKG_HQR_1_preview.png` under
-  `C:\Users\sebam\.codex\worktrees\e82a\lba2-lm2-viewer\exports\LBA_BKG.HQR_1`.
+  `<codex-worktree>\lba2-lm2-viewer\exports\LBA_BKG.HQR_1`.
 - UI status reported: `Wrote 3 files to ...\exports\LBA_BKG.HQR_1`.
 - Manifest graph evidence for `LBA_BKG.HQR:1` had
   `scene_usage_count: 0`, `relationship_link_count: 0`, and

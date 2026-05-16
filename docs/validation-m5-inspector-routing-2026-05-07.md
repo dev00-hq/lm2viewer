@@ -3,8 +3,8 @@
 ## Setup
 
 - URL: `http://127.0.0.1:8894`
-- Server command: `C:\Python312\python.exe -m lba2_lm2_viewer.viewer --host 127.0.0.1 --port 8894 --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 --no-browser`
-- Asset root: `D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+- Server command: `python -m lba2_lm2_viewer.viewer --host 127.0.0.1 --port 8894 --asset-root <asset-root> --no-browser`
+- Asset root: `<asset-root>`
 - Screenshot: `docs/validation-m5-inspector-routing-2026-05-07.png`
 
 ## Selection

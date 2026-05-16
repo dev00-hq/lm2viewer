@@ -6,6 +6,7 @@ from collections import OrderedDict
 import hashlib
 import json
 import mimetypes
+import os
 import struct
 import sys
 import threading
@@ -75,7 +76,7 @@ from .viewer import (
 )
 
 DEFAULT_BROWSER_EXPORT_ROOT = Path("exports")
-DEFAULT_PORT_REPO_ROOT = Path(r"D:\repos\reverse\littlebigreversing")
+DEFAULT_PORT_REPO_ROOT = Path(os.environ.get("LBA2_PORT_REPO_ROOT", "../littlebigreversing"))
 PROMOTABLE_PACKET_STATUSES = {"live_positive", "approved_exception"}
 SCENE_BACKGROUND_PREVIEW_CACHE_LIMIT = 8
 DEFAULT_COMPACT_CATALOG_LIMIT = 260

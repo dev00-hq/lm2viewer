@@ -3,7 +3,7 @@
 ## Purpose
 
 The LM2 Viewer is a local visual falsification workbench for original LBA2
-asset evidence and the Zig port at `D:\repos\reverse\littlebigreversing`.
+asset evidence and the Zig port at `<port-repo>`.
 
 It answers:
 
@@ -109,9 +109,9 @@ Port-facing design rules:
 Known port evidence context:
 
 - canonical asset root:
-  `D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+  `<asset-root>`
 - classic source root:
-  `D:\repos\reverse\littlebigreversing\reference\lba2-classic\SOURCES`
+  `<classic-source-root>`
 - current guarded positive viewer/load pairs include `19/19`, `2/2`, `11/10`,
   and `187/187`
 - `44/2` is an explicit guarded negative for unsupported exterior viewer load

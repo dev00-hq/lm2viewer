@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+.pytest_cache/
 *.egg-info/
 frontend/node_modules/
 frontend/.vite/
@@ -10,6 +11,9 @@ release/
 frontend/PLAN.md
 .viewer-*.log
 agent-browser-*.png
+docs/validation-*.png
+docs/validation-*.jpg
+entity-workflow-sprite-127.png
 work-*
 temp/
 .codex-run/

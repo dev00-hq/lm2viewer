@@ -16,7 +16,7 @@ The findings below cover:
 
 The viewer does not ship game data. All observations come from local user-owned
 assets, the original/runtime-derived source references under
-`D:\repos\reverse\lba-reference-repos`, and synthetic tests in this repo.
+`<reference-repos>`, and synthetic tests in this repo.
 
 ## HQR Indexing Rules
 

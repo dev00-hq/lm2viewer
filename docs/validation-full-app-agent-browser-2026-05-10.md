@@ -2,18 +2,18 @@
 
 Validated against `http://127.0.0.1:8916/` with the canonical asset root:
 
-`D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+`<asset-root>`
 
 Result: **49/49 browser checks passed**.
 
 ## Run Context
 
-- Checkout: `C:\Users\sebam\.codex\worktrees\e82a\lba2-lm2-viewer`
+- Checkout: `<codex-worktree>\lba2-lm2-viewer`
 - URL: `http://127.0.0.1:8916/`
 - Server command:
 
 ```powershell
-uv run python -m lba2_lm2_viewer --host 127.0.0.1 --port 8916 --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 --no-browser
+uv run python -m lba2_lm2_viewer --host 127.0.0.1 --port 8916 --asset-root <asset-root> --no-browser
 ```
 
 - Listener freshness: server process was started from this checkout for the validation run, then stopped after validation.

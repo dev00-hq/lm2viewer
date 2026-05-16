@@ -820,7 +820,7 @@ Problem statement:
 - Full retail asset-root startup can decode successfully while the frontend
   still shows no assets because `/catalog.json` serializes the backend's
   internal catalog plus full graph projections.
-- On 2026-05-15, `D:\LBA2_cdrom\LBA2` decoded in about 55s, but
+- On 2026-05-15, `<asset-root>` decoded in about 55s, but
   `/catalog.json` was 2,156,373,462 bytes.
 - The architectural mistake is that `server_state.catalog` is both the
   backend's canonical decoded working set and the browser startup API payload.

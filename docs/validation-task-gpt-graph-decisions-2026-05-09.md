@@ -2,10 +2,10 @@
 
 ## Environment
 
-- Worktree: `C:\Users\sebam\.codex\worktrees\e82a\lba2-lm2-viewer`
+- Worktree: `<codex-worktree>\lba2-lm2-viewer`
 - Server: `uv run python -m lba2_lm2_viewer --host 127.0.0.1 --port 8903 --no-browser`
 - Asset root loaded through `/api/catalog/build`:
-  `D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+  `<asset-root>`
 - Browser: Codex in-app browser at `http://127.0.0.1:8903`
 
 ## Checked
@@ -32,7 +32,7 @@
   graph projection.
 - The browser export wrote `manifest.json`, `LBA_BKG_HQR_1_composition.json`,
   and `LBA_BKG_HQR_1_preview.png` to
-  `C:\Users\sebam\.codex\worktrees\e82a\lba2-lm2-viewer\exports\LBA_BKG.HQR_1`.
+  `<codex-worktree>\lba2-lm2-viewer\exports\LBA_BKG.HQR_1`.
 - The written manifest reports graph export evidence for `LBA_BKG.HQR:1`:
   `scene_usage_count: 0`, `relationship_link_count: 0`, and
   `promotion_packet_ids: []`, matching the selected resource's graph evidence

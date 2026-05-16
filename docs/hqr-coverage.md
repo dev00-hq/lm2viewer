@@ -2,7 +2,7 @@
 
 Generated against:
 
-`D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+`<asset-root>`
 
 Last full real-asset catalog audit in this workspace: 15 HQR archives, 22,659
 catalog assets, coverage statuses `covered:3`, `partial:11`, `empty:1`, and
@@ -168,9 +168,9 @@ Local variant audit:
 - A targeted SCENE/SAMPLES audit parsed 222 scene entries without building the full catalog and checked five local `SAMPLES.HQR` copies:
   - `reference/lba2-classic/Common/SAMPLES.HQR`
   - `reference/lba2-classic/Speedrun/Windows/SAMPLES.HQR`
-  - `work/_innoextract_full/Common/SAMPLES.HQR`
-  - `work/_innoextract_full/Speedrun/Windows/SAMPLES.HQR`
-  - `work/_innoextract_full/Speedrun/Windows/LBA2_cdrom/LBA2/SAMPLES.HQR`
+  - `<extracted-assets>/Common/SAMPLES.HQR`
+  - `<extracted-assets>/Speedrun/Windows/SAMPLES.HQR`
+  - `<asset-root>/SAMPLES.HQR`
 - All five sample archives have SHA-256 `d5c770a901da97033b1fff47bd7c993fcb12bc4a4a189e87f2b02be85cc21dc2`.
 - The scene set references 230 distinct sample ids: 788 script reference events and 265 ambience reference events.
 - 193 referenced sample ids resolve to decoded WAVE payloads.

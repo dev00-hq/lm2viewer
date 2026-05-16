@@ -2,10 +2,10 @@
 
 ## Context
 
-- Checkout: `C:\Users\sebam\.codex\worktrees\e82a\lba2-lm2-viewer`
+- Checkout: `<codex-worktree>\lba2-lm2-viewer`
 - URL: `http://127.0.0.1:8915/`
-- Server command: `uv run python -m lba2_lm2_viewer --host 127.0.0.1 --port 8915 --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 --no-browser`
-- Asset root: `D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+- Server command: `uv run python -m lba2_lm2_viewer --host 127.0.0.1 --port 8915 --asset-root <asset-root> --no-browser`
+- Asset root: `<asset-root>`
 - Browser tool: Codex in-app `agent-browser`
 - Screenshot: `docs/validation-task-final-derived-usage-strip-agent-browser-2026-05-10.png`
 

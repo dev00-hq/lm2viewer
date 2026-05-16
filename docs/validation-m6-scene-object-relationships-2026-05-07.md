@@ -4,7 +4,7 @@
 
 - URL: `http://127.0.0.1:8896`
 - Viewer command: `python -m lba2_lm2_viewer --host 127.0.0.1 --port 8896 --no-browser`
-- Asset root: `D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+- Asset root: `<asset-root>`
 - Screenshot: `docs/validation-m6-scene-object-relationships-2026-05-07.png`
 
 ## Selected Evidence

@@ -46,9 +46,7 @@ from .scene_scripts import (
 WORLD_SCALE = 0.15
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-DEFAULT_ASSET_ROOT = Path(
-    r"D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2"
-)
+DEFAULT_ASSET_ROOT = Path(os.environ.get("LBA2_ASSET_ROOT", "assets"))
 PACKAGE_SUFFIXES = {".hqr"}
 FRONTEND_DIST = Path(__file__).resolve().with_name("frontend") / "dist"
 ANIM_ARCHIVE_NAME = "ANIM.HQR"

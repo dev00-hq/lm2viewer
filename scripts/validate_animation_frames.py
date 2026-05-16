@@ -8,6 +8,7 @@ import datetime as dt
 import hashlib
 import html
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -17,18 +18,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lba2_lm2_viewer import animation, lba_hqr, viewer
 
 
-DEFAULT_ASSET_ROOT = Path(
-    r"D:\repos\reverse\littlebigreversing\reference\lba2-classic\Speedrun\Windows"
-)
+DEFAULT_ASSET_ROOT = Path(os.environ.get("LBA2_CLASSIC_RUNTIME_ROOT", "assets"))
 DEFAULT_BODY_ASSET = "BODY.HQR:2"
 DEFAULT_ANIMATION_ASSET = "ANIM.HQR:49"
 DEFAULT_OUTPUT_ROOT = Path("build") / "animation-validation"
+REFERENCE_REPOS_ROOT = Path(os.environ.get("LBA2_REFERENCE_REPOS_ROOT", "reference"))
+PORT_REPO_ROOT = Path(os.environ.get("LBA2_PORT_REPO_ROOT", "../littlebigreversing"))
 REFERENCE_SOURCES = [
-    r"D:\repos\reverse\lba-reference-repos\lba2-classic-community\LIB386\ANIM\ANIM.CPP",
-    r"D:\repos\reverse\lba-reference-repos\lba2-classic-community\LIB386\ANIM\INTERDEP.CPP",
-    r"D:\repos\reverse\lba-reference-repos\lba2-classic-community\LIB386\ANIM\INTFRAME.CPP",
-    r"D:\repos\reverse\lba-reference-repos\metadata\LBA2\HQR\ANIM.HQR.json",
-    r"D:\repos\reverse\littlebigreversing\work\idajs_samples_save_map.jsonl",
+    str(REFERENCE_REPOS_ROOT / "lba2-classic-community" / "LIB386" / "ANIM" / "ANIM.CPP"),
+    str(REFERENCE_REPOS_ROOT / "lba2-classic-community" / "LIB386" / "ANIM" / "INTERDEP.CPP"),
+    str(REFERENCE_REPOS_ROOT / "lba2-classic-community" / "LIB386" / "ANIM" / "INTFRAME.CPP"),
+    str(REFERENCE_REPOS_ROOT / "metadata" / "LBA2" / "HQR" / "ANIM.HQR.json"),
+    str(PORT_REPO_ROOT / "work" / "idajs_samples_save_map.jsonl"),
 ]
 
 

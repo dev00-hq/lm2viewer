@@ -27,8 +27,8 @@ if (-not $LittleBigReversingRoot -or -not (Test-Path $LittleBigReversingRoot)) {
 
 if (-not $AssetRoot) {
     $assetRootCandidates = @(
-        "work\_innoextract_full\Speedrun\Windows",
-        "work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2",
+        "<extracted-assets>\Speedrun\Windows",
+        "<asset-root>",
         "reference\lba2-classic\Common",
         "reference\lba2-classic\Speedrun\Windows"
     )

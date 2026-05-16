@@ -3,8 +3,8 @@
 - Date: 2026-05-07
 - Tool: `agent-browser`
 - URL: `http://127.0.0.1:8891/`
-- Server command: `python -m lba2_lm2_viewer.viewer --host 127.0.0.1 --port 8891 --asset-root D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2 --no-browser`
-- Asset root: `D:\repos\reverse\littlebigreversing\work\_innoextract_full\Speedrun\Windows\LBA2_cdrom\LBA2`
+- Server command: `python -m lba2_lm2_viewer.viewer --host 127.0.0.1 --port 8891 --asset-root <asset-root> --no-browser`
+- Asset root: `<asset-root>`
 - Selected model: `BODY.HQR:2`
 - Selected animation: `ANIM.HQR:2`
 - Screenshot: `docs/validation-catalog-graph-compatibility-2026-05-07.png`

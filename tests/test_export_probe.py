@@ -489,7 +489,7 @@ class ExportProbeTests(unittest.TestCase):
             viewer_server.catalog_graph = None
             output_dir = Path(temp_dir) / "server-export"
             packets = {
-                "manifest": "D:/port/docs/promotion_packets/manifest.json",
+                "manifest": "<port-repo>/docs/promotion_packets/manifest.json",
                 "packets": [
                     {
                         "id": "scene_packet",
@@ -558,7 +558,7 @@ class ExportProbeTests(unittest.TestCase):
         viewer_server.catalog = catalog
         viewer_server.catalog_graph = build_catalog_graph(catalog)
         packets = {
-            "manifest": "D:/port/docs/promotion_packets/manifest.json",
+            "manifest": "<port-repo>/docs/promotion_packets/manifest.json",
             "packets": [
                 {
                     "id": "scene_packet",

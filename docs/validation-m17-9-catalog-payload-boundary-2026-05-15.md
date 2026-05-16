@@ -2,9 +2,9 @@
 
 ## Environment
 
-- Workspace: `D:\repos\reverse\lba2-lm2-viewer`
-- Retail asset root: `D:\LBA2_cdrom\LBA2`
-- Server: `py -3 -m lba2_lm2_viewer --asset-root D:\LBA2_cdrom\LBA2 --no-browser`
+- Workspace: `<repo>`
+- Retail asset root: `<asset-root>`
+- Server: `py -3 -m lba2_lm2_viewer --asset-root <asset-root> --no-browser`
 - Browser: Codex in-app browser at `http://127.0.0.1:8765/`
 
 ## Payload Checks
