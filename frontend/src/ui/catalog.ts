@@ -13,6 +13,7 @@ export class CatalogUi {
   private catalog: Catalog | null = null;
   private highlightedAssetId: string | null = null;
   private selectedModel: CatalogAsset | null = null;
+  private expandedSpriteGroups = new Set<string>();
 
   constructor(private readonly options: CatalogUiOptions) {
     options.search.addEventListener('input', () => this.render());
@@ -71,7 +72,7 @@ export class CatalogUi {
       `Scene background links: ${summary.scene_background_cube_links || 0} cube, ${summary.scene_grm_fragment_links || 0} GRM fragments. ` +
       `Catalog relationship refs: ${summary.scene_usage_refs || 0} refs across ${summary.scene_used_assets || 0} assets. ` +
       `${this.filterContext(kind)}Showing ${visible.length} of ${assets.length} matching entries.`;
-    this.options.list.replaceChildren(...visible.map((asset) => this.assetButton(asset)));
+    this.options.list.replaceChildren(...this.renderAssetItems(visible, kind));
   }
 
   private filterContext(kind: KindFilter): string {
@@ -113,9 +114,76 @@ export class CatalogUi {
     return button;
   }
 
+  private renderAssetItems(assets: CatalogAsset[], kind: KindFilter): HTMLElement[] {
+    if (kind !== 'sprite') return assets.map((asset) => this.assetButton(asset));
+
+    const items: HTMLElement[] = [];
+    let currentGroupKey: string | null = null;
+    for (const asset of assets) {
+      const group = anim3dsSpriteGroup(asset);
+      if (group && group.key !== currentGroupKey) {
+        currentGroupKey = group.key;
+        items.push(this.assetGroupHeader(group, this.expandedSpriteGroups.has(group.key)));
+      } else if (!group) {
+        currentGroupKey = null;
+      }
+      if (!group || this.expandedSpriteGroups.has(group.key)) {
+        items.push(this.assetButton(asset));
+      }
+    }
+    return items;
+  }
+
+  private assetGroupHeader(group: Anim3dsSpriteGroup, expanded: boolean): HTMLElement {
+    const header = document.createElement('button');
+    header.className = 'asset-group-header';
+    header.type = 'button';
+    header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    header.title = `${expanded ? 'Collapse' : 'Expand'} ${group.name} ANIM3DS range`;
+
+    const title = document.createElement('strong');
+    title.textContent = `${group.name} ANIM3DS range`;
+
+    const meta = document.createElement('span');
+    meta.textContent = `frames ${group.startFrame}..${group.endFrame} (${group.frameCount})`;
+
+    header.append(title, meta);
+    header.addEventListener('click', () => {
+      if (this.expandedSpriteGroups.has(group.key)) {
+        this.expandedSpriteGroups.delete(group.key);
+      } else {
+        this.expandedSpriteGroups.add(group.key);
+      }
+      this.render();
+    });
+    return header;
+  }
+
   private graphSelection(asset: CatalogAsset): CatalogGraphSelectionProjection | undefined {
     return this.catalog?.graph?.selectionByAssetId?.[asset.id];
   }
+}
+
+interface Anim3dsSpriteGroup {
+  key: string;
+  name: string;
+  startFrame: number;
+  endFrame: number;
+  frameCount: number;
+}
+
+function anim3dsSpriteGroup(asset: CatalogAsset): Anim3dsSpriteGroup | null {
+  if (asset.kind !== 'sprite' || asset.entry_type !== 'anim3ds-frame') return null;
+  const stats = asset.stats;
+  if (!('semantic_layout' in stats) || stats.semantic_layout !== 'lsp_sprite_frame' || !stats.anim3ds_info) return null;
+  const info = stats.anim3ds_info;
+  return {
+    key: `${info.name}:${info.start_frame}:${info.end_frame}`,
+    name: info.name,
+    startFrame: info.start_frame,
+    endFrame: info.end_frame,
+    frameCount: info.end_frame - info.start_frame + 1,
+  };
 }
 
 function searchableText(asset: CatalogAsset, graphSelection?: CatalogGraphSelectionProjection): string {

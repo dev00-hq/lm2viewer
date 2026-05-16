@@ -784,6 +784,58 @@ label {
   background: #283038;
 }
 
+.asset-group-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border-bottom: 1px solid #2e353b;
+  border-radius: 0;
+  background: #11181d;
+  color: #dfe7ed;
+  font-size: 11px;
+  min-height: auto;
+  text-align: left;
+}
+
+.asset-group-header::before {
+  content: ">";
+  flex: 0 0 auto;
+  color: #7fd7bf;
+}
+
+.asset-group-header[aria-expanded="true"]::before {
+  content: "v";
+}
+
+.asset-group-header:hover {
+  background: #162229;
+}
+
+.asset-group-header strong,
+.asset-group-header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-group-header span {
+  color: #93a2af;
+}
+
+.asset-group-header strong {
+  flex: 1 1 auto;
+}
+
+.asset-group-header span {
+  flex: 0 0 auto;
+}
+
 .asset-title {
   display: flex;
   justify-content: space-between;
