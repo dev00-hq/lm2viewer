@@ -28,15 +28,16 @@ await writeFile(
 );
 
 await mkdir(pyodideTarget, { recursive: true });
-for (const fileName of [
+const pyodideRuntimeFiles = [
   'pyodide.asm.js',
   'pyodide.asm.wasm',
   'pyodide-lock.json',
   'pyodide.mjs',
   'python_stdlib.zip',
-  'micropip-0.11.1-py3-none-any.whl',
-  'msgspec-0.19.0-cp313-cp313-pyemscripten_2025_0_wasm32.whl',
-]) {
+];
+const pyodideWheelFiles = (await readdir(pyodideSource))
+  .filter((fileName) => fileName.endsWith('.whl'));
+for (const fileName of [...pyodideRuntimeFiles, ...pyodideWheelFiles]) {
   await cp(path.join(pyodideSource, fileName), path.join(pyodideTarget, fileName));
 }
 
